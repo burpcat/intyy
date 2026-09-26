@@ -9,7 +9,6 @@ state/
 .env
 .env.restricted
 .env.local
-docs/
 
 # Dev-only Playwright traces (design section 1 §11). Never evidence.
 traces/
