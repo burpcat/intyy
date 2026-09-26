@@ -1,0 +1,25 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Runtime files. Published copies go to evidence/ instead.
+state/
+
+# Secret values. .env.example stays in git.
+.env
+.env.restricted
+.env.local
+docs/
+
+# Dev-only Playwright traces (design section 1 §11). Never evidence.
+traces/
+
+# bs
+*.log
+.DS_Store
+
+# claude
+
+.claude/
+CLAUDE.md
+START-HERE.md
