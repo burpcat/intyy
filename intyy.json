@@ -1,0 +1,9 @@
+{
+  "schema": "intyy.config/1.0",
+  "library": "library",
+  "state": "state",
+  "publish": "evidence",
+  "default_tenant": "keystone",
+  "model_keys": { "claude": "ANTHROPIC_API_KEY", "jev": "JEV_API_KEY" },
+  "canary_members": ["100240"]
+}

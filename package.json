@@ -1,0 +1,38 @@
+{
+  "name": "intyy",
+  "version": "0.1.0",
+  "description": "Gives AI agents hands in bank back-office apps that have no API.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "intyy": "dist/cli/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "format": "prettier --write .",
+    "check": "npm run typecheck",
+    "test": "vitest run --project unit --project types",
+    "test:live": "vitest run --project live"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.0",
+    "dependency-cruiser": "^18.4.0",
+    "eslint": "^10.11.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "commander": "^15.0.0"
+  }
+}
