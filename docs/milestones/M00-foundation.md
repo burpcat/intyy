@@ -1,6 +1,6 @@
 # M00 — Foundation
 
-> **Phase:** A · **Size:** S · **Depends on:** nothing · **Status:** not started
+> **Phase:** A · **Size:** S · **Depends on:** nothing · **Status:** gate pending (npm link, CI on GitHub)
 
 ## Read first
 
@@ -61,37 +61,37 @@ A repo that builds, checks itself, and holds consistent design docs, before any 
 
 ## Tasks, in order
 
-- [ ] 1. Scaffold `package.json`, `tsconfig.json`, `.nvmrc`, Prettier. Install dev tools. Log each dependency in `docs/decisions.md`.
-- [ ] 2. Add ESLint with the restricted-syntax rules. Point them at `src/core/` and `core/safety/redaction/` as build plan §5.3 says.
-- [ ] 3. Add dependency-cruiser with the four rules. Write `imports.test.ts` to run it and fail on any violation.
-- [ ] 4. Write the self-test. Each fixture breaks exactly one rule. The test asserts each rule reports its own fixture.
-- [ ] 5. Set up the three Vitest projects. Add one trivial test to each so the projects prove they run.
+- [x] 1. Scaffold `package.json`, `tsconfig.json`, `.nvmrc`, Prettier. Install dev tools. Log each dependency in `docs/decisions.md`.
+- [x] 2. Add ESLint with the restricted-syntax rules. Point them at `src/core/` and `core/safety/redaction/` as build plan §5.3 says.
+- [x] 3. Add dependency-cruiser with the four rules. Write `imports.test.ts` to run it and fail on any violation.
+- [x] 4. Write the self-test. Each fixture breaks exactly one rule. The test asserts each rule reports its own fixture.
+- [x] 5. Set up the three Vitest projects. Add one trivial test to each so the projects prove they run.
 - [ ] 6. Write `src/cli/main.ts` with `--version`. Build, `npm link`, run `intyy --version`.
-- [ ] 7. Write `docs-renames.ts` and `docs-verify.ts`. Run renames on `docs/design/`. Run it again: nothing changes.
-- [ ] 8. Stop. Ask the owner to review and commit the rename diff on its own.
-- [ ] 9. Add `docs:verify` to `npm run check`.
-- [ ] 10. Ask the owner for the bank app's repo URL and commit. Write `bankapp.json`.
-- [ ] 11. Write `bankapp-smoke.ts`. It reads the origin from `bankapp.json`. It fails loudly and names the fix.
-- [ ] 12. Ask the owner two questions: does `make up` run on a Linux runner, and what runtime does it need? Write the CI workflow from the answers.
-- [ ] 13. Write the first refresher entries and `docs/decisions.md` lines.
+- [x] 7. Write `docs-renames.ts` and `docs-verify.ts`. Run renames on `docs/design/`. Run it again: nothing changes.
+- [x] 8. Stop. Ask the owner to review and commit the rename diff on its own.
+- [x] 9. Add `docs:verify` to `npm run check`.
+- [x] 10. Ask the owner for the bank app's repo URL and commit. Write `bankapp.json`.
+- [x] 11. Write `bankapp-smoke.ts`. It reads the origin from `bankapp.json`. It fails loudly and names the fix.
+- [x] 12. Ask the owner two questions: does `make up` run on a Linux runner, and what runtime does it need? Write the CI workflow from the answers.
+- [x] 13. Write the first refresher entries and `docs/decisions.md` lines.
 
 ## Test gate
 
 ### Automated (CI `check` job)
 
-- [ ] `npm ci && npm run build && npm run check` is green.
-- [ ] The structure self-test shows each rule firing on its own fixture.
-- [ ] `docs:verify` passes. A second `docs:renames` run changes no file.
-- [ ] `intyy --version` prints the package version.
+- [x] `npm ci && npm run build && npm run check` is green.
+- [x] The structure self-test shows each rule firing on its own fixture.
+- [x] `docs:verify` passes. A second `docs:renames` run changes no file.
+- [x] `intyy --version` prints the package version.
 
 ### Live
 
-- [ ] `npm run bankapp:smoke` passes with the bank app running in test mode.
+- [x] `npm run bankapp:smoke` passes with the bank app running in test mode.
 
 ### Owner checks
 
-- [ ] The rename diff is reviewed and committed alone.
-- [ ] `bankapp.json` names the right commit.
+- [x] The rename diff is reviewed and committed alone.
+- [x] `bankapp.json` names the right commit.
 - [ ] The CI `check` job is green on GitHub.
 
 ## Evidence produced
