@@ -1,0 +1,23 @@
+# CI for intyy: the check job runs on every push. It needs no bank app, no keys, and no model.
+# Follows build plan section 10 §8. Live tests are a local step (docs/decisions.md, M00).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check
