@@ -428,6 +428,8 @@ interface DocumentStore<T> {
 
 ### 6.1 Two parts: library and state
 
+> **Changed by section 10:** model_keys fixed; canary_members added. See `intyy-design-updates-from-section-10.md` §12.
+
 | Part | Holds | In git? | Why |
 |---|---|---|---|
 | **Library** | Everything a human reviews and seals | Yes | Review and history for free (principle 2.6) |
@@ -542,6 +544,8 @@ state/
 
 ### 6.6 Publishing evidence
 
+> **Changed by section 10:** Publish copies artifacts, places trust snapshots, warns on size. See `intyy-design-updates-from-section-10.md` §12.
+
 **Job:** copy chosen runs and records into the repo's `/evidence/`, safely.
 
 ```
@@ -611,6 +615,8 @@ kvfcu/open_share_subaccount@1             a caller's name: the major only
 - **Why they are not in the notation:** they are context, not recipe. The same notation works at every bank.
 
 ### 7.3 Global flags
+
+> **Changed by section 10:** The CLI loads .env without overriding set variables. See `intyy-design-updates-from-section-10.md` §12.
 
 | Flag | Meaning | Default |
 |---|---|---|
@@ -840,6 +846,8 @@ intyy pack second-look <scope> <handler_id>/<action> --agree | --disagree
 ## 9. Trust commands
 
 ### 9.1 Certify
+
+> **Changed by section 10:** certify case gains --operator mailbox. See `intyy-design-updates-from-section-10.md` §12.
 
 ```
 intyy certify <key> [--kind full|quick|regression] [--pack <scope>@<rev>] [--instance k=v,…]
@@ -1221,11 +1229,15 @@ intyy run sweep [--force-unlock <lock> --reason <text>]
 
 ### 13.1 Setup
 
+> **Changed by section 10:** Exact bank app options. See `intyy-design-updates-from-section-10.md` §12.
+
 1. **Start the bank app** with test mode on: `make up` in its repo (CONTRACT §1).
 2. **Copy `.env.example` to `.env`.** Fill in bank credentials, bound in settings, and model keys.
 3. **Check:** `intyy settings check --secrets` and `intyy staff whoami`.
 
 ### 13.2 The path
+
+> **Changed by section 10:** Adds the handoff demo. See `intyy-design-updates-from-section-10.md` §12.
 
 | # | Command | Result |
 |---|---|---|
@@ -1424,6 +1436,8 @@ Keystone, app 9.2. The library already holds approved policy, settings, packs, s
 ---
 
 ## 19. Items parked for other sections
+
+> **Changed by section 10:** Items for section 10 are resolved. See `intyy-design-updates-from-section-10.md` §12.
 
 | Item | Section |
 |---|---|

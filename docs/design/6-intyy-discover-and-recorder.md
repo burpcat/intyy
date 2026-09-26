@@ -217,7 +217,7 @@
   "caller": { "tenant": "keystone", "agent_id": "op_017" },
   "app": "kvfcu",
   "capability": "open_share_subaccount",
-  "goal": "Open a new share savings sub-account for member {input.member_id} with an opening deposit of {input.deposit}. Return the new account number.",
+  "goal": "Open a new share sub-account for member {input.member_id} with an opening deposit of {input.deposit}. Return the new account number.",
   "inputs": [
     { "name": "member_id", "type": "string", "description": "The member number",
       "sensitivity": "pii", "example": "100142", "constraints": { "format": "digits", "length": { "min": 6, "max": 6 } } },
@@ -908,6 +908,8 @@ Discovery of `open_share_subaccount` on the bank app. Screen names are invented.
 ---
 
 ## 21. Items parked for other sections
+
+> **Changed by section 10:** Items for section 10 are resolved. See `intyy-design-updates-from-section-10.md` §9.
 
 | Item | Section |
 |---|---|

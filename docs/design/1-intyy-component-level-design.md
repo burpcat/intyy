@@ -4,7 +4,7 @@
 > **Who it is for.** Someone who has read the interface.ai take-home brief, and nothing else.
 > **Diagrams** use Mermaid. They render on GitHub.
 > **Status:** architecture locked, v1.6, 25 Sep 2026. Section 19 lists decisions made after the first draft. Section 21 lists changes from section 2. Section 23 lists changes from section 3. Section 24 lists changes from section 4. Section 25 lists changes from sections 5 to 7. Section 26 lists changes from section 8. Section 27 lists changes from section 9.
-> **Artifact fields:** `intyy-section-2-artifact-schema.md` is the source of truth. This doc gives the summary only.
+> **Artifact fields:** `2-intyy-artifact-schema.md` is the source of truth. This doc gives the summary only.
 > **Run outputs** (request, result, log, evidence): `3-intyy-run-outputs.md` is the source of truth.
 > **Safety** (policy, allowlist, risk rules, secrets, redaction): `4-intyy-safety-policy.md` is the source of truth.
 > **Handler packs and error ladder** (handler format, jev, reviewer limits, learned handlers): `5-intyy-handler-packs-and-error-ladder.md` is the source of truth.
@@ -233,7 +233,7 @@ flowchart TB
 
 > **In one line:** look, decide, check, act, write it down. Repeat until done.
 
-**Example goal used everywhere below:** "Open a savings sub-account for member 10234 with a $100 deposit. Return the new account number."
+**Example goal used everywhere below:** "Open a share sub-account for member 100107 with a $137.00 deposit. Return the new account number."
 
 ```mermaid
 sequenceDiagram
@@ -243,7 +243,7 @@ sequenceDiagram
   participant S as Safety gate
   participant P as Perception
   participant R as Recorder
-  You->>O: goal with member_id={input.member_id}, deposit={input.deposit}, plus example values 10234 and 100
+  You->>O: goal with member_id={input.member_id}, deposit={input.deposit}, plus example values 100107 and 137.00
   O->>P: open browser, bot takes lease
   loop until goal met
     P->>A: redacted element list + marked screenshot
@@ -262,12 +262,12 @@ sequenceDiagram
 
 ### Rules that matter
 
-- **The LLM never sees secrets.** It names `{secret.operator_login}`. The safety gate types the real value.
+- **The LLM never sees secrets.** It names `{secret.operator_username}`. The safety gate types the real value.
 - **Callers never name secrets.** Bank settings supply the values. Artifacts only refer to names.
 - **The LLM picks from element IDs,** not pixel positions. Each ID maps to a durable fingerprint.
 - **Irreversible clicks need a human yes,** even in discovery.
 - **The operator's approval answer carries a risk hint:** irreversible, reversible, idempotent, or decline.
-- **The LLM never sees input values.** It sees and types `{input.member_id}`, never `10234`. The gate puts in the value.
+- **The LLM never sees input values.** It sees and types `{input.member_id}`, never `100107`. The gate puts in the value.
 - **The log writer still replaces known values in observed screen text** with references. The recorder relies on it.
 - **Discovery runs on `test` environments by default.** A bank must opt in to production discovery.
 - **Negative discovery runs capture business outcomes.** Run with a known-bad input and state the expected outcome. A human names the outcome code.
@@ -311,7 +311,7 @@ sequenceDiagram
 | `provenance` | Source runs, LLM tags, human decisions |
 
 - **Approval state is not in the artifact.** Approval is per context, so it lives in the score store.
-- **Full field list:** `intyy-section-2-artifact-schema.md`.
+- **Full field list:** `2-intyy-artifact-schema.md`.
 
 ### One step
 
@@ -348,7 +348,7 @@ stateDiagram-v2
 ```
 
 - **Before this:** the recorder writes a candidate. A human reviews it. Then it is sealed.
-- **These states are per context,** not per file. Bank A may approve a version that Bank B has not.
+- **These states are per context,** not per file. Keystone may approve a version that Lakeshore has not.
 - **One approved key per context and major.** Approving a new key retires the old one.
 - **Degraded blocks unattended runs.** Supervised runs still work.
 - **Degraded to approved:** a human restores it, with a fresh passing batch or after excluding runs.
@@ -398,7 +398,7 @@ flowchart TD
 
 ### What the caller sends
 
-- **The capability, by major version:** `sparrow-core/open_savings_subaccount@1`. The resolver picks minor, patch version, and tenant patch.
+- **The capability, by major version:** `kvfcu/open_share_subaccount@1`. The resolver picks minor, patch version, and tenant patch.
 - **Tenant is not a caller field.** The entry point adds `caller: { tenant, agent_id }` from credentials. A changed request field must never reach another bank.
 - **App version comes from bank settings.** Tenant plus app version gives the context.
 - **Full request fields:** section 3 §4.
@@ -574,6 +574,8 @@ stateDiagram-v2
 
 ## 12. Seeing the screen
 
+> **Changed by section 10:** The stripped-button demo is settled. See `intyy-design-updates-from-section-10.md` §4.
+
 > **In one line:** record many clues per target. Act only when the clues agree.
 
 ```mermaid
@@ -605,7 +607,7 @@ flowchart TB
 > **In one line:** test before trusting, keep testing after, and only humans restore trust.
 
 - **Machines may take trust away. Only humans give it.**
-- **A full batch runs baseline, matrix, extra cases, drills, and stability.** Example: 72 runs for the savings sub-account capability.
+- **A full batch runs baseline, matrix, extra cases, drills, and stability.** Example: 72 runs for the share sub-account capability.
 - **Every run is judged against truth:** the fault log and the oracle. Never the run's own report.
 - **The gate:** zero `wrong`; baseline, matrix, and extra cases all `pass`; nothing left `void`. Stability has no rate floor.
 - **Two scores:** outcome score and lowest margin. Fragile steps need a written note at approval. They do not block.
@@ -618,8 +620,8 @@ flowchart TB
 
 ### Example
 
-- **Day 1:** a 72-run batch at bank A. Zero `wrong`. One fragile step, acknowledged. Approved.
-- **Week 2:** bank B certifies the same version. One label differs. A patch draft, sealed, certified, approved.
+- **Day 1:** a 72-run batch at keystone. Zero `wrong`. One fragile step, acknowledged. Approved.
+- **Week 2:** lakeshore certifies the same version. One label differs. A patch draft, sealed, certified, approved.
 - **Month 3:** app 9.3 ships. The streak rule degrades the key at two banks. A new version for 9.3.
 
 ---
@@ -666,6 +668,8 @@ flowchart TB
 
 ## 16. How we verify it
 
+> **Changed by section 10:** The member canary is seed member 100240. See `intyy-design-updates-from-section-10.md` §4.
+
 > **In one line:** test all plain code in CI without models. Measure models separately.
 
 | Layer | What it proves | In CI? |
@@ -686,7 +690,7 @@ flowchart TB
 | Structure checks | Only the gate holds hands; raw values cannot reach models or logs | Yes |
 | CLI rules | Exit codes, output rules, roles, four eyes, `--expect-record`, locks | Yes |
 | Model evaluations | Discovery success rate; jev accuracy and threshold | No, run on demand |
-| Full certify batch | A real batch on bank A, with real models | No. On demand, once for `/evidence/` |
+| Full certify batch | A real batch on keystone, with real models | No. On demand, once for `/evidence/` |
 
 ### Brief requirement to proof
 
@@ -705,6 +709,8 @@ flowchart TB
 ---
 
 ## 17. Build plan
+
+> **Changed by section 10:** Replaced by the build plan's thirteen milestones. See `intyy-design-updates-from-section-10.md` §4.
 
 ```mermaid
 flowchart LR
@@ -725,6 +731,8 @@ flowchart LR
 
 ## 18. Built, designed, or cut
 
+> **Changed by section 10:** Statuses for patches, drafting, and the visual clue changed. See `intyy-design-updates-from-section-10.md` §4.
+
 | Item | Status | Why |
 |---|---|---|
 | Discovery, recorder, replay, ladder, handoff, safety | Built | Core requirements |
@@ -735,7 +743,7 @@ flowchart LR
 | Stability curve and twin runs | Built | The "multi-run stability" goal |
 | Four eyes at approval; second look at sealing | Built | Small, and banks expect it |
 | Reconciliation autonomy evidence; major records; pack regression; drift reader | Built, thin | Mechanism real; depth needs more data |
-| Patch drafting and the bank B drill | Stretch | The cross-tenant goal. Section 10 decides |
+| Patch drafting and the lakeshore drill | Stretch | The cross-tenant goal. Section 10 decides |
 | jev threshold calibration; tag autonomy | Designed; reports built | Too few samples in one take-home |
 | Clue weight calibration; sampled regression at scale | Designed | Engine-wide, or needs many tenants |
 | Full operator console | Designed | Brief allows a bare console |
@@ -831,12 +839,14 @@ flowchart TD
 
 ## 20. Next: the bank app contract
 
+> **Changed by section 10:** The contract is CONTRACT.md 1.1.0. See `intyy-design-updates-from-section-10.md` §4.
+
 - **A separate agent builds the bank app.** intyy depends only on a written contract.
 - **intyy's code never hardcodes knowledge of the bank app's screens.** Just like a real vendor app.
-- **Look and behavior:** a 2008-era Indian retail bank app. Slow, with random errors.
+- **Look and behavior:** a 2008-era US credit union back-office app. Slow, with random errors.
 - **Chaos server:** sits in front of the bank app. An entropy value from 0 to 1 sets the error rate.
 - **intyy's requirements on it:** seeded and reproducible, blocks before and after the endpoint, keeps a fault log, supports named faults.
-- **Handoff brief:** `bank-app-handoff.md`.
+- **Handoff brief:** `CONTRACT.md`.
 
 ---
 
@@ -1010,7 +1020,7 @@ flowchart TD
 - **One approved key per context and major.** Degraded blocks unattended runs; a human restores a degraded key or reinstates a retired one; no automatic fallback. See section 6.
 - **Confidence, approval, and drift rewritten:** the gate, two scores, the stability curve, tuned timeouts, live score, and the two demotion rules. See section 13.
 - **Verification gains a score store golden test, a harness boundary check, and certify batches.** See section 16.
-- **New built and designed items:** score store, certify runner, scorer, resolver; stability curve; four eyes and second look; drift reader; patch drafting and the bank B drill as stretch. See section 18.
+- **New built and designed items:** score store, certify runner, scorer, resolver; stability curve; four eyes and second look; drift reader; patch drafting and the lakeshore drill as stretch. See section 18.
 - **jev autonomy for reconciliation scoped to the parent key, check key, and jev version, with a stricter readiness bar;** the tag agreement table is built; chaos server timeouts become candidate then approved. See section 19.
 - **Section 8 marked Done** in the design plan. See section 22.
 

@@ -215,8 +215,8 @@ Every `gate` log line names the rule that decided, in `why.ref`.
 | Layer | ID example | Written by | Holds |
 |---|---|---|---|
 | Global | `global` | intyy staff | The floor for everyone: action types, word lists, detectors, bounds |
-| App | `app:sparrow-core` | intyy staff | Facts about one vendor app: its paths, its words, its data formats, its secret names |
-| Tenant | `tenant:bank_a` | intyy staff, for one bank | One bank's restrictions and choices |
+| App | `app:kvfcu` | intyy staff | Facts about one vendor app: its paths, its words, its data formats, its secret names |
+| Tenant | `tenant:keystone` | intyy staff, for one bank | One bank's restrictions and choices |
 
 - **One run merges three files:** global, the run's app, and the run's tenant.
 - **A tenant file covers all its apps.** App-specific parts sit under `apps.<app>`.
@@ -236,7 +236,7 @@ Each field has one merge kind. The kind decides what a lower layer may do.
 #### Two exceptions, both for the app layer
 
 - **The app layer defines paths.** Global cannot know an app's pages. The app layer is the first to list them.
-- **The app layer may add safe words for its app.** Example: Indian bank apps say "Enquiry" for "look up".
+- **The app layer may add safe words for its app.** Example: some core banking apps say "Inquiry" for "look up".
 - **Why this is safe:** irreversible words always beat safe words (7.6). A safe word only helps a label with no risky word.
 - **The tenant layer has no exceptions.** It only tightens.
 
@@ -244,7 +244,7 @@ Each field has one merge kind. The kind decides what a lower layer may do.
 
 - **A layer that tries to loosen its parent fails to load.** The error names the field and the rule.
 - **intyy never silently ignores the bad part.** A silent fix hides a mistake from its author.
-- **Example:** `tenant:bank_a` adds `/admin/*` to allowed paths. The app layer does not allow it. Load fails: `paths.allow: /admin/* is not allowed by app:sparrow-core`.
+- **Example:** `tenant:keystone` adds `/admin/*` to allowed paths. The app layer does not allow it. Load fails: `paths.allow: /admin/* is not allowed by app:kvfcu`.
 
 ### 4.4 Blocks
 
@@ -280,9 +280,9 @@ Every policy file starts with the same fields.
 | Field | Meaning | Example |
 |---|---|---|
 | `schema` | Format version | `"intyy.policy/1.0"` |
-| `scope` | Which layer | `{ "level": "tenant", "tenant": "bank_a" }` |
+| `scope` | Which layer | `{ "level": "tenant", "tenant": "keystone" }` |
 | `revision` | Counts up from 1 | `3` |
-| `reason` | Why this revision exists | `"Bank A forces approval on all commits."` |
+| `reason` | Why this revision exists | `"Keystone forces approval on all commits."` |
 | `approved` | Staff ID and time | `{ "by": "op_017", "at": "2026-09-24T08:00:00Z" }` |
 
 - **Revisions are sealed.** A sealed revision never changes. A change makes a new revision.
@@ -292,12 +292,12 @@ Every policy file starts with the same fields.
 
 #### What the run log records
 
-- **Section 3 froze `policy: { version: "bank_a/3", hash }`.** One version cannot name three files.
+- **Section 3 froze `policy: { version: "keystone/3", hash }`.** One version cannot name three files.
 - **New shape:** each layer's revision, plus one hash of the merged policy.
 
 ```json
 "policy": {
-  "layers": { "global": 4, "app:sparrow-core": 2, "tenant:bank_a": 3 },
+  "layers": { "global": 4, "app:kvfcu": 2, "tenant:keystone": 3 },
   "hash": "sha256:e71d…"
 }
 ```
@@ -309,13 +309,13 @@ Every policy file starts with the same fields.
 
 - **A tenant must list each capability it allows.** Nothing runs at a bank by default.
 - **Why:** sealing a new capability must not make it callable at 300 banks at once.
-- **Patterns use `*`:** `sparrow-core/*@1` allows every major-1 capability of the app.
+- **Patterns use `*`:** `kvfcu/*@1` allows every major-1 capability of the app.
 - **`deny` beats `allow`,** at every layer.
 
 ```json
 "capabilities": {
-  "allow": ["sparrow-core/lookup_member@1", "sparrow-core/open_savings_subaccount@1"],
-  "deny":  ["sparrow-core/close_account@*"]
+  "allow": ["kvfcu/lookup_member@1", "kvfcu/open_share_subaccount@1"],
+  "deny":  ["kvfcu/close_account@*"]
 }
 ```
 
@@ -340,7 +340,7 @@ Every policy file starts with the same fields.
     "reversible_words": ["add", "insert", "attach", "logout"],
     "safe_words": ["search", "find", "view", "details", "open", "back", "close", "login"]
   },
-  "redaction": { "detectors": ["ssn", "card", "aadhaar", "pan", "email", "phone", "money"], "digit_run_min": 5 },
+  "redaction": { "detectors": ["ssn", "card", "email", "phone", "money"], "digit_run_min": 5 },
   "formats": { "date": ["YYYY-MM-DD", "MM/DD/YYYY", "DD/MM/YYYY", "MM/DD/YY", "DD-MMM-YYYY"], "money": ["0.00", "#,##0.00", "0"] },
   "correlation": { "notes": false },
   "llm": { "send_screenshots": true, "mask_screenshots": true, "replay_jev": true, "replay_reviewer": true },
@@ -357,7 +357,7 @@ Every policy file starts with the same fields.
 ```json
 {
   "schema": "intyy.policy/1.0",
-  "scope": { "level": "app", "app": "sparrow-core" },
+  "scope": { "level": "app", "app": "kvfcu" },
   "revision": 2,
   "reason": "Add the lookup pop-up path.",
   "approved": { "by": "op_002", "at": "2026-09-22T11:00:00Z" },
@@ -386,14 +386,14 @@ Every policy file starts with the same fields.
 ```json
 {
   "schema": "intyy.policy/1.0",
-  "scope": { "level": "tenant", "tenant": "bank_a" },
+  "scope": { "level": "tenant", "tenant": "keystone" },
   "revision": 3,
   "reason": "Force approval on all commits. Keep debug files 14 days.",
   "approved": { "by": "op_017", "at": "2026-09-24T08:00:00Z" },
-  "capabilities": { "allow": ["sparrow-core/*@1"], "deny": ["sparrow-core/close_account@*"] },
+  "capabilities": { "allow": ["kvfcu/*@1"], "deny": ["kvfcu/close_account@*"] },
   "approvals": { "force_human": ["*"] },
   "apps": {
-    "sparrow-core": { "paths": { "deny": ["/lookup/branch"] } }
+    "kvfcu": { "paths": { "deny": ["/lookup/branch"] } }
   },
   "evidence": { "level": "standard", "retention": { "debug_days": 14 } },
   "discovery": { "environments": ["test"] }
@@ -435,9 +435,9 @@ Any failure stops the load. A run that cannot load its policy never starts.
 | Field | Meaning | Example |
 |---|---|---|
 | `schema` | Format version | `"intyy.settings/1.0"` |
-| `tenant` | Which bank | `"bank_a"` |
+| `tenant` | Which bank | `"keystone"` |
 | `revision` | Counts up from 1 | `2` |
-| `apps.<app>.origin` | Scheme, host, and port. No path | `"https://sparrow.bank-a.example"` |
+| `apps.<app>.origin` | Scheme, host, and port. No path | `"https://kvfcu.keystone.example"` |
 | `apps.<app>.app_version` | The vendor version this bank runs | `"8.4"` |
 | `apps.<app>.environment` | `test` or `production` | `"test"` |
 | `apps.<app>.extra_origins` | Other hosts the app needs. See 6.6 | `[]` |
@@ -449,24 +449,24 @@ Any failure stops the load. A run that cannot load its policy never starts.
 ```json
 {
   "schema": "intyy.settings/1.0",
-  "tenant": "bank_a",
+  "tenant": "keystone",
   "revision": 2,
   "apps": {
-    "sparrow-core": {
+    "kvfcu": {
       "origin": "http://127.0.0.1:4100",
       "app_version": "8.4",
       "environment": "test",
       "extra_origins": [],
       "secrets": {
-        "operator_username": { "source": "env", "key": "INTYY_BANK_A_SPARROW_CORE_OPERATOR_USERNAME" },
-        "operator_password": { "source": "env", "key": "INTYY_BANK_A_SPARROW_CORE_OPERATOR_PASSWORD" }
+        "operator_username": { "source": "env", "key": "INTYY_KEYSTONE_KVFCU_OPERATOR_USERNAME" },
+        "operator_password": { "source": "env", "key": "INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD" }
       }
     }
   },
   "system_secrets": {
     "request_index_keys": [
-      { "key_id": "k2", "source": "env", "key": "INTYY_BANK_A_REQUEST_INDEX_KEY_K2", "status": "current" },
-      { "key_id": "k1", "source": "env", "key": "INTYY_BANK_A_REQUEST_INDEX_KEY_K1", "status": "previous" }
+      { "key_id": "k2", "source": "env", "key": "INTYY_KEYSTONE_REQUEST_INDEX_KEY_K2", "status": "current" },
+      { "key_id": "k1", "source": "env", "key": "INTYY_KEYSTONE_REQUEST_INDEX_KEY_K1", "status": "previous" }
     ]
   }
 }
@@ -505,7 +505,7 @@ Any failure stops the load. A run that cannot load its policy never starts.
 
 | Part | Comes from | Example |
 |---|---|---|
-| **Hosts** | Bank settings: `origin` plus `extra_origins` | `https://sparrow.bank-a.example` |
+| **Hosts** | Bank settings: `origin` plus `extra_origins` | `https://kvfcu.keystone.example` |
 | **Paths** | App policy, narrowed by tenant policy | `/members/*` |
 | **Action types and keys** | Global policy, narrowed below | `click`, `press Enter` |
 
@@ -534,15 +534,15 @@ Any failure stops the load. A run that cannot load its policy never starts.
 #### Why `*` stops at `/`
 
 - **Section 2 let `*` match anything.** For text, that is fine.
-- **For paths, it is dangerous:** `/members/*` would allow `/members/10234/close`.
+- **For paths, it is dangerous:** `/members/*` would allow `/members/100107/close`.
 - **This changes section 2 for every path context:** `location` conditions, `runs_on.paths`, and the allowlist. Text and version wildcards keep the old meaning.
 
 #### Examples
 
 | Pattern | Matches | Does not match |
 |---|---|---|
-| `/members/*` | `/members/10234` | `/members/10234/accounts`, `/members/` |
-| `/members/*/accounts` | `/members/10234/accounts` | `/members/10234/accounts/9` |
+| `/members/*` | `/members/100107` | `/members/100107/accounts`, `/members/` |
+| `/members/*/accounts` | `/members/100107/accounts` | `/members/100107/accounts/9` |
 | `/Main.do?cmd=view*` | `/Main.do?cmd=viewMember&sid=77` | `/Main.do?cmd=deleteMember`, `/Main.do` |
 | `/login` | `/login`, `/login?next=/home` | `/login/help` |
 
@@ -563,7 +563,7 @@ The guard cleans every path the same way, then matches.
 - **`deny` beats `allow`.** Example: allow `/members/*`, deny `/members/export`.
 - **`irreversible` marks pages where arriving changes data.** Old apps sometimes delete on a plain link.
 - **Navigating to an irreversible path counts as an irreversible action.** So do button clicks on that page (7.5).
-- **The app layer also denies the harness path.** Example: `"deny": ["/__test__/*"]` for `sparrow-core` (4.7).
+- **The app layer also denies the harness path.** Example: `"deny": ["/__test__/*"]` for `kvfcu` (4.7).
 - **Why:** the harness adapter calls these endpoints outside the browser, from certify only. CONTRACT §8 forbids the automation from calling the oracle during normal runs.
 - **Two locks:** the CI import test that keeps replay-path modules off the harness port (section 1 §4), and this path deny.
 
@@ -593,7 +593,7 @@ The guard cleans every path the same way, then matches.
 
 ```json
 "extra_origins": [
-  { "origin": "https://sso.bank-a.example", "purpose": "login", "paths": ["/auth/*", "/logout"] }
+  { "origin": "https://sso.keystone.example", "purpose": "login", "paths": ["/auth/*", "/logout"] }
 ]
 ```
 
@@ -876,7 +876,7 @@ Then: `allowed`, rule `risk.authorized`. The write-ahead rule follows (section 3
 | Account form | Click "Confirm" | Irreversible word | `irreversible` |
 | Account form with a deposit typed | Click "Next" | No list word; C1 form with money | `irreversible` |
 | Info box "Session will expire" | Click "OK" | No list word; button-like | Unsure → `irreversible` |
-| Script box "Transfer ₹100?" | Accept | C3; "transfer" in message | `irreversible` |
+| Script box "Transfer $100?" | Accept | C3; "transfer" in message | `irreversible` |
 | Old terminal-style app | Press F10, no mapping | Unmapped function key | Blocked: `allowlist.key` |
 | Member page | Link to `/accounts/9/close` | C2 irreversible path | `irreversible` |
 | Nominee form | Click "Add Row" | Reversible word | `reversible` |
@@ -893,10 +893,10 @@ Then: `allowed`, rule `risk.authorized`. The write-ahead rule follows (section 3
 |---|---|---|
 | Artifact step | A secret name, inside a `type` action | `{secret.operator_password}` |
 | App policy | The name's kind and allowed paths | `kind: password`, paths `/login` |
-| Bank settings | The name's value source, per bank | env `INTYY_BANK_A_SPARROW_CORE_OPERATOR_PASSWORD` |
+| Bank settings | The name's value source, per bank | env `INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD` |
 | Value source | The value | Only in memory, only at typing time |
 
-- **Why the app policy declares names:** secret names belong to the vendor app. Every bank of `sparrow-core` has an operator password.
+- **Why the app policy declares names:** secret names belong to the vendor app. Every bank of `kvfcu` has an operator password.
 - **Why settings bind values:** each bank has its own credentials and its own vault.
 
 ### 8.2 Declaring a secret (app policy)
@@ -917,7 +917,7 @@ Then: `allowed`, rule `risk.authorized`. The write-ahead rule follows (section 3
 | `vault` | Design only | `path`: a location in the bank's secret store |
 
 - **Naming convention for `env`:** `INTYY_<TENANT>_<APP>_<NAME>`, upper case, `-` becomes `_`.
-- **Example:** `{secret.operator_password}` at `bank_a` for `sparrow-core` becomes `INTYY_BANK_A_SPARROW_CORE_OPERATOR_PASSWORD`.
+- **Example:** `{secret.operator_password}` at `keystone` for `kvfcu` becomes `INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD`.
 - **The app is part of the name.** A bank runs about 20 apps, each with its own login.
 - **The binding is written out in full,** even when it follows the convention. Explicit bindings are reviewable. Magic names are not.
 
@@ -1065,11 +1065,13 @@ A supervisor may type a code into the live session. The recorder must never stor
 
 #### Why not show the last four characters
 
-- **Member IDs are short.** The last four of a five-digit ID is almost the whole ID.
+- **Member IDs are short.** The last four of a six-digit ID is almost the whole ID.
 - **Partial values can be joined with other data** to find the person.
 - **Tokens give the useful part,** sameness, with no value at all.
 
 ### 9.4 Kinds
+
+> **Changed by section 10:** US kinds: aadhaar and pan removed. See `intyy-design-updates-from-section-10.md` §3.
 
 The kind list is fixed for format 1.0. Each kind has one label.
 
@@ -1081,15 +1083,13 @@ The kind list is fixed for format 1.0. Each kind has one label.
 | `member` | `pii` | Label rule, format patterns |
 | `phone` | `pii` | Detector, label rule |
 | `email` | `pii` | Detector, label rule |
-| `ssn` | `pii` | Detector |
-| `aadhaar` | `pii` | Detector |
-| `pan` | `pii` | Detector |
+| `ssn` | `pii` | Detector, label rule |
 | `digits` | `pii` | Digit-run rule |
 | `account` | `financial` | Label rule, format patterns |
 | `card` | `financial` | Detector |
 | `money` | `financial` | Detector, label rule |
 
-- **PAN** is India's tax ID. **Aadhaar** is India's national ID. **SSN** is the US Social Security number.
+- **SSN** is the US Social Security number. The `ssn` detector also matches ITINs, which share its shape.
 
 ### 9.5 Text rules, in order
 
@@ -1113,10 +1113,10 @@ Every text string passes these rules, in this order. A masked part is never scan
 
 #### Matching rules
 
-- **Whole words only.** `10234` matches "Member 10234" but not "110234".
+- **Whole words only.** `100107` matches "Member 100107" but not "1100107".
 - **After section 2's text normalizing:** trimmed, spaces collapsed, case ignored. Old apps print names in capitals.
 - **Longest value first.** A longer value is never cut by a shorter one.
-- **Digits-only inputs ignore spaces and dashes inside the number.** "1023-4" matches `10234`.
+- **Digits-only inputs ignore spaces and dashes inside the number.** "1001-07" matches `100107`.
 
 #### Short values
 
@@ -1138,8 +1138,8 @@ Every text string passes these rules, in this order. A masked part is never scan
 #### Money
 
 - **Money inputs match by amount, not by text.** The redactor reads each money span on the screen as a number.
-- **These all match `deposit: "100.00"`:** "₹100", "Rs. 100/-", "INR 100.00", "100.00", "$100".
-- **Grouping styles:** Western "1,250.00" and Indian "1,00,000.00" both parse.
+- **These all match `deposit: "100.00"`:** "$100", "$100.00", "USD 100.00", "100.00", "100".
+- **Grouping styles:** Western grouping, like "1,250.00", parses. Other styles need an app format.
 - **Other amounts become `[money#n]`** by the detector.
 - **Limit:** a balance that happens to equal the deposit also becomes `{input.deposit}`. It is still masked. Section 6 asks for unusual example amounts, like 137.00.
 
@@ -1149,21 +1149,24 @@ Every text string passes these rules, in this order. A masked part is never scan
 
 ### 9.7 The label rule
 
+> **Changed by section 10:** US label words. See `intyy-design-updates-from-section-10.md` §3.
+
 **Label rule:** mask a value because of the label next to it, not its shape. Names have no shape. Their labels do.
 
 #### Where the label comes from
 
 1. **The field's own label.** Example: a read-only box labelled "Member Name".
 2. **The table's column header.** Every cell under "Name" is masked.
-3. **The cell to the left, in a label-value row.** Old apps print "Member Name: | RAVI KUMAR".
+3. **The cell to the left, in a label-value row.** Old apps print "Member Name: | DANA WHITFIELD".
 4. **Text before a colon, in one string.** "DOB: 12/03/1980".
 
 #### Default sensitive labels (global)
 
 | Kind | Label words |
 |---|---|
-| `name` | name, customer name, member name, account holder, holder name, nominee, father's name, mother's maiden name |
-| `address` | address, street, city, pin code, zip |
+| `name` | name, customer name, member name, account holder, holder name, joint owner, beneficiary, mother's maiden name |
+| `address` | address, street, city, state, zip, zip code, postal code |
+| `ssn` | ssn, social security, social security number, tax id, tin, itin |
 | `dob` | dob, date of birth, birth date |
 | `phone` | mobile, phone, telephone |
 | `email` | email, e-mail |
@@ -1176,25 +1179,25 @@ Every text string passes these rules, in this order. A masked part is never scan
 
 ### 9.8 Detectors and format patterns
 
+> **Changed by section 10:** US detectors; ITIN added. See `intyy-design-updates-from-section-10.md` §3.
+
 #### Built-in detectors
 
 **Detector:** plain code that finds one kind of value by its shape, with a check digit where one exists. A check digit cuts false matches.
 
 | Kind | Shape | Extra check |
 |---|---|---|
-| `ssn` | `999-99-9999` | Not area 000, 666, or 900 to 999 |
+| `ssn` | `999-99-9999` or `999 99 9999` | Area not 000 or 666; area 900 to 999 only as an ITIN, with group 50–65, 70–88, 90–92, or 94–99 |
 | `card` | 13 to 19 digits, spaces or dashes allowed | Luhn check digit |
-| `aadhaar` | 12 digits, often in groups of 4 | Verhoeff check digit; does not start with 0 or 1 |
-| `pan` | 5 letters, 4 digits, 1 letter | Fourth letter is a valid holder type |
 | `email` | name@domain | Domain has a dot |
-| `phone` | US 10 digits; India 10 digits starting 6 to 9, optional +91 | — |
-| `money` | Currency sign or code, or grouped digits with 2 decimals | — |
+| `phone` | US 10 digits, optional +1, with spaces, dots, dashes, or brackets | — |
+| `money` | `$` or `USD`, or grouped digits with 2 decimals | — |
 
 - **Global turns detectors on.** A lower layer cannot turn one off.
 
-#### Not masked: routing numbers and IFSC
+#### Not masked: routing numbers
 
-- **A US routing number and an Indian IFSC code** name a bank branch. They are public.
+- **A US routing number** names a bank. It is public.
 - **Masking them adds noise and protects no one.** The account number next to them is masked.
 - **A nine-digit routing number is masked anyway** by the digit-run rule. That is harmless.
 - **This departs from the handoff's list.** Stated here so a reviewer sees why.
@@ -1210,7 +1213,7 @@ Every text string passes these rules, in this order. A masked part is never scan
 | `X` | One letter or digit |
 | Anything else | Itself |
 
-- **Example:** `SB99999999` matches `SB00481223`. Kind `account`.
+- **Example:** `SH99999999` matches `SH00481223`. Kind `account`.
 - **Example:** `CU9999999` matches `CU1029384`. Kind `member`.
 - **Matched as whole words,** ignoring case.
 - **To write a literal 9, A, or X,** put it in quotes: `"A"9999`. Rare in practice.
@@ -1218,7 +1221,7 @@ Every text string passes these rules, in this order. A masked part is never scan
 ### 9.9 Digit runs
 
 - **Any run of five or more digits left after rules 1 to 5 becomes `[digits#n]`.**
-- **Why five:** years (4 digits) and small counts stay readable. IDs, PIN codes, and ZIP codes do not.
+- **Why five:** years (4 digits) and small counts stay readable. IDs and ZIP codes do not.
 - **Global sets 5.** A lower layer may lower it. Never raise it.
 - **This is the safety net** for ID formats no one has listed yet.
 
@@ -1232,7 +1235,7 @@ The safest text is text never logged. Log lines prefer facts to screen text.
 | A failing check | Observed text, through the text rules |
 | `target_vote` candidates | Role, agreeing clues, and score. Names only for button-like roles, through the text rules |
 | `extract` | Raw text and value through the text rules. The value becomes `{output.name}` |
-| Page paths | Through the text rules. `/members/10234` becomes `/members/{input.member_id}` |
+| Page paths | Through the text rules. `/members/100107` becomes `/members/{input.member_id}` |
 | Query values | Through the text rules. The `#` fragment is dropped |
 | LLM reasons, human notes | Through the text rules |
 | Internal error stack traces | Through the text rules |
@@ -1277,7 +1280,7 @@ Section 3's rules stand. This section fills in the details.
 - **Attributes that can hold text** pass the text rules: title, alt, aria-label, placeholder.
 - **Link and form addresses** pass the text rules, like page paths.
 - **Every input value and hidden field is removed.**
-- **Script blocks and inline event handlers are removed.** Old apps hide data in them: `onclick="showMember('10234','Ravi')"`.
+- **Script blocks and inline event handlers are removed.** Old apps hide data in them: `onclick="showMember('100107','Dana')"`.
 - **Accessibility snapshots drop field values,** and pass names and text through the text rules.
 
 ### 9.14 CLI output
@@ -1302,15 +1305,15 @@ Section 3's rules stand. This section fills in the details.
 
 | Part | Content |
 |---|---|
-| Goal | With input names, not values: "Open a savings sub-account for member {input.member_id}" |
+| Goal | With input names, not values: "Open a share sub-account for member {input.member_id}" |
 | Inputs | Sensitive inputs as references only. Inputs labelled `none` also show their value |
 | Secrets | Names only: `{secret.operator_password}` |
 | Element list | Each element's ID, role, and text, after the text rules |
 | Screenshot | Masked (9.11) |
 
-- **The LLM types references, not values.** It sends `{input.member_id}`. The gate puts in `10234`.
+- **The LLM types references, not values.** It sends `{input.member_id}`. The gate puts in `100107`.
 - **Then the screen shows `{input.member_id}` back to it.** The loop is consistent.
-- **This updates section 3's example.** The LLM never typed `10234`. It typed the reference.
+- **This updates section 3's example.** The LLM never typed `100107`. It typed the reference.
 
 ### 10.3 Why
 
@@ -1386,7 +1389,7 @@ Section 3's rules stand. This section fills in the details.
 | `iat`, `exp` | Granted at, expires at |
 | `jti` | A unique token ID |
 
-- **`inputs_digest` binds consent to exact values.** Consent for a ₹100 deposit cannot pay ₹10,000.
+- **`inputs_digest` binds consent to exact values.** Consent for a $100 deposit cannot pay $10,000.
 
 #### Checks, at start and again at the commit point
 
@@ -1484,6 +1487,8 @@ The brief asks how the design extends to old web apps and desktop apps. Safety e
 
 ### A requirement on the bank app
 
+> **Changed by section 10:** Settled: member 100240 is the canary. See `intyy-design-updates-from-section-10.md` §7.
+
 - **The member canary needs a canary member** in the bank app's test data.
 - **Unique name, member ID, account number, and balance.** Values that appear nowhere else.
 - **Added to the bank app contract list** for section 10.
@@ -1496,6 +1501,8 @@ These go into REPORT §6.
 
 ### 15.1 Risk
 
+> **Changed by section 10:** The second-reviewer rule is built. See `intyy-design-updates-from-section-10.md` §7.
+
 - **Bland labels are caught as unsure in discovery.** But a reviewer can wrongly lower a flag. The second-reviewer rule is design only.
 - **The word lists are English.** Other languages need their own lists.
 - **A plain link that changes data** passes unless its path is marked irreversible. Someone must know the app.
@@ -1507,7 +1514,7 @@ These go into REPORT §6.
 
 ### 15.3 Redaction
 
-- **A name inside a free sentence can slip through.** Example: "Account opened for Ravi Kumar." The label rule catches labelled names only.
+- **A name inside a free sentence can slip through.** Example: "Account opened for Dana Whitfield." The label rule catches labelled names only.
 - **Mitigations:** passing checks log no text; snapshots mask all text; discovery runs on test data; the known-limit test tracks it.
 - **Designed next:** a name-finding model as an extra layer. It can only add masks.
 - **New ID formats slip through** unless they have five or more digits, or someone adds a format pattern.
@@ -1547,7 +1554,7 @@ These go into REPORT §6.
 | Silently dropping a loosening line | Hides the mistake from its author. Fail loudly instead |
 | One settings-and-policy file | Hides rule changes inside address changes |
 | Regular expressions in paths or formats | Hard to read, easy to get wrong, and slow on bad input |
-| `*` crossing `/` in paths | `/members/*` would allow `/members/10234/close` |
+| `*` crossing `/` in paths | `/members/*` would allow `/members/100107/close` |
 | Exact query-string matching | Breaks on harmless extra parameters like session IDs |
 | Adding paths mid-run with a human yes | Policy must not change during a run |
 | Discovery on the whole app host | Deny by default. The LLM would find `/admin` |
@@ -1563,12 +1570,14 @@ These go into REPORT §6.
 | Last-four masking | Short IDs leak; partial values re-identify |
 | Tokens linked across runs | Would let anyone link a member across runs |
 | Masking all screen text | The recorder could not build targets. Debugging would be impossible |
-| Masking routing numbers and IFSC | Public branch codes. Noise, no protection |
+| Masking routing numbers | Public branch codes. Noise, no protection |
 | A name-finding model in the build | Heavy. Kept as a later layer that only adds masks |
 
 ---
 
 ## 18. Items parked for other sections
+
+> **Changed by section 10:** Items for section 10 are resolved. See `intyy-design-updates-from-section-10.md` §7.
 
 | Item | Section |
 |---|---|
@@ -1582,7 +1591,7 @@ These go into REPORT §6.
 | Expected effect in the discovery run spec | Resolved: section 6 §6.1 |
 | Prompt marks screen text as untrusted; inputs as references | Resolved: section 6 §11 |
 | Distinct, unusual example values | Resolved: section 6 §7 |
-| Input display formats, like dates as DD/MM/YYYY | Resolved: section 6 §7.4 |
+| Input display formats, like dates as MM/DD/YYYY | Resolved: section 6 §7.4 |
 | Recorder derives `runs_on.paths`; drafts risk from approval hints | Resolved: section 6 §14.6, §14.9 |
 | Image crops only of button-like controls and empty inputs | Resolved: section 6 §13.1 |
 | Human action capture, one action per field | Resolved: section 7 §14 |

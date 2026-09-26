@@ -2,7 +2,7 @@
 
 > **Status:** complete, 24 Sep 2026.
 > **Formats defined:** `intyy.artifact/1.0` and `intyy.patch/1.0`.
-> **Depends on:** `intyy-context.md` (section 1) and the section 1 amendment note.
+> **Depends on:** `1-intyy-component-level-design.md` (section 1) and the section 1 amendment note.
 > **Used by:** sections 3 to 10.
 > **Amended by section 3,** 24 Sep 2026: caller version form, commit states, refusal outcomes, run ID format, more frozen facts. `intyy.artifact/1.0` was not yet released, so 1.0 is amended in place.
 > **Amended by section 4,** 24 Sep 2026: `runs_on.paths`, path wildcard rule, mask formats, secret-field condition rule, crop rules, policy-aware checks. Also amended in place.
@@ -123,11 +123,11 @@
 
 ### 5.1 Identity
 
-- **Identity = app + capability + version.** Written as `sparrow-core/open_savings_subaccount@1.2.0`.
+- **Identity = app + capability + version.** Written as `kvfcu/open_share_subaccount@1.2.0`.
 - **App version range is not identity.** It is a claim, stored in `runs_on`.
 - **Tenant is not identity.** Tenant changes live in patch files.
 - **Why:** two versions can be live at once. Example: v1 for app v8, v2 for app v9.
-- **Callers name a major version:** `app/capability@major`. Example: `sparrow-core/open_savings_subaccount@1`.
+- **Callers name a major version:** `app/capability@major`. Example: `kvfcu/open_share_subaccount@1`.
 - **The resolver picks the rest:** minor version, patch version, and tenant patch (section 8).
 - **Why the major:** a major version breaks callers by definition. Without it, a v2 rollout silently breaks v1 callers. Same form as `recovery` links.
 
@@ -254,7 +254,7 @@ Written as `{namespace.name}`. Five namespaces.
 - **`*` matches one or more characters.**
 - **Used in:** text matching, `location` patterns, `runs_on.app_versions`, `runs_on.paths`, `read` patterns.
 - **In path fields, `*` never crosses `/`.** Path fields: `location` patterns, `runs_on.paths`, and policy path patterns.
-- **Why:** `/members/*` must not allow `/members/10234/close`.
+- **Why:** `/members/*` must not allow `/members/100107/close`.
 - **Query parameters:** a path pattern with `?` lists parameters that must be present and match. Others are ignored. Without `?`, the query is ignored.
 - **Text and version fields keep the plain rule.** There, `*` may match any character.
 - **No regular expressions anywhere.** They are hard to read and easy to get wrong.
@@ -279,8 +279,8 @@ Written as `{namespace.name}`. Five namespaces.
 
 | Field | Rule | Example |
 |---|---|---|
-| `app` | Vendor app ID | `sparrow-core` |
-| `capability` | Verb first, snake case | `open_savings_subaccount` |
+| `app` | Vendor app ID | `kvfcu` |
+| `capability` | Verb first, snake case | `open_share_subaccount` |
 | `version` | Semver | `1.0.0` |
 
 - **Only these three fields.** Together they form the unique key.
@@ -296,7 +296,7 @@ Written as `{namespace.name}`. Five namespaces.
 | `viewport` | Window size and pixel density at recording | `{ "width": 1280, "height": 800, "scale": 1 }` |
 | `entry` | Where the run starts, as a path | `/login` |
 | `paths` | Every path pattern the capability visits. Required | `["/login", "/home", "/members/search", "/members/*", "/accounts/new"]` |
-| `session` | Session capability link, or `null` | `"sparrow-core/sign_in@1"` |
+| `session` | Session capability link, or `null` | `"kvfcu/sign_in@1"` |
 
 - **`app_versions` uses wildcards,** because vendor versions are often not semver. Example: "9.2 SP3."
 - **`viewport` matters** because `region` and `image` clues only match at the same window size.
@@ -316,9 +316,9 @@ Written as `{namespace.name}`. Five namespaces.
 
 | Field | Audience | Example |
 |---|---|---|
-| `title` | Humans | "Open savings sub-account" |
-| `summary` | Both | "Opens a savings sub-account for a member and returns its number." |
-| `when_to_use` | Calling agent | "Use when a member asks to open a new savings account." |
+| `title` | Humans | "Open share sub-account" |
+| `summary` | Both | "Opens a share sub-account for a member and returns its number." |
+| `when_to_use` | Calling agent | "Use when a member asks to open a new share account." |
 | `limits` | Both | "Does not move money from other banks." |
 
 - **The recorder drafts it from the goal.** A human edits it in the candidate.
@@ -363,7 +363,7 @@ Written as `{namespace.name}`. Five namespaces.
 |---|---|---|
 | `length` | `string` | `{ "min": 5, "max": 8 }` |
 | `range` | `integer`, `decimal`, `money`, `date` | `{ "min": "1.00", "max": "10000.00" }` |
-| `values` | `enum` | `["savings", "current"]` |
+| `values` | `enum` | `["savings", "checking"]` |
 | `format` | `string` | `digits`, `letters`, or `alphanumeric` |
 
 - **Bad inputs are rejected before the run starts.** No browser opens.
@@ -462,7 +462,7 @@ Written as `{namespace.name}`. Five namespaces.
 - **Scrapers store one selector.** One change breaks them.
 - **Role and name lead.** They exist on web and desktop alike.
 - **The image crop is the backup** when a screen has no page code.
-- **Tenant patches mostly change clues.** Example: Bank B renames "Search" to "Find."
+- **Tenant patches mostly change clues.** Example: Lakeshore renames "Search" to "Find."
 
 ---
 
@@ -631,7 +631,7 @@ How its result is read:
 
 ### 16.5 Links use a major version
 
-- **Example:** `sparrow-core/find_account_by_reference@1`.
+- **Example:** `kvfcu/find_account_by_reference@1`.
 - **The resolver picks the approved 1.x** for the context.
 - **If the linked check is not approved in a context,** the commit capability cannot run unattended there.
 
@@ -674,7 +674,7 @@ How its result is read:
 |---|---|
 | `run_id` | `run_2026-09-24_7kq2m9x4tb` |
 | `kind` | `discovery`, `negative_discovery`, `replay` (patches only), or `certify` (patches only) |
-| `goal` | "Open a savings sub-account for member {input.member_id}" |
+| `goal` | "Open a share sub-account for member {input.member_id}" |
 | `expected_outcome` | Negative runs only |
 | `model` | `claude-sonnet-5` |
 | `recorder_version` | `0.3.0` |
@@ -731,6 +731,8 @@ How its result is read:
 
 ## 18. Tenant patch format
 
+> **Changed by section 10:** Schema and loader built; merge designed only. See `intyy-design-updates-from-section-10.md` §5.
+
 ### 18.1 What a patch is
 
 - **A small file that changes a few targets or conditions for one bank.**
@@ -741,10 +743,10 @@ How its result is read:
 | Field | Meaning | Example |
 |---|---|---|
 | `schema` | Patch format version | `"intyy.patch/1.0"` |
-| `tenant` | Which bank | `bank_b` |
-| `base` | Capability and major version it fits | `sparrow-core/open_savings_subaccount@1` |
+| `tenant` | Which bank | `lakeshore` |
+| `base` | Capability and major version it fits | `kvfcu/open_share_subaccount@1` |
 | `revision` | Patch number, counting up | `1` |
-| `reason` | Why it exists | "Bank B labels Search as Find." |
+| `reason` | Why it exists | "Lakeshore labels Search as Find." |
 | `targets` | Changes, keyed by target ID | |
 | `conditions` | Changes, keyed by condition ID | |
 | `provenance` | Runs, decisions, sealed | Same shape as the artifact's |
@@ -806,10 +808,10 @@ How its result is read:
 ```json
 {
   "schema": "intyy.patch/1.0",
-  "tenant": "bank_b",
-  "base": "sparrow-core/open_savings_subaccount@1",
+  "tenant": "lakeshore",
+  "base": "kvfcu/open_share_subaccount@1",
   "revision": 1,
-  "reason": "Bank B labels the Search button 'Find' and moves it left.",
+  "reason": "Lakeshore labels the Search button 'Find' and moves it left.",
   "targets": {
     "search_button": { "clues": { "name": "Find", "text": "Find", "region": null } }
   },
@@ -920,8 +922,8 @@ These run at sealing and at pre-run check 9 (section 3 §4.8). The artifact load
   "schema": "intyy.artifact/1.0",
 
   "identity": {
-    "app": "sparrow-core",
-    "capability": "open_savings_subaccount",
+    "app": "kvfcu",
+    "capability": "open_share_subaccount",
     "version": "1.0.0"
   },
 
@@ -935,9 +937,9 @@ These run at sealing and at pre-run check 9 (section 3 §4.8). The artifact load
   },
 
   "about": {
-    "title": "Open savings sub-account",
-    "summary": "Opens a savings sub-account for a member and returns its number.",
-    "when_to_use": "Use when a member asks to open a new savings account.",
+    "title": "Open share sub-account",
+    "summary": "Opens a share sub-account for a member and returns its number.",
+    "when_to_use": "Use when a member asks to open a new share account.",
     "limits": "Does not move money from other banks."
   },
 
@@ -1100,14 +1102,14 @@ These run at sealing and at pre-run check 9 (section 3 §4.8). The artifact load
     "commit_point": "click_confirm",
     "reconciliation": {
       "check": {
-        "capability": "sparrow-core/find_account_by_reference@1",
+        "capability": "kvfcu/find_account_by_reference@1",
         "inputs": { "member_id": "{input.member_id}", "reference": "{system.run_id}" },
         "not_found_outcomes": ["not_found"],
         "outputs": { "account_number": "{result.account_number}" }
       }
     },
     "compensated_by": {
-      "capability": "sparrow-core/close_account@1",
+      "capability": "kvfcu/close_account@1",
       "inputs": { "account_number": "{output.account_number}" }
     }
   },
@@ -1115,7 +1117,7 @@ These run at sealing and at pre-run check 9 (section 3 §4.8). The artifact load
   "provenance": {
     "runs": [
       { "run_id": "run_2026-09-24_7kq2m9x4tb", "kind": "discovery",
-        "goal": "Open a savings sub-account for member {input.member_id} with {input.deposit}. Return the new account number.",
+        "goal": "Open a share sub-account for member {input.member_id} with {input.deposit}. Return the new account number.",
         "model": "claude-sonnet-5", "recorder_version": "0.3.0" },
       { "run_id": "run_2026-09-24_3hv8n0pzr6", "kind": "negative_discovery",
         "goal": "Look up member {input.member_id}", "expected_outcome": "member_not_found",

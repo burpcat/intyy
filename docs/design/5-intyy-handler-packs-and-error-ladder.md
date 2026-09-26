@@ -1336,6 +1336,8 @@ One folder per fixture, at `library/fixtures/<app>/<fixture_id>/` (section 9 §6
 
 ## 19. Items parked for other sections
 
+> **Changed by section 10:** Items for section 10 are resolved. See `intyy-design-updates-from-section-10.md` §8.
+
 | Item | Section |
 |---|---|
 | Recorder rules for drafting handlers from `incidental` actions | 6. Resolved: section 6 §14.12 |

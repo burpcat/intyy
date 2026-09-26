@@ -274,7 +274,7 @@ Missing clues shrink the total. So a nearly blank candidate could score high on 
 - **Score:** 0.25 ÷ 0.25 = 1.00. Evidence 0.25. The image agrees. Winner.
 - **Other bare images** have a different picture. Their `image` clue differs, so they score low.
 
-**A renamed button.** Bank B shows "Find". Name and text differ. The picture differs too.
+**A renamed button.** Lakeshore shows "Find". Name and text differ. The picture differs too.
 
 - **Score:** region 0.10 + path 0.05, over a total of 0.90. About 0.17. No winner: `target_not_found`.
 - **Correct:** a different label is drift. The ladder climbs; a patch fixes it for good.
@@ -854,6 +854,8 @@ The bank app's `supervisor_required` fault is on. Its screen text is invented he
 ---
 
 ## 24. Items parked for other sections
+
+> **Changed by section 10:** Items for section 10 are resolved. See `intyy-design-updates-from-section-10.md` §10.
 
 | Item | Section |
 |---|---|

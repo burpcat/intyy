@@ -67,7 +67,7 @@
 ### 2.4 Redact when writing, not later
 
 - **Every log line and every file passes the redactor before it touches disk.**
-- **Known input values become references.** Example: `10234` becomes `{input.member_id}` in the log.
+- **Known input values become references.** Example: `100107` becomes `{input.member_id}` in the log.
 - **Section 4 decides mask formats.** This section decides where redaction happens.
 
 ### 2.5 One ID links everything
@@ -108,8 +108,8 @@ flowchart LR
 |---|---|---|---|
 | `schema` | Yes | Request format version | `"intyy.request/1.0"` |
 | `request_id` | Yes | The caller's own ID for this request | `"agt-teller-7f3c-0042"` |
-| `capability` | Yes | App, capability, and major version | `"sparrow-core/open_savings_subaccount@1"` |
-| `inputs` | Yes | Values for the contract's inputs | `{ "member_id": "10234" }` |
+| `capability` | Yes | App, capability, and major version | `"kvfcu/open_share_subaccount@1"` |
+| `inputs` | Yes | Values for the contract's inputs | `{ "member_id": "100107" }` |
 | `mode` | Yes | `supervised` or `unattended` | `"unattended"` |
 | `authorization` | No | Proof of consent for the irreversible step | See 4.6 |
 | `wait_ms` | No | How long to wait for a final result before returning | `30000` |
@@ -125,7 +125,7 @@ flowchart LR
 - **The caller cannot choose a tenant.** A changed field must never let an agent act inside another bank.
 
 ```json
-{ "caller": { "tenant": "bank_a", "agent_id": "agent_teller_01" } }
+{ "caller": { "tenant": "keystone", "agent_id": "agent_teller_01" } }
 ```
 
 - **In the build,** the CLI reads the caller block from a local config file. It stands in for real credentials.
@@ -202,7 +202,7 @@ flowchart LR
 | `staff_id` | When `staff` | Staff member who gave or captured consent | `"op_031"` |
 | `granted_at` | Yes | When consent was given | `"2026-09-24T10:14:00Z"` |
 | `expires_at` | Yes | When consent stops being valid | `"2026-09-24T10:44:00Z"` |
-| `capability` | Yes | Must equal the request's capability | `"sparrow-core/open_savings_subaccount@1"` |
+| `capability` | Yes | Must equal the request's capability | `"kvfcu/open_share_subaccount@1"` |
 
 #### Rules
 
@@ -297,8 +297,8 @@ These run in order. No browser opens until all pass.
 {
   "schema": "intyy.request/1.0",
   "request_id": "agt-teller-7f3c-0042",
-  "capability": "sparrow-core/open_savings_subaccount@1",
-  "inputs": { "member_id": "10234", "deposit": "100.00" },
+  "capability": "kvfcu/open_share_subaccount@1",
+  "inputs": { "member_id": "100107", "deposit": "100.00" },
   "mode": "unattended",
   "authorization": {
     "consent_ref": "consent_88121",
@@ -306,7 +306,7 @@ These run in order. No browser opens until all pass.
     "staff_id": "op_031",
     "granted_at": "2026-09-24T10:14:00Z",
     "expires_at": "2026-09-24T10:44:00Z",
-    "capability": "sparrow-core/open_savings_subaccount@1"
+    "capability": "kvfcu/open_share_subaccount@1"
   },
   "wait_ms": 30000
 }
@@ -338,7 +338,7 @@ Every result has these fields.
 | `evidence` | Path to the run folder, relative to the tenant's evidence root | `"runs/run_2026-09-24_7kq2m9x4tb/"` |
 
 ```json
-"capability": { "name": "sparrow-core/open_savings_subaccount", "version": "1.0.0", "patch_revision": null },
+"capability": { "name": "kvfcu/open_share_subaccount", "version": "1.0.0", "patch_revision": null },
 "timing": { "started_at": "2026-09-24T10:15:02.004Z", "ended_at": "2026-09-24T10:15:44.918Z",
             "duration_ms": 42914, "human_ms": 0 }
 ```
@@ -743,7 +743,7 @@ stateDiagram-v2
   "run_id": "run_2026-09-24_7kq2m9x4tb",
   "request_id": "agt-teller-7f3c-0043",
   "status": "success",
-  "capability": { "name": "sparrow-core/open_savings_subaccount", "version": "1.0.0", "patch_revision": null },
+  "capability": { "name": "kvfcu/open_share_subaccount", "version": "1.0.0", "patch_revision": null },
   "outputs": { "account_number": "SB00481223" },
   "effect": { "commit": "confirmed", "performed_by": "bot", "sent_at": "2026-09-24T10:16:19.020Z" },
   "warnings": [],
@@ -770,7 +770,7 @@ The commit reply was lost. The check was unclear. No human came in time.
   "run_id": "run_2026-09-24_h2d6w8q1zm",
   "request_id": "agt-teller-7f3c-0044",
   "status": "failed",
-  "capability": { "name": "sparrow-core/open_savings_subaccount", "version": "1.0.0", "patch_revision": null },
+  "capability": { "name": "kvfcu/open_share_subaccount", "version": "1.0.0", "patch_revision": null },
   "failure": {
     "code": "escalation_timeout",
     "message": "No operator resolved the reconciliation decision before the deadline.",
@@ -976,28 +976,28 @@ New codes since section 4, in addition to those listed above.
     "purpose": null,
     "batch_id": null,
     "request_id": "agt-teller-7f3c-0042",
-    "tenant": "bank_a",
+    "tenant": "keystone",
     "agent_id": "agent_teller_01",
     "mode": "unattended",
     "inputs": { "member_id": "[pii]", "deposit": "[financial]" },
     "authorization": { "consent_ref": "consent_88121", "granted_by": "member", "staff_id": "op_031",
                        "granted_at": "2026-09-24T10:14:00Z", "expires_at": "2026-09-24T10:44:00Z" },
     "frozen": {
-      "artifact": { "id": "sparrow-core/open_savings_subaccount@1.0.0", "hash": "sha256:9c1e…" },
+      "artifact": { "id": "kvfcu/open_share_subaccount@1.0.0", "hash": "sha256:9c1e…" },
       "patch": null,
-      "session": { "id": "sparrow-core/sign_in@1.0.0", "hash": "sha256:1f3a…", "patch": null },
+      "session": { "id": "kvfcu/sign_in@1.0.0", "hash": "sha256:1f3a…", "patch": null },
       "app_version": "8.4",
       "engine_version": "0.4.0",
       "handlers": { "ids": ["session_timeout", "stay_signed_in"],
-                    "packs": { "global": 2, "app:sparrow-core": 4, "tenant:bank_a/sparrow-core": 1 },
-                    "from": { "session_timeout": "app:sparrow-core", "stay_signed_in": "tenant:bank_a/sparrow-core" },
+                    "packs": { "global": 2, "app:kvfcu": 4, "tenant:keystone/kvfcu": 1 },
+                    "from": { "session_timeout": "app:kvfcu", "stay_signed_in": "tenant:keystone/kvfcu" },
                     "hash": "sha256:4b0a…" },
       "models": { "jev": "jev@1.4.2", "reviewer": "claude-sonnet-5" },
       "ladder": { "jev": true, "reviewer": true,
                   "handler_min": 0.80, "outcome_min": 0.95, "reconciliation_min": 0.90,
                   "reconciliation_autonomy": false },
       "timeouts": { "click_search": 6200, "click_confirm": 12000 },
-      "policy": { "layers": { "global": 4, "app:sparrow-core": 2, "tenant:bank_a": 3 }, "hash": "sha256:e71d…" },
+      "policy": { "layers": { "global": 4, "app:kvfcu": 2, "tenant:keystone": 3 }, "hash": "sha256:e71d…" },
       "settings": { "revision": 2, "hash": "sha256:5a90…" },
       "evidence_level": "standard",
       "approval": { "state": "approved", "batch": "batch_2026-09-20_8h2p4q9wrx", "record": "sha256:6b8f…" },
@@ -1026,11 +1026,11 @@ New codes since section 4, in addition to those listed above.
 
 ```json
 "spec": {
-  "kind": "discovery", "capability": "open_savings_subaccount",
-  "goal": "Open a new savings sub-account for member {input.member_id} …",
+  "kind": "discovery", "capability": "open_share_subaccount",
+  "goal": "Open a new share sub-account for member {input.member_id} …",
   "inputs": { "member_id": "[pii]", "deposit": "[financial]" },
   "outputs": ["account_number"], "expected_effect": "commits", "correlation": "notes",
-  "session": "sparrow-core/sign_in@1", "entry": "/home",
+  "session": "kvfcu/sign_in@1", "entry": "/home",
   "limits": { "max_steps": 40, "max_minutes": 20, "max_blocked": 5, "max_invalid": 3, "max_repeat": 3 }
 },
 "models": { "discovery": "claude-sonnet-5", "prompt": "discovery@1.0" }
@@ -1060,7 +1060,7 @@ The redactor runs inside the log writer. No code path skips it.
 
 | Content | Rule |
 |---|---|
-| Known input values | Replaced by their reference. `10234` becomes `{input.member_id}` |
+| Known input values | Replaced by their reference. `100107` becomes `{input.member_id}` |
 | Secret values | Never present. Logged as the reference only: `{secret.operator_password}` |
 | Observed values of secret-filled fields | Never read, never logged. Shown as `[secret]` |
 | Inputs in `run_start` | Masked by sensitivity label |
@@ -1071,12 +1071,12 @@ The redactor runs inside the log writer. No code path skips it.
 #### Why known values become references
 
 - **It hides the value, and keeps its meaning.** A reader sees which input appeared where.
-- **The recorder needs exactly this.** Section 1 maps `10234` to `member_id` by exact match.
+- **The recorder needs exactly this.** Section 1 maps `100107` to `member_id` by exact match.
 - **So the recorder can read the redacted log alone.** No raw member data needs to be on disk.
 - **It also makes the recorder golden test possible** on a saved, safe log.
-- **Example:** a result row reads "10234 Ravi Kumar". The log holds "{input.member_id} [pii]". The recorder writes `"text": "{input.member_id}"`.
+- **Example:** a result row reads "100107 Dana Whitfield". The log holds "{input.member_id} [pii]". The recorder writes `"text": "{input.member_id}"`.
 - **Short values:** under 4 characters and sensitive become per-run tokens, like `[name#1]`. Under 4 and `none` are left alone.
-- **Formatted money:** matched by amount. "₹100" and "Rs. 100/-" both become `{input.deposit}`.
+- **Formatted money:** matched by amount. "$100" and "USD 100.00" both become `{input.deposit}`.
 - **Two inputs with the same value:** a token, not a reference. A reference would guess which one.
 - **Full rules:** section 4 §9.6.
 
@@ -1110,7 +1110,7 @@ The redactor runs inside the log writer. No code path skips it.
 {"seq":10,"at":"2026-09-24T09:02:14.870Z","run_id":"run_2026-09-24_a1f3k7m2qd","event":"llm_decision","step":null,"by":"llm","why":{"kind":"llm_reason","text":"The member search box is empty. I will type the member ID."},"data":{"action":{"type":"type","element":"e17","value":"{input.member_id}"},"expected":"The box holds the member ID","tag":"flow_step","model":"claude-sonnet-5","tokens_in":5120,"tokens_out":88}}
 ```
 
-- **The LLM typed `{input.member_id}`.** It never saw `10234`. The gate put in the value (section 4 §10).
+- **The LLM typed `{input.member_id}`.** It never saw `100107`. The gate put in the value (section 4 §10).
 
 ---
 
@@ -1122,7 +1122,7 @@ The redactor runs inside the log writer. No code path skips it.
 
 ```
 state/evidence/
-  bank_a/                               one folder per tenant
+  keystone/                               one folder per tenant
     index.jsonl                         one line per run status change
     runs/
       run_2026-09-24_7kq2m9x4tb/
@@ -1174,7 +1174,7 @@ state/evidence/
   "schema": "intyy.run/1.0",
   "run_id": "run_2026-09-24_7kq2m9x4tb",
   "kind": "replay",
-  "tenant": "bank_a",
+  "tenant": "keystone",
   "parent_run_id": null,
   "batch_id": null,
   "request_id": "agt-teller-7f3c-0042",
@@ -1334,6 +1334,8 @@ state/evidence/
 ---
 
 ## 10. Items parked for other sections
+
+> **Changed by section 10:** Items for section 10 are resolved. See `intyy-design-updates-from-section-10.md` §6.
 
 | Item | Section |
 |---|---|

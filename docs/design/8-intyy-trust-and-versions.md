@@ -586,6 +586,8 @@ Internal only. Callers can never send these fields (section 3 §4.9).
 
 ### 7.6 The scripted operator
 
+> **Changed by section 10:** certify case gains --operator mailbox. See `intyy-design-updates-from-section-10.md` §11.
+
 Certify has no human. A scripted operator adapter answers the operator port.
 
 | Kind | Scripted answer |
@@ -1186,6 +1188,8 @@ Every live line records the engine version, handler set hash, and jev version.
 
 ### 13.4 Patch drafting
 
+> **Changed by section 10:** Not built. See `intyy-design-updates-from-section-10.md` §11.
+
 **Job:** turn repeated clue disagreements into a candidate tenant patch. A human reviews it. Replay never edits itself.
 
 **First, a log change.** `target_vote` must say what it saw, not only which clues differed (update file, sections 3 and 7).
@@ -1224,6 +1228,8 @@ Every live line records the engine version, handler set hash, and jev version.
 - **Condition text, in the build.** Drafting outcome or checkpoint text from takeover screens is designed only. It would reuse section 5 §12.3's detector drafting.
 
 ### 13.5 The lakeshore drill
+
+> **Changed by section 10:** Replaced in the build by an optional probe. See `intyy-design-updates-from-section-10.md` §11.
 
 CONTRACT §4: `lakeshore` runs the same vendor app, with small screen differences. This is the brief's cross-tenant stretch goal.
 
@@ -1453,6 +1459,8 @@ See 13.5. One recording, one small patch, two approved banks.
 
 ## 17. Built, thin, or designed
 
+> **Changed by section 10:** Patch drafting and the drill statuses changed. See `intyy-design-updates-from-section-10.md` §11.
+
 | Item | Status | Why |
 |---|---|---|
 | Score store: three files per key, rebuild, lock | Built | Everything else reads it |
@@ -1562,6 +1570,8 @@ See 13.5. One recording, one small patch, two approved banks.
 ---
 
 ## 21. Items parked for other sections
+
+> **Changed by section 10:** Items for section 10 are resolved. See `intyy-design-updates-from-section-10.md` §11.
 
 | Item | Section |
 |---|---|
