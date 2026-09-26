@@ -22,3 +22,5 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-26 · M00 · `schemas` and `test:safety` scripts, and schema freshness in `check`, wait for M01 and M07 · No schema or safety test exists yet.
 - 2026-09-26 · M00 · The adapter import rule lets an adapter import files in its own folder only · An adapter may span several files. Another adapter stays off limits.
 - 2026-09-26 · M00 · Lint rules use `strictTypeChecked` from typescript-eslint · It catches floating promises and unsafe `any` flows in async browser code.
+- 2026-09-26 · M00 · `docs:verify` matches `bank-a` only when no letter follows · A plain match also hits `bank-app` in anchor links, which is not a leftover.
+- 2026-09-26 · M00 · `docs:verify` skips §14 pointer-note lines · §14 fixes their text, and one note says "aadhaar and pan removed".

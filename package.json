@@ -20,7 +20,9 @@
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint && npm test",
     "test": "vitest run --project unit --project types",
-    "test:live": "vitest run --project live"
+    "test:live": "vitest run --project live",
+    "docs:renames": "tsx scripts/docs-renames.ts",
+    "docs:verify": "tsx scripts/docs-verify.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
