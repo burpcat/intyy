@@ -28,6 +28,7 @@ const s1 = "1-intyy-component-level-design.md";
 const s2 = "2-intyy-artifact-schema.md";
 const s3 = "3-intyy-run-outputs.md";
 const s4 = "4-intyy-safety-policy.md";
+const s6 = "6-intyy-discover-and-recorder.md";
 
 /** Updates §3.1 row deletions: the aadhaar and pan rows in §9.4 and §9.8. */
 const rowDeletions: readonly RowDeletion[] = [
@@ -126,6 +127,8 @@ const textEdits: readonly TextEdit[] = [
   },
   { file: s4, from: "Account opened for Ravi Kumar.", to: "Account opened for Dana Whitfield." },
   { file: s4, from: "dates as DD/MM/YYYY", to: "dates as MM/DD/YYYY" },
+  // Why: owner decision 2026-09-26. §2 row 20 turns "share savings sub-account" into "share share".
+  { file: s6, from: "new share share sub-account", to: "new share sub-account" },
 ];
 
 function applyRenames(line: string): string {

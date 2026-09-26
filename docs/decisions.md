@@ -24,3 +24,4 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-26 · M00 · Lint rules use `strictTypeChecked` from typescript-eslint · It catches floating promises and unsafe `any` flows in async browser code.
 - 2026-09-26 · M00 · `docs:verify` matches `bank-a` only when no letter follows · A plain match also hits `bank-app` in anchor links, which is not a leftover.
 - 2026-09-26 · M00 · `docs:verify` skips §14 pointer-note lines · §14 fixes their text, and one note says "aadhaar and pan removed".
+- 2026-09-26 · M00 · `docs:renames` fixes "new share share sub-account" in section 6 · §2 row 20 doubles "share" there. Owner approved.
