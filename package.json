@@ -18,7 +18,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "format": "prettier --write .",
     "lint": "eslint .",
-    "check": "npm run typecheck && npm run lint && npm test",
+    "check": "npm run typecheck && npm run lint && npm test && npm run docs:verify",
     "test": "vitest run --project unit --project types",
     "test:live": "vitest run --project live",
     "docs:renames": "tsx scripts/docs-renames.ts",
