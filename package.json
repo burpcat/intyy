@@ -22,7 +22,8 @@
     "test": "vitest run --project unit --project types",
     "test:live": "vitest run --project live",
     "docs:renames": "tsx scripts/docs-renames.ts",
-    "docs:verify": "tsx scripts/docs-verify.ts"
+    "docs:verify": "tsx scripts/docs-verify.ts",
+    "bankapp:smoke": "tsx scripts/bankapp-smoke.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
