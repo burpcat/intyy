@@ -1,6 +1,6 @@
 # M00 — Foundation
 
-> **Phase:** A · **Size:** S · **Depends on:** nothing · **Status:** gate pending (npm link, CI on GitHub)
+> **Phase:** A · **Size:** S · **Depends on:** nothing · **Status:** done
 
 ## Read first
 
@@ -66,7 +66,7 @@ A repo that builds, checks itself, and holds consistent design docs, before any 
 - [x] 3. Add dependency-cruiser with the four rules. Write `imports.test.ts` to run it and fail on any violation.
 - [x] 4. Write the self-test. Each fixture breaks exactly one rule. The test asserts each rule reports its own fixture.
 - [x] 5. Set up the three Vitest projects. Add one trivial test to each so the projects prove they run.
-- [ ] 6. Write `src/cli/main.ts` with `--version`. Build, `npm link`, run `intyy --version`.
+- [x] 6. Write `src/cli/main.ts` with `--version`. Build, `npm link`, run `intyy --version`.
 - [x] 7. Write `docs-renames.ts` and `docs-verify.ts`. Run renames on `docs/design/`. Run it again: nothing changes.
 - [x] 8. Stop. Ask the owner to review and commit the rename diff on its own.
 - [x] 9. Add `docs:verify` to `npm run check`.
@@ -92,7 +92,7 @@ A repo that builds, checks itself, and holds consistent design docs, before any 
 
 - [x] The rename diff is reviewed and committed alone.
 - [x] `bankapp.json` names the right commit.
-- [ ] The CI `check` job is green on GitHub.
+- [x] The CI `check` job is green on GitHub.
 
 ## Evidence produced
 
