@@ -2,6 +2,7 @@
 // graph: screens by path, and what each click does. Follows design section 9 §5.2 and §5.9,
 // section 7 §9 (native dialogs and pop-ups), and section 4 §6.8 (the network guard).
 import { EventHub } from "../../core/events/hub.js";
+import { a11yTree } from "../../core/surface/a11y.js";
 import {
   toFactory,
   type ActResult,
@@ -34,12 +35,15 @@ export type FakeEffect =
   | { dialog: NativeDialog; accept?: FakeEffect; dismiss?: FakeEffect }
   | { popup: string }
   | { closePopup: true }
+  | { insert: FakeElement }
   | { download: true }
   | { upload: true };
 
 /** One scripted element. `frame` puts it inside `frame[n]`. A plain link goes to its `href`. */
 export type FakeElement = {
   id: string;
+  /** The id of the enclosing element, like a form or an iframe. */
+  parent?: string;
   role: string;
   roleGroup: RoleGroup;
   name?: string;
@@ -76,8 +80,13 @@ function fakePng(body: unknown): Png {
   return bytes as Png;
 }
 
-/** One open window: its address, its screen, and the fields' state. */
-type Page = { url: string; screen: FakeScreen; fields: Map<string, FieldState> };
+/** One open window: its address, its screen, its live elements, and the fields' state. */
+type Page = {
+  url: string;
+  screen: FakeScreen;
+  elements: FakeElement[];
+  fields: Map<string, FieldState>;
+};
 
 /** The open native box, and what its buttons do. */
 type OpenDialog = { dialog: NativeDialog; accept?: FakeEffect; dismiss?: FakeEffect };
@@ -127,13 +136,13 @@ class FakeBrowser {
     this.hub.emit({ kind: "navigation_started", url });
     if (screen === undefined) {
       this.hub.emit({ kind: "browser_error_page", url });
-      return { url, screen: { elements: [] }, fields: new Map() };
+      return { url, screen: { elements: [] }, elements: [], fields: new Map() };
     }
     const fields = new Map<string, FieldState>();
     for (const el of screen.elements)
       if (el.field !== undefined) fields.set(el.id, { ...el.field });
     this.hub.emit({ kind: "navigation_done", url });
-    return { url, screen, fields };
+    return { url, screen, elements: [...screen.elements], fields };
   }
 
   /** Marks a page change, so every old ref goes stale. */
@@ -168,6 +177,9 @@ class FakeBrowser {
       this.popup = page;
       this.hub.emit({ kind: "popup_opened", url: page.url });
       this.changed();
+    } else if ("insert" in effect) {
+      // Why: a script adds an element without a navigation. Refs stay; nothing goes stale.
+      this.active?.elements.unshift(effect.insert);
     } else if ("closePopup" in effect) {
       this.popup = null;
       this.hub.emit({ kind: "popup_closed" });
@@ -183,6 +195,7 @@ class FakeBrowser {
   dialogElements(d: NativeDialog): SurfaceElement[] {
     const el = (id: string, role: string, name: string, path: string): SurfaceElement => ({
       ref: this.ref(id),
+      ...(id === "native-box" ? {} : { parent: this.ref("native-box") }),
       role,
       roleGroup: role === "button" ? "button_like" : "container",
       clues: { name, path },
@@ -205,6 +218,7 @@ class FakeBrowser {
     }`;
     const out: SurfaceElement = {
       ref: this.ref(el.id),
+      ...(el.parent === undefined ? {} : { parent: this.ref(el.parent) }),
       role: el.role,
       roleGroup: el.roleGroup,
       clues: { path: `${prefix}${el.role}[${el.id}]` },
@@ -243,7 +257,7 @@ class FakeEyes implements Eyes {
         // Why: section 7 §9.1, while a box is open only its elements are candidates.
         elements:
           d === null
-            ? page.screen.elements.map((el) => this.b.element(page, el))
+            ? page.elements.map((el) => this.b.element(page, el))
             : this.b.dialogElements(d),
       }),
     );
@@ -260,14 +274,17 @@ class FakeEyes implements Eyes {
   snapshots(): Promise<Outcome<{ dom: string; a11y: string }, "page_gone">> {
     const page = this.b.active;
     if (!this.b.open || page === null) return Promise.resolve(fail("page_gone"));
-    const els = page.screen.elements;
+    const els = page.elements;
     // Why: raw snapshots hold no field values, like the adapter's (section 3 §7.6, section 4 §2.6).
     const text = (el: FakeElement): string =>
       [el.name ?? el.label, el.text].filter((t) => t !== undefined).join(" ");
     const dom =
       page.screen.dom ??
       `<html><body>${els.map((el) => `<div role="${el.role}">${text(el)}</div>`).join("")}</body></html>`;
-    const a11y = page.screen.a11y ?? els.map((el) => `- ${el.role} "${text(el)}"`).join("\n");
+    // Why: the same tree builder as the adapter, so both backends print one format.
+    const d = this.b.dialog?.dialog ?? null;
+    const seen = d === null ? els.map((el) => this.b.element(page, el)) : this.b.dialogElements(d);
+    const a11y = page.screen.a11y ?? a11yTree(seen);
     return Promise.resolve(ok({ dom, a11y }));
   }
 
@@ -343,7 +360,7 @@ class FakeHands implements Hands {
       case "press": {
         if (a.key !== "Enter" || el.form === undefined) return done;
         const formId = el.form.id;
-        const submit = page.screen.elements.find((e) => e.form?.id === formId && e.form.submits);
+        const submit = page.elements.find((e) => e.form?.id === formId && e.form.submits);
         if (submit?.onClick !== undefined) this.b.apply(submit.onClick);
         return done;
       }
@@ -367,7 +384,12 @@ export class SnapshotSurface implements SurfaceSession {
     const b = new FakeBrowser(this.site, cfg.allowlist, cfg.viewport);
     this.#browser = b;
     // Why: a blocked start page leaves a blank window, as in a real browser.
-    b.main = b.load("/") ?? { url: "about:blank", screen: { elements: [] }, fields: new Map() };
+    b.main = b.load("/") ?? {
+      url: "about:blank",
+      screen: { elements: [] },
+      elements: [],
+      fields: new Map(),
+    };
     return Promise.resolve(ok({ eyes: new FakeEyes(b), hands: new FakeHands(b) }));
   }
 

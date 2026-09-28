@@ -7,7 +7,10 @@ import type { Box, FieldState, RoleGroup } from "../../ports/surface.js";
 
 /** One element as the page reports it. The adapter adds the ref and the path prefix. */
 export type RawElement = {
-  idx: number;
+  /** The element's ref, like `4:f0:17`. It stays on the element until the next page change. */
+  ref: string;
+  /** The ref of the nearest enclosing listed element in this frame. */
+  parent?: string;
   role: string;
   roleGroup: RoleGroup;
   name?: string;
@@ -29,7 +32,8 @@ export type CollectArg = { tag: string; offsetX: number; offsetY: number; secret
 
 /**
  * Lists the elements of the current frame. Each element gets a `data-intyy-ref` attribute, so
- * the adapter can find it again. Runs in the page: it may use no outside names.
+ * the adapter can find it again. An element keeps its ref for the whole generation, even when
+ * the page adds or removes other elements. Runs in the page: it may use no outside names.
  */
 export function collectElements(arg: CollectArg): RawElement[] {
   const secretFields = (window as unknown as Record<string, WeakSet<Element> | undefined>)[
@@ -241,6 +245,26 @@ export function collectElements(arg: CollectArg): RawElement[] {
     );
 
   const out: RawElement[] = [];
+  // Why: a ref must never move to another element. A list position would shift when a script
+  // adds a row, so each element keeps its own number, counted per frame (section 9 §5.2).
+  const counter = window as unknown as { __intyyNextRef?: number };
+  const listed = new Map<Element, string>();
+  const refFor = (el: Element): string => {
+    const prior = el.getAttribute("data-intyy-ref");
+    if (prior !== null && prior.startsWith(`${arg.tag}:`)) return prior;
+    const n = counter.__intyyNextRef ?? 0;
+    counter.__intyyNextRef = n + 1;
+    const ref = `${arg.tag}:${String(n)}`;
+    el.setAttribute("data-intyy-ref", ref);
+    return ref;
+  };
+  const parentOf = (el: Element): string | undefined => {
+    for (let p = el.parentElement; p !== null; p = p.parentElement) {
+      const ref = listed.get(p);
+      if (ref !== undefined) return ref;
+    }
+    return undefined;
+  };
   const scrollX = arg.offsetX === 0 && arg.offsetY === 0 ? window.scrollX : 0;
   const scrollY = arg.offsetX === 0 && arg.offsetY === 0 ? window.scrollY : 0;
   for (const el of document.body.querySelectorAll("*")) {
@@ -253,11 +277,12 @@ export function collectElements(arg: CollectArg): RawElement[] {
     if (style.display === "none" || style.visibility === "hidden") continue;
     if (r.width === 0 && r.height === 0) continue;
 
-    const idx = out.length;
-    el.setAttribute("data-intyy-ref", `${arg.tag}:${String(idx)}`);
+    const ref = refFor(el);
+    const parent = parentOf(el);
+    listed.set(el, ref);
     const label = labelOf(el);
     const e: RawElement = {
-      idx,
+      ref,
       role: role ?? "generic",
       roleGroup: groupOf(el, role),
       enabled: !(el as HTMLButtonElement).disabled && el.getAttribute("aria-disabled") !== "true",
@@ -269,6 +294,7 @@ export function collectElements(arg: CollectArg): RawElement[] {
       },
       path: pathOf(el),
     };
+    if (parent !== undefined) e.parent = parent;
     const name = nameOf(el, role, label);
     if (name !== undefined) e.name = name;
     if (label !== undefined) e.label = label;

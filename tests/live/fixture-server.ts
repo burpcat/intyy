@@ -29,7 +29,8 @@ const PAGES: Record<string, string> = {
     <iframe src="/frame" title="help" width="300" height="60"></iframe>
     <canvas width="200" height="100" aria-label="Chart"></canvas>
     <p><label><input type="checkbox"> Joint</label></p>
-    <p><label for="kind">Kind</label> <select id="kind"><option>Savings</option><option>Checking</option></select></p>`,
+    <p><label for="kind">Kind</label> <select id="kind"><option>Savings</option><option>Checking</option></select></p>
+    <button type="button" onclick="document.body.insertAdjacentHTML('afterbegin', '<p>Note added</p>')">Add note</button>`,
   ),
   "/frame": page("Frame", `<button type="button">Help</button>`),
   "/members": page("Members", `<h1>Members</h1>`),

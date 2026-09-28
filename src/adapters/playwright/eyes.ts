@@ -11,6 +11,7 @@ import type {
   SurfaceElement,
   SurfaceEvent,
 } from "../../ports/surface.js";
+import { a11yTree } from "../../core/surface/a11y.js";
 import { collectElements, serializeFrame, type RawElement } from "./page-script.js";
 import { SECRET_KEY, STEP_TIMEOUT_MS, type BrowserState } from "./state.js";
 
@@ -23,6 +24,7 @@ function dialogElements(s: BrowserState, type: string, message: string): Surface
     path: string,
   ): SurfaceElement => ({
     ref: s.dialogRef(part),
+    ...(part === "box" ? {} : { parent: s.dialogRef("box") }),
     role,
     roleGroup: role === "button" ? "button_like" : "container",
     clues: { name, path },
@@ -53,10 +55,21 @@ function foreign(page: Page, frame: Frame): boolean {
   return new URL(frame.url()).origin !== new URL(page.url()).origin;
 }
 
-/** Turns one raw element into what the port reports. */
-function toElement(s: BrowserState, fi: number, prefix: string, raw: RawElement): SurfaceElement {
+/**
+ * Turns one raw element into what the port reports. `frameParent` is the ref of the `iframe`
+ * that holds this frame; a frame's top elements sit under it.
+ */
+function toElement(
+  prefix: string,
+  raw: RawElement,
+  frameParent: string | undefined,
+): SurfaceElement {
+  // Why a cast: the ElementRef brand has no runtime form.
+  const asRef = (r: string): ElementRef => r as unknown as ElementRef;
+  const parent = raw.parent ?? frameParent;
   const out: SurfaceElement = {
-    ref: s.ref(fi, raw.idx),
+    ref: asRef(raw.ref),
+    ...(parent === undefined ? {} : { parent: asRef(parent) }),
     role: raw.role,
     roleGroup: raw.roleGroup,
     clues: { path: `${prefix}${raw.path}` },
@@ -73,23 +86,6 @@ function toElement(s: BrowserState, fi: number, prefix: string, raw: RawElement)
   if (raw.context !== undefined) out.context = raw.context;
   if (raw.unreadable === true) out.unreadable = true;
   return out;
-}
-
-/**
- * The accessibility snapshot in Playwright's line form, `- role "name"`, built from the element
- * list. Why not Playwright's own: it prints field values, and a secret-filled field's value must
- * never enter intyy (section 4 §2.6). ponytail: flat, not nested; nest it if a reader needs the tree.
- */
-export function a11yLines(elements: readonly SurfaceElement[]): string {
-  return elements
-    .map((e) => {
-      const name = e.clues.name ?? e.clues.label;
-      if (e.role === "generic")
-        return e.clues.text === undefined ? null : `- text: ${e.clues.text}`;
-      return name === undefined ? `- ${e.role}` : `- ${e.role} "${name}"`;
-    })
-    .filter((line): line is string => line !== null)
-    .join("\n");
 }
 
 /** The eyes over one Playwright session. */
@@ -124,7 +120,11 @@ export class PlaywrightEyes implements Eyes {
           secretKey: SECRET_KEY,
         });
         const prefix = `${popup}${fi === 0 ? "" : `frame[${String(fi - 1)}] > `}`;
-        for (const raw of raws) elements.push(toElement(this.s, fi, prefix, raw));
+        const holder =
+          fi === 0
+            ? undefined
+            : ((await (await frame.frameElement()).getAttribute("data-intyy-ref")) ?? undefined);
+        for (const raw of raws) elements.push(toElement(prefix, raw, holder));
       }
       return ok({ ...base, dialog: null, elements });
     } catch {
@@ -163,7 +163,9 @@ export class PlaywrightEyes implements Eyes {
     const page = this.s.active;
     if (page === null) return fail("page_gone");
     const d = this.s.dialog;
-    if (d !== null) return ok({ dom: "", a11y: `- alertdialog "${d.message()}"` });
+    if (d !== null) {
+      return ok({ dom: "", a11y: a11yTree(dialogElements(this.s, d.type(), d.message())) });
+    }
     try {
       // Why: section 3 §7.6, frames are saved in order, in one file.
       const parts: string[] = [];
@@ -174,7 +176,7 @@ export class PlaywrightEyes implements Eyes {
       }
       const seen = await this.observe();
       if (!seen.ok) return seen;
-      return ok({ dom: parts.join("\n"), a11y: a11yLines(seen.value.elements) });
+      return ok({ dom: parts.join("\n"), a11y: a11yTree(seen.value.elements) });
     } catch {
       return fail("page_gone");
     }

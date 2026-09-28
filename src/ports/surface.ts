@@ -41,6 +41,11 @@ export type FieldState = {
  */
 export type SurfaceElement = {
   ref: ElementRef;
+  /**
+   * The nearest enclosing element in the same observation. A frame's top elements sit under
+   * its `iframe`; a native dialog's buttons sit under its box. Absent at the top.
+   */
+  parent?: ElementRef;
   role: string;
   roleGroup: RoleGroup;
   clues: { name?: string; label?: string; text?: string; path: string };

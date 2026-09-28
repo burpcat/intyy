@@ -79,12 +79,6 @@ export class BrowserState {
     return `${String(this.generation)}:f${String(frameIndex)}`;
   }
 
-  /** Makes a ref for element `idx` in frame `frameIndex`. */
-  ref(frameIndex: number, idx: number): ElementRef {
-    // Why a cast: the ElementRef brand has no runtime form.
-    return `${this.tag(frameIndex)}:${String(idx)}` as unknown as ElementRef;
-  }
-
   /** Makes a ref for a part of the open native dialog. */
   dialogRef(part: "box" | "accept" | "dismiss"): ElementRef {
     return `${String(this.generation)}:native:${part}` as unknown as ElementRef;

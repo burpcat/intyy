@@ -12,6 +12,7 @@
 - Updates file §11.1 (`--operator mailbox`), §12 (publish extras).
 - Build plan §11 (evidence plan), §14 (README and REPORT).
 - `docs/outlines/README-outline.md`, `docs/outlines/REPORT-outline.md`.
+- `docs/formats/a11y-snapshot.md` (the accessibility snapshot that draft handlers and their `fire` fixtures read; built in M02).
 
 ## Goal
 

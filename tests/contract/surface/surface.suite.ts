@@ -204,6 +204,39 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
         expect(s.ok && s.value.a11y).toContain("Search");
       });
 
+      test("each element names its parent: form, frame, and dialog", async () => {
+        const { o } = await start();
+        const form = o.elements.find((e) => e.role === "form");
+        expect(find(o, "Search").parent).toBe(form?.ref);
+        expect(find(o, "Member ID").parent).toBe(form?.ref);
+        expect(find(o, "Help").parent).toBe(find(o, "help").ref);
+        expect(find(o, "Members").parent).toBeUndefined();
+      });
+
+      test("the accessibility snapshot is a nested tree with no values", async () => {
+        const g = await start();
+        await act(g, {
+          type: "type",
+          target: find(g.o, "Member ID").ref,
+          value: { kind: "text", text: "100107" },
+        });
+        const s = await g.eyes.snapshots();
+        const a11y = s.ok ? s.value.a11y : "";
+        // Why: docs/formats/a11y-snapshot.md, children sit two spaces under their parent.
+        expect(a11y).toContain(
+          [
+            '- form "Member ID Password Search":',
+            '  - textbox "Member ID"',
+            '  - textbox "Password"',
+            '  - button "Search"',
+            '- link "Members":',
+            `  - /url: ${g.origin}/members`,
+          ].join("\n"),
+        );
+        expect(a11y).toContain(['- iframe "help":', '  - button "Help"'].join("\n"));
+        expect(a11y).not.toContain("100107");
+      });
+
       test("after close the page is gone and events end", async () => {
         const g = await start();
         const events = g.eyes.events();
@@ -269,6 +302,19 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
         const o = await look(g.eyes);
         expect(find(o, "Joint").field?.checked).toBe(true);
         expect(find(o, "Kind").field?.value).toBe("Checking");
+        const s = await g.eyes.snapshots();
+        expect(s.ok && s.value.a11y).toContain('- checkbox "Joint" [checked]');
+      });
+
+      test("a ref stays on its element when a script adds another element", async () => {
+        const g = await start();
+        const search = find(g.o, "Search").ref;
+        await act(g, { type: "click", target: find(g.o, "Add note").ref });
+        const o = await until(g.eyes, (x) => x.elements.some((e) => e.clues.text === "Note added"));
+        // Why: a position-based ref would now point one element off (decisions.md, M02).
+        expect(find(o, "Search").ref).toBe(search);
+        expect((await act(g, { type: "click", target: search })).decision).toBe("allowed");
+        await until(g.eyes, (x) => x.url === `${g.origin}/members`);
       });
 
       test("a link changes the page; old refs go stale", async () => {
@@ -308,6 +354,8 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
           ["button", "OK", "native:dialog > accept"],
           ["button", "Cancel", "native:dialog > dismiss"],
         ]);
+        const box = o.elements[0]?.ref;
+        expect(o.elements.slice(1).map((e) => e.parent)).toEqual([box, box]);
         // Why: "Cancel" is a bland label, so dismissing is unsure too (section 4 §7.3).
         const cancel = find(o, "Cancel").ref;
         expect(await act(g, { type: "click", target: cancel })).toMatchObject({

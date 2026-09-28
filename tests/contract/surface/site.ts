@@ -26,9 +26,20 @@ export function fixtureSite(origin: string): FakeSite {
     origin,
     screens: {
       "/": {
+        // Why: the same elements, in the same document order, as the HTML page the helper
+        // server serves (tests/live/fixture-server.ts), so both backends print one tree.
         elements: [
           {
+            id: "search_form",
+            role: "form",
+            roleGroup: "container",
+            name: "Member ID Password Search",
+            text: "Member ID Password Search",
+            box: { x: 8, y: 8, width: 600, height: 24 },
+          },
+          {
             id: "member_id",
+            parent: "search_form",
             role: "textbox",
             roleGroup: "text_entry",
             label: "Member ID",
@@ -38,6 +49,7 @@ export function fixtureSite(origin: string): FakeSite {
           },
           {
             id: "password",
+            parent: "search_form",
             role: "textbox",
             roleGroup: "text_entry",
             label: "Password",
@@ -47,6 +59,7 @@ export function fixtureSite(origin: string): FakeSite {
           },
           {
             id: "search",
+            parent: "search_form",
             role: "button",
             roleGroup: "button_like",
             name: "Search",
@@ -92,13 +105,20 @@ export function fixtureSite(origin: string): FakeSite {
             onClick: { popup: "/lookup" },
           },
           {
-            id: "help",
-            role: "button",
-            roleGroup: "button_like",
-            name: "Help",
-            text: "Help",
-            frame: 0,
-            box: box(240),
+            id: "help_frame",
+            role: "iframe",
+            roleGroup: "container",
+            name: "help",
+            tooltip: "help",
+            box: { x: 16, y: 240, width: 300, height: 60 },
+          },
+          {
+            id: "chart",
+            role: "canvas",
+            roleGroup: "container",
+            name: "Chart",
+            unreadable: true,
+            box: { x: 16, y: 304, width: 200, height: 100 },
           },
           {
             id: "joint",
@@ -106,7 +126,7 @@ export function fixtureSite(origin: string): FakeSite {
             roleGroup: "check",
             label: "Joint",
             field: { kind: "check", checked: false },
-            box: box(304),
+            box: box(408),
           },
           {
             id: "kind",
@@ -114,15 +134,28 @@ export function fixtureSite(origin: string): FakeSite {
             roleGroup: "choice",
             label: "Kind",
             field: { kind: "choice", value: "Savings" },
-            box: box(336),
+            box: box(440),
           },
           {
-            id: "chart",
-            role: "img",
-            roleGroup: "container",
-            name: "Chart",
-            unreadable: true,
-            box: { x: 16, y: 272, width: 200, height: 100 },
+            id: "add_note",
+            role: "button",
+            roleGroup: "button_like",
+            name: "Add note",
+            text: "Add note",
+            box: box(472),
+            onClick: {
+              insert: { id: "note", role: "generic", roleGroup: "container", text: "Note added" },
+            },
+          },
+          {
+            id: "help",
+            parent: "help_frame",
+            role: "button",
+            roleGroup: "button_like",
+            name: "Help",
+            text: "Help",
+            frame: 0,
+            box: box(248),
           },
         ],
       },
