@@ -221,6 +221,15 @@ export class Redactor {
     this.#known.push(v);
   }
 
+  /**
+   * The value of a known input labelled `none`, for the task block (section 6 §8.1). Null for
+   * any sensitive value, or a reference the run does not know. Screen text still shows the reference.
+   */
+  noneValue(ref: string): Masked<string> | null {
+    const v = this.#known.find((k) => k.ref === ref);
+    return v?.label === "none" ? mask(v.value) : null;
+  }
+
   /** Rule 1: a secret-filled field is never read. Its content is always `[secret]` (§9.5). */
   secretField(): Masked<string> {
     return mask("[secret]");

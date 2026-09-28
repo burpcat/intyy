@@ -65,7 +65,7 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 - [x] 2. Write the observation builder. Test masking, caps, frames, dialogs, and visible labels with dropped markup labels.
 - [x] 3. Write the marked screenshot and text tags.
 - [x] 4. Write the tools and their checks. Test stale IDs, mask tokens, unknown outputs, and `done` rules.
-- [ ] 5. Write the prompt module, version 1.
+- [x] 5. Write the prompt module, version 1.
 - [ ] 6. Write the loop with a scripted planner. Run it on the snapshot surface in `unit`.
 - [ ] 7. Write the Claude adapter with the model call order. Test with a fake HTTP layer: stored bytes equal sent bytes.
 - [ ] 8. Write the mailbox adapter and `operator list | show | decide`.

@@ -2,6 +2,7 @@
 // Follows design section 6 §6.1, §7.2 (checks at run start), section 2 §12.3 and §12.4 (types and
 // constraints), and section 9 §8.1 (`spec check`). Rejected specs never open a browser (§7.2).
 import type { RunSpec, SpecInput } from "../model/runspec.js";
+import { PROMPTS } from "./prompts/index.js";
 
 /** What the checks need besides the spec. */
 export type SpecFacts = {
@@ -185,6 +186,8 @@ export function checkSpec(spec: RunSpec, facts: SpecFacts): SpecReport {
     r.problems.push(`app: ${spec.app} is not in the tenant's approved settings`);
   else if (facts.environment !== "test" && spec.inputs.length > 0)
     r.problems.push("inputs: example values in a spec file are accepted only for test apps");
+  if (PROMPTS[spec.prompt] === undefined)
+    r.problems.push(`prompt: ${spec.prompt} is not a prompt version intyy has`);
   inputChecks(spec, facts, r);
   goalChecks(spec, r);
   kindChecks(spec, r);
