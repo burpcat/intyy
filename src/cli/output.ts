@@ -16,6 +16,8 @@ export type Io = {
 export type Answer = {
   text(raw: boolean): string;
   data(raw: boolean): unknown;
+  /** The exit code, when the answer itself reports a problem. Example: a bound secret is missing. */
+  code?: number;
 };
 
 /** How to print. */
@@ -43,8 +45,10 @@ export function progress(io: Io, line: string): void {
 }
 
 /** A simple answer: the same data as JSON, and a text form. */
-export function answer(data: unknown, text: string): Answer {
-  return { text: () => text, data: () => data };
+export function answer(data: unknown, text: string, code?: number): Answer {
+  return code === undefined
+    ? { text: () => text, data: () => data }
+    : { text: () => text, data: () => data, code };
 }
 
 function ensureNewline(text: string): string {

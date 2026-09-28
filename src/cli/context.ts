@@ -33,6 +33,8 @@ export type Ctx = {
   staff: string | null;
   flags: GlobalFlags;
   wiring: Wiring;
+  /** The exit code the command's answer set. 0 unless the answer reports a problem. */
+  exit: { code: number };
 };
 
 /** The root marker file. */
@@ -93,7 +95,8 @@ export function makeContext(
   const rawStaff = flags.staff ?? io.env.INTYY_STAFF;
   const staff =
     rawStaff === undefined || rawStaff === "" ? null : flagValue("--staff", rawStaff, StaffId);
-  return { io, root, config, tenant, staff, flags, wiring: wire(root, config, io.env) };
+  const wiring = wire(root, config, io.env);
+  return { io, root, config, tenant, staff, flags, wiring, exit: { code: 0 } };
 }
 
 /** How this command prints. */

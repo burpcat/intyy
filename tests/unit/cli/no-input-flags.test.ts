@@ -15,6 +15,8 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--tenant": "a tenant ID",
   "--staff": "a staff ID",
   "--models": "the one choice: off",
+  "--rev": "a sealed revision number",
+  "--app": "an app ID",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

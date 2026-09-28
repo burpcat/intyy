@@ -63,6 +63,7 @@ export function act(ctxOf: () => Ctx, handler: Handler): (this: Command) => Prom
     const ctx = ctxOf();
     const result = await handler(ctx, this.args, this.opts());
     printAnswer(ctx.io, result, printOptions(ctx));
+    if (result.code !== undefined) ctx.exit.code = result.code;
   };
 }
 
@@ -138,7 +139,7 @@ export async function run(argv: readonly string[], io: Io, deps: RunDeps = {}): 
   const json = argv.includes("--json");
   try {
     await program.parseAsync([...argv], { from: "user" });
-    return EXIT.ok;
+    return ctx?.exit.code ?? EXIT.ok;
   } catch (e) {
     if (e instanceof CliExit) {
       printError(io, e.code, e.message, { json, reveal: false });

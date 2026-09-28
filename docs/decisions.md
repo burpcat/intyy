@@ -56,4 +56,11 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-28 · M01 · `src/cli/program.ts` builds the command tree; `main.ts` only calls `run` with the real streams · Tests run the whole CLI in-process with fake streams and a temporary data root.
 - 2026-09-28 · M01 · With `--json`, a failed command still prints one JSON document: `{ "error": { "code", "message" } }` · Section 9 §7.4 says `--json` prints exactly one document. The human error still goes to standard error.
 - 2026-09-28 · M01 · `--reveal-outputs` and `--models` are global flags, and every other command refuses them with exit 1 · Section 9 §7.3 lists them as global, but only for `replay`, `certify`, and `reconcile`.
+- 2026-09-28 · M01 · Any staff member in `staff.json` may `edit` a candidate; `seal` needs reviewer and `approve` needs approver · Section 9 §7.1 names roles for seal and approve only. Edit writes nothing sealed.
+- 2026-09-28 · M01 · `check` and `seal` test a layer against its parent's newest approved revision, else sealed, else candidate, and print which · The owner drafts every M01 layer at once. At run time only approved layers load.
+- 2026-09-28 · M01 · `check` with no candidate checks the newest approved, else sealed, revision · The owner check `settings check --secrets` runs after approval, when no candidate is left.
+- 2026-09-28 · M01 · `approve` needs `--rev`; there is no default revision · A human approves one named revision. Guessing the newest would approve what they did not read.
+- 2026-09-28 · M01 · `settings check --secrets` prints its list, then exits 1 if any bound secret is missing · The list is the answer. A missing value means the start check would fail (section 4 §8.4).
+- 2026-09-28 · M01 · `policy effective` merges for `--app`, else the only app in the tenant's approved settings · Section 9 §7.2: the app comes from the tenant's settings.
+- 2026-09-28 · M01 · A bad `edit` is not saved; the edited file stays in `state/var/tmp` · The CLI stops a bad file before it lands (section 9 §2.6), and the author keeps their work.
 - 2026-09-28 · M01 · A lock file that does not parse counts as held · When unsure, assume the worst (section 4 §2.3). `run sweep --force-unlock` clears it.
