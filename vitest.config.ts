@@ -29,6 +29,9 @@ export default defineConfig({
           include: ["tests/live/**/*.test.ts"],
           // Why: CONTRACT §2, one run at a time against the bank app.
           fileParallelism: false,
+          // Why: CONTRACT §6, a bank request may take 8 s, and one step can make several.
+          testTimeout: 60_000,
+          hookTimeout: 60_000,
         },
       },
     ],

@@ -70,23 +70,23 @@ One gate that every action must cross, a browser adapter that can only act throu
 - [x] 9. Write screenshot boxes, crops, and snapshot masking. Test that boxes cover every element rules 1 to 4 name.
 - [x] 10. Write the canary scanner and the capture helper.
 - [x] 11. Write the secret canary test: a scripted run on the snapshot fake types a marked fake secret. Then scan every file written.
-- [ ] 12. Write the live tests: the surface contract suite on Playwright, and the network guard.
+- [x] 12. Write the live tests: the surface contract suite on Playwright, and the network guard.
 
 ## Test gate
 
 ### Automated (CI `check` job)
 
-- [ ] Path matcher, risk classifier, gate matrix, secret rules (section 4 §14).
-- [ ] Redactor units: money, short values, clashing values, each detector's check. The known-limit test runs, marked expected.
-- [ ] Screenshot masks cover every element rules 1 to 4 name. A masking failure refuses to save.
-- [ ] Secret canary: the marker never reaches any file.
-- [ ] Hands import check: only the gate, the adapter, and fakes import `ports/hands.ts`.
-- [ ] The surface contract suite passes on the snapshot fake.
+- [x] Path matcher, risk classifier, gate matrix, secret rules (section 4 §14).
+- [x] Redactor units: money, short values, clashing values, each detector's check. The known-limit test runs, marked expected.
+- [x] Screenshot masks cover every element rules 1 to 4 name. A masking failure refuses to save.
+- [x] Secret canary: the marker never reaches any file.
+- [x] Hands import check: only the gate, the adapter, and fakes import `ports/hands.ts`.
+- [x] The surface contract suite passes on the snapshot fake.
 
 ### Live (`npm run test:live`)
 
-- [ ] The surface contract suite passes on Playwright.
-- [ ] Network guard: the NCUA link, a redirect off the list, and a jump to `/__test__/faultlog` are all blocked.
+- [x] The surface contract suite passes on Playwright.
+- [x] Network guard: the NCUA link, a redirect off the list, and a jump to `/__test__/faultlog` are all blocked.
 
 ### Owner checks
 

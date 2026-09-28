@@ -29,7 +29,9 @@ export class PlaywrightHands implements Hands {
     const done = ok<ActResult>({ dispatched: true });
     try {
       if (a.type === "navigate") {
-        const res = await page.goto(a.url, { waitUntil: "load", timeout: STEP_TIMEOUT_MS });
+        // Why: the hands only dispatch; the engine waits for state (section 7 §2.1, §5.1). Waiting
+        // for "load" hangs when the page's own script starts a jump the guard then blocks.
+        const res = await page.goto(a.url, { waitUntil: "commit", timeout: STEP_TIMEOUT_MS });
         return res !== null && res.status() >= 500
           ? ok({ dispatched: true, transport: "browser_error_page" })
           : done;
