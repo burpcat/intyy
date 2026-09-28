@@ -63,7 +63,7 @@ Every seam later work plugs into: ports, stores, locks, the CLI shell, identity,
 ## Tasks, in order
 
 - [x] 1. Write `outcome.ts`, `masked.ts`, `secret.ts`. Add type tests: a raw string does not fit where `Masked` is required.
-- [ ] 2. Write every port interface from section 9 §5. Add doc comments that cite the section.
+- [x] 2. Write every port interface from section 9 §5. Add doc comments that cite the section.
 - [ ] 3. Write the clock and ID adapters and their fakes. Test the run ID format.
 - [ ] 4. Write the store contract suites first. Run them against the fakes.
 - [ ] 5. Write the file store adapters. Run the same suites in a temporary data root.
