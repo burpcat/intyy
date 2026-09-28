@@ -67,7 +67,7 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 - [x] 4. Write the tools and their checks. Test stale IDs, mask tokens, unknown outputs, and `done` rules.
 - [x] 5. Write the prompt module, version 1.
 - [x] 6. Write the loop with a scripted planner. Run it on the snapshot surface in `unit`.
-- [ ] 7. Write the Claude adapter with the model call order. Test with a fake HTTP layer: stored bytes equal sent bytes.
+- [x] 7. Write the Claude adapter with the model call order. Test with a fake HTTP layer: stored bytes equal sent bytes.
 - [ ] 8. Write the mailbox adapter and `operator list | show | decide`.
 - [ ] 9. Write the LLM view test: stored prompts hold no canary value.
 - [ ] 10. Write the app policy skeleton. Stop. Ask the owner for the manual look and the paths.

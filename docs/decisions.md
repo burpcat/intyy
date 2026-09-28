@@ -15,6 +15,7 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-26 · M00 · `commander` 15 · The CLI parser, the only runtime dependency so far (build plan §5.5).
 - 2026-09-28 · M01 · `zod` 4 · Zod schemas for every file format and port input (section 9 §5.1). Runtime dependency. `z.toJSONSchema` writes `schemas/`.
 - 2026-09-28 · M02 · `playwright` 1.63, the library only, not `@playwright/test` · It drives Chromium for the surface adapter. Runtime dependency. Build plan §5.5 names it; Vitest runs the tests. The owner runs `npx playwright install chromium` once; it downloads a browser, with no native build step.
+- 2026-09-28 · M03 · `@anthropic-ai/sdk` 0.129 · The planner adapter talks to Claude through the official SDK (M03 spec). Runtime dependency. The lockfile keeps every platform's optional bindings, per the M02 rule.
 
 ## Other decisions
 
@@ -175,3 +176,7 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-28 · M03 · Human answer time is left out of `max_minutes`. Wall time and human time both go on the `run_end` line · Section 6 §6.2 excludes human time.
 - 2026-09-28 · M03 · Discovery asks no start confirmation. Running `intyy discover` is the operator's start · Section 6 §10.4 lists "operator declines the start". A second prompt would ask the person who just typed the command.
 - 2026-09-28 · M03 · The run log writer chains its writes, so lines land in `seq` order even when the gate logs without waiting · The gate's `log` hook is synchronous (M02). Section 3 §6.1 needs one ordered file.
+- 2026-09-28 · M03 · The Claude planner sends no `temperature`. It forces one tool call with `tool_choice: any` and `disable_parallel_tool_use`, and turns thinking off · Section 6 §11.3 asks for temperature 0 and a required tool call. `claude-sonnet-5` rejects sampling settings with a 400. With thinking off, forced tool use is allowed and nothing hides in free text.
+- 2026-09-28 · M03 · The Claude client runs with `maxRetries: 0` and a 120 s timeout. The loop owns the one retry · Section 9 §5.3 allows one retry, then `model_unavailable`. SDK retries would hide failures and overwrite the `llm/` request file.
+- 2026-09-28 · M03 · Any HTTP error, network error, rate limit, or overload maps to `unavailable`; the SDK's own timeout maps to `timeout`; `stop_reason: refusal` maps to `refused`. A reply with no tool call comes back with `call: null` and counts as a bad call · Section 9 §5.3 names four model failures. Section 6 §11.3 makes a reply with no tool call a bad call.
+- 2026-09-28 · M03 · Each turn is one stateless request: the cached system prompt and tools, then one user message with the picture and the turn text · Section 6 §11.2 puts history in the turn message. Only that message changes, so the cache holds (§11.3).
