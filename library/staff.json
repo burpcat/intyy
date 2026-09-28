@@ -1,0 +1,11 @@
+{
+  "schema": "intyy.staff/1.0",
+  "staff": [
+    { "id": "op_017", "roles": { "*": ["operator", "reviewer"] } },
+    {
+      "id": "op_022",
+      "roles": { "keystone": ["approver"], "lakeshore": ["approver"], "*": ["operator", "reviewer"] }
+    },
+    { "id": "op_031", "roles": { "*": ["approver"] } }
+  ]
+}

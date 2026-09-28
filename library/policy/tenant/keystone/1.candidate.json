@@ -1,0 +1,9 @@
+{
+  "schema": "intyy.policy/1.0",
+  "scope": { "level": "tenant", "tenant": "keystone" },
+  "revision": 1,
+  "reason": "Keystone opts in the three thin-slice capabilities.",
+  "capabilities": {
+    "allow": ["kvfcu/sign_in@1", "kvfcu/find_account_by_reference@1", "kvfcu/open_share_subaccount@1"]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "intyy.settings/1.0",
+  "tenant": "keystone",
+  "revision": 1,
+  "apps": {
+    "kvfcu": {
+      "origin": "http://127.0.0.1:8080",
+      "app_version": "9.2",
+      "environment": "test",
+      "locale": "en-US",
+      "time_zone": "America/New_York",
+      "extra_origins": [],
+      "secrets": {
+        "operator_username": { "source": "env", "key": "INTYY_KEYSTONE_KVFCU_OPERATOR_USERNAME" },
+        "operator_password": { "source": "env", "key": "INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD" }
+      }
+    }
+  },
+  "system_secrets": {
+    "request_index_keys": [
+      { "key_id": "k1", "source": "env", "key": "INTYY_KEYSTONE_REQUEST_INDEX_KEY_K1", "status": "current" }
+    ]
+  }
+}
