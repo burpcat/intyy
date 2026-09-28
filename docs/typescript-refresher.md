@@ -143,3 +143,23 @@ String(s);           // "[secret]"
 ```
 
 - **Why intyy uses it:** a `Secret` must never print its value (section 9 §5.1). A `#` field cannot leak through a log line.
+
+## 10. Async generators and `for await`
+
+- **An `async function*`** is an async generator. It `yield`s values one at a time, and may `await` between them.
+- **`for await (const x of source)`** reads each value as it arrives. The loop ends when the generator returns.
+- **A `finally` block** in the generator runs when the loop ends early, too. It is the place to clean up.
+
+```ts
+async function* ticks(count: number): AsyncGenerator<number> {
+  try {
+    for (let i = 1; i <= count; i += 1) yield i;
+  } finally {
+    // runs on return, on break, and on error
+  }
+}
+
+for await (const t of ticks(3)) console.log(t); // 1, 2, 3
+```
+
+- **Why intyy uses it:** `Eyes.events()` returns surface events as an `AsyncIterable`. The engine reads them with `for await` (section 9 §5.2).

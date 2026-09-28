@@ -1,11 +1,22 @@
 // The surface port, hands half: act on one live session. Only the gate, the Playwright adapter,
 // and fakes may import this file. Follows design section 9 §5.2 and build plan section 10 §5.3.
-import type { Opaque } from "./opaque.js";
 import type { Outcome } from "./outcome.js";
-import type { Eyes, LeaseToken, SessionConfig, SurfaceFactory } from "./surface.js";
+import type { Secret } from "./secret.js";
+import type { ElementRef, Eyes, LeaseToken, SessionConfig, SurfaceFactory } from "./surface.js";
 
-/** One resolved action: a target element and what to do. Secrets arrive as opaque values. Section 7. M02. */
-export type ResolvedAction = Opaque<"ResolvedAction">;
+/**
+ * One resolved action: what to do, and to which element (section 9 §5.2). The core has already
+ * voted on the target. A secret arrives as an opaque value; only the hands open it (section 4 §8.5).
+ * `read` is not here: reading is the eyes' job.
+ */
+export type ResolvedAction =
+  | { type: "navigate"; url: string }
+  | { type: "click"; target: ElementRef }
+  | { type: "type"; target: ElementRef; text: string | Secret }
+  | { type: "select"; target: ElementRef; option: string }
+  | { type: "set_checked"; target: ElementRef; checked: boolean }
+  | { type: "press"; key: string; target: ElementRef | null }
+  | { type: "scroll"; direction: "up" | "down" };
 
 /** What an action did. A transport failure is part of the answer, not a thrown error (section 7 §7.2). */
 export type ActResult = {
