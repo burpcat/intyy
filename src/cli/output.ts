@@ -1,0 +1,52 @@
+// Output rules: the answer goes to standard output; progress, warnings, and errors to standard error.
+// Follows design section 9 §7.4 and section 4 §9.14 (raw outputs only on a terminal).
+
+/** The streams and environment a command runs with. Tests pass fakes. */
+export type Io = {
+  stdout: { write(text: string): unknown; isTTY?: boolean };
+  stderr: { write(text: string): unknown };
+  env: Record<string, string | undefined>;
+  cwd: string;
+};
+
+/**
+ * A command's answer. `raw` is true when raw sensitive outputs may print: on a terminal, or with
+ * `--reveal-outputs` where allowed (section 9 §7.4). M01 answers hold no sensitive outputs.
+ */
+export type Answer = {
+  text(raw: boolean): string;
+  data(raw: boolean): unknown;
+};
+
+/** How to print. */
+export type PrintOptions = { json: boolean; reveal: boolean };
+
+/** Prints the answer. `--json` prints exactly one JSON document; otherwise human text. */
+export function printAnswer(io: Io, answer: Answer, opts: PrintOptions): void {
+  const raw = io.stdout.isTTY === true || opts.reveal;
+  if (opts.json) io.stdout.write(`${JSON.stringify(answer.data(raw), null, 2)}\n`);
+  else io.stdout.write(ensureNewline(answer.text(raw)));
+}
+
+/**
+ * Prints an error. The human text always goes to standard error. With `--json`, standard output
+ * still gets its one document: `{ "error": { "code", "message" } }`.
+ */
+export function printError(io: Io, code: number, message: string, opts: PrintOptions): void {
+  io.stderr.write(ensureNewline(`intyy: ${message}`));
+  if (opts.json) io.stdout.write(`${JSON.stringify({ error: { code, message } }, null, 2)}\n`);
+}
+
+/** Prints one progress or warning line to standard error. */
+export function progress(io: Io, line: string): void {
+  io.stderr.write(ensureNewline(line));
+}
+
+/** A simple answer: the same data as JSON, and a text form. */
+export function answer(data: unknown, text: string): Answer {
+  return { text: () => text, data: () => data };
+}
+
+function ensureNewline(text: string): string {
+  return text.endsWith("\n") ? text : `${text}\n`;
+}
