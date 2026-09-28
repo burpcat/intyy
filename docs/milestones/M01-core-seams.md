@@ -65,7 +65,7 @@ Every seam later work plugs into: ports, stores, locks, the CLI shell, identity,
 - [x] 1. Write `outcome.ts`, `masked.ts`, `secret.ts`. Add type tests: a raw string does not fit where `Masked` is required.
 - [x] 2. Write every port interface from section 9 §5. Add doc comments that cite the section.
 - [x] 3. Write the clock and ID adapters and their fakes. Test the run ID format.
-- [ ] 4. Write the store contract suites first. Run them against the fakes.
+- [x] 4. Write the store contract suites first. Run them against the fakes.
 - [ ] 5. Write the file store adapters. Run the same suites in a temporary data root.
 - [ ] 6. Add durable append to the evidence store. Test a failed write returns `write_failed`.
 - [ ] 7. Write the locks and their tests: busy, fail fast, bounded wait, child shares the hold, stale cleared, other host held.
