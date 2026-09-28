@@ -17,6 +17,7 @@ export type RawElement = {
   href?: string;
   field?: FieldState;
   form?: { id: string; submits: boolean };
+  context?: { column?: string; left?: string };
   unreadable?: true;
   enabled: boolean;
   box: Box | null;
@@ -215,6 +216,25 @@ export function collectElements(arg: CollectArg): RawElement[] {
     return parts.join(" > ");
   };
 
+  /** A cell's column header and the cell to its left: label-rule sources 2 and 3 (section 4 §9.7). */
+  const cellContext = (el: Element): { column?: string; left?: string } | undefined => {
+    if (!(el instanceof HTMLTableCellElement)) return undefined;
+    const out: { column?: string; left?: string } = {};
+    const table = el.closest("table");
+    const headRow = table?.tHead?.rows[0] ?? table?.rows[0];
+    const head = headRow?.cells[el.cellIndex];
+    if (head !== undefined && head !== el && head.tagName === "TH") {
+      const column = textOf(head);
+      if (column !== undefined) out.column = column;
+    }
+    const prev = el.previousElementSibling;
+    if (prev !== null) {
+      const left = textOf(prev);
+      if (left !== undefined) out.left = left;
+    }
+    return out.column === undefined && out.left === undefined ? undefined : out;
+  };
+
   const hasOwnText = (el: Element): boolean =>
     [...el.childNodes].some(
       (n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "",
@@ -264,6 +284,8 @@ export function collectElements(arg: CollectArg): RawElement[] {
     if (href !== undefined) e.href = href;
     const form = formOf(el);
     if (form !== undefined) e.form = form;
+    const context = cellContext(el);
+    if (context !== undefined) e.context = context;
     if (unreadable(el, r)) e.unreadable = true;
     out.push(e);
   }

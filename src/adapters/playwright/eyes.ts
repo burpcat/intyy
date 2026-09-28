@@ -70,6 +70,7 @@ function toElement(s: BrowserState, fi: number, prefix: string, raw: RawElement)
   if (raw.href !== undefined) out.href = raw.href;
   if (raw.field !== undefined) out.field = raw.field;
   if (raw.form !== undefined) out.form = raw.form;
+  if (raw.context !== undefined) out.context = raw.context;
   if (raw.unreadable === true) out.unreadable = true;
   return out;
 }

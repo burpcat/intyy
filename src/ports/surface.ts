@@ -51,6 +51,8 @@ export type SurfaceElement = {
   field?: FieldState;
   /** The form the control sits in, and whether a click on it submits that form (section 4 §7.5, C1). */
   form?: { id: string; submits: boolean };
+  /** Label-rule sources 2 and 3 for a table cell: its column header and the cell to its left (section 4 §9.7). */
+  context?: { column?: string; left?: string };
   /** Mask what you cannot read (section 4 §9.11 rule 4): a canvas, an embed, a frame from another host, or a large image. */
   unreadable?: true;
   enabled: boolean;

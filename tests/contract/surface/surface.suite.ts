@@ -21,6 +21,12 @@ import {
   testPolicy,
   type Opened,
 } from "./gate-kit.js";
+import {
+  boxedElements,
+  maskedCrop,
+  maskedScreenshot,
+} from "../../../src/core/safety/redaction/images.js";
+import { Redactor, redactionRules } from "../../../src/core/safety/redaction/redactor.js";
 import { SITE_PATHS } from "./site.js";
 
 /** A backend under test: a fresh unopened surface over the fixture site at `origin`. */
@@ -238,6 +244,22 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
         const snaps = await g.eyes.snapshots();
         // Why: section 4 §8.6, a secret-filled field is never read back into intyy.
         expect(JSON.stringify([o, snaps, g.lines])).not.toContain(TEST_PASSWORD);
+      });
+
+      test("a masked screenshot boxes a filled field; a button crop is kept", async () => {
+        const g = await start();
+        await act(g, {
+          type: "type",
+          target: find(g.o, "Member ID").ref,
+          value: { kind: "text", text: "100107" },
+        });
+        const r = new Redactor(redactionRules(policy));
+        const o = await look(g.eyes);
+        expect(boxedElements(o, r).map((e) => e.clues.label)).toContain("Member ID");
+        const shot = await maskedScreenshot(g.eyes, r);
+        expect(shot.ok && [...shot.value.slice(0, 8)]).toEqual(PNG);
+        const crop = await maskedCrop(g.eyes, o, find(o, "Search").ref, r);
+        expect(crop.ok).toBe(true);
       });
 
       test("a checkbox and a select change state", async () => {

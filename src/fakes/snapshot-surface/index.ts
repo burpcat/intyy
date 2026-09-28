@@ -49,6 +49,7 @@ export type FakeElement = {
   href?: string;
   field?: FieldState;
   form?: { id: string; submits: boolean };
+  context?: { column?: string; left?: string };
   unreadable?: true;
   enabled?: boolean;
   box?: Box | null;
@@ -216,6 +217,7 @@ class FakeBrowser {
     if (el.tooltip !== undefined) out.tooltip = el.tooltip;
     if (el.href !== undefined) out.href = new URL(el.href, page.url).href;
     if (el.form !== undefined) out.form = el.form;
+    if (el.context !== undefined) out.context = el.context;
     if (el.unreadable === true) out.unreadable = true;
     const field = page.fields.get(el.id);
     if (field !== undefined) out.field = { ...field };
