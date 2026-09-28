@@ -11,7 +11,7 @@ import type {
   SurfaceElement,
   SurfaceEvent,
 } from "../../ports/surface.js";
-import { collectElements, type RawElement } from "./page-script.js";
+import { collectElements, serializeFrame, type RawElement } from "./page-script.js";
 import { SECRET_KEY, STEP_TIMEOUT_MS, type BrowserState } from "./state.js";
 
 /** The dialog's elements (section 7 §9.1). An alert has no Dismiss. */
@@ -72,6 +72,23 @@ function toElement(s: BrowserState, fi: number, prefix: string, raw: RawElement)
   if (raw.form !== undefined) out.form = raw.form;
   if (raw.unreadable === true) out.unreadable = true;
   return out;
+}
+
+/**
+ * The accessibility snapshot in Playwright's line form, `- role "name"`, built from the element
+ * list. Why not Playwright's own: it prints field values, and a secret-filled field's value must
+ * never enter intyy (section 4 §2.6). ponytail: flat, not nested; nest it if a reader needs the tree.
+ */
+export function a11yLines(elements: readonly SurfaceElement[]): string {
+  return elements
+    .map((e) => {
+      const name = e.clues.name ?? e.clues.label;
+      if (e.role === "generic")
+        return e.clues.text === undefined ? null : `- text: ${e.clues.text}`;
+      return name === undefined ? `- ${e.role}` : `- ${e.role} "${name}"`;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 /** The eyes over one Playwright session. */
@@ -151,14 +168,12 @@ export class PlaywrightEyes implements Eyes {
       const parts: string[] = [];
       for (const [fi, frame] of this.s.frames(page).entries()) {
         if (foreign(page, frame)) continue;
-        parts.push(
-          fi === 0
-            ? await frame.content()
-            : `<!-- frame[${String(fi - 1)}] -->\n${await frame.content()}`,
-        );
+        const html = await frame.evaluate(serializeFrame);
+        parts.push(fi === 0 ? html : `<!-- frame[${String(fi - 1)}] -->\n${html}`);
       }
-      const a11y = await page.locator("body").ariaSnapshot({ timeout: STEP_TIMEOUT_MS });
-      return ok({ dom: parts.join("\n"), a11y });
+      const seen = await this.observe();
+      if (!seen.ok) return seen;
+      return ok({ dom: parts.join("\n"), a11y: a11yLines(seen.value.elements) });
     } catch {
       return fail("page_gone");
     }

@@ -27,10 +27,17 @@ import {
   type RiskInput,
 } from "../risk/classify.js";
 import type { Actor, RuleId } from "../rules.js";
+import {
+  SecretInjector,
+  secretErrorText,
+  secretInText,
+  type SecretSources,
+} from "../secrets/injector.js";
 
 /** A value to type. An input names its reference and label, so C1 and the log can use them. */
 export type TypeValue =
   | { kind: "text"; text: string }
+  | { kind: "secret"; name: string }
   | { kind: "input"; ref: string; text: string; label: "pii" | "financial" | "none" };
 
 /** An action someone proposes. `navigate` takes a path or a full address. `read` is the eyes' job. */
@@ -110,15 +117,17 @@ export type GateDeps = {
   lease: () => LeaseToken | null;
   /** Receives every gate line. The log writer adds `seq`, `at`, and `run_id`. */
   log: (line: GateLine) => void;
+  /** Declared secrets, their bindings, and the secret port (section 4 §8). */
+  secrets: SecretSources;
 };
+
+/** Failures `gate.act` may return. `secret_unavailable`: the value vanished after the start check. */
+export type GateFailure = "stale_element" | "page_gone" | "secret_unavailable";
 
 /** The gate's face to the rest of intyy. */
 export interface Gate {
   /** Checks one proposal in the order of section 4 §3.3, then acts only when allowed. */
-  act(
-    p: Proposal,
-    signal?: AbortSignal,
-  ): Promise<Outcome<GateResult, "stale_element" | "page_gone">>;
+  act(p: Proposal, signal?: AbortSignal): Promise<Outcome<GateResult, GateFailure>>;
   /** Marks the last action as settled: nothing is in flight (section 4 §7.9, `risk.in_flight`). */
   settled(): void;
   /** Closes the session. */
@@ -171,6 +180,7 @@ class ActionGate implements Gate {
   /** Forms that received a `financial` input, for C1 (section 4 §7.5). */
   readonly #moneyForms = new Set<string>();
   readonly #declared: PathMatcher[] | null;
+  readonly #secrets: SecretInjector;
 
   constructor(
     private readonly eyes: Eyes,
@@ -180,6 +190,7 @@ class ActionGate implements Gate {
     private readonly closeSession: () => Promise<void>,
   ) {
     this.#declared = deps.run.declaredPaths === null ? null : compile(deps.run.declaredPaths);
+    this.#secrets = new SecretInjector(deps.secrets, deps.policy.paths.case_sensitive);
     void this.#logBrowserBlocks();
   }
 
@@ -228,10 +239,7 @@ class ActionGate implements Gate {
     return { decision, rule, risk, onBlock: decision === "blocked" ? ON_BLOCK[p.actor] : "none" };
   }
 
-  async act(
-    p: Proposal,
-    signal?: AbortSignal,
-  ): Promise<Outcome<GateResult, "stale_element" | "page_gone">> {
+  async act(p: Proposal, signal?: AbortSignal): Promise<Outcome<GateResult, GateFailure>> {
     const { policy, run } = this.deps;
     const a = p.action;
     const block = (
@@ -268,18 +276,29 @@ class ActionGate implements Gate {
       if (!this.#declaredHas(pageUrl)) return block("helper.path", null, { path });
     }
 
-    // Check 4: the value (section 4 §8.5, §6.9). Secrets arrive in M02 task 8.
-    if (a.type === "type") {
-      const v = a.value;
-      if (v.kind === "text" && MASK_TOKEN.test(v.text)) return block("value.mask_token");
-      if (p.actor === "handler" && v.kind === "input") return block("allowlist.action");
-      if (p.actor === "reviewer" && v.kind !== "input") return block("allowlist.action");
-    }
-
-    // Check 5: the risk class (section 4 §7).
     const target =
       "target" in a && a.target !== null ? o.elements.find((e) => e.ref === a.target) : undefined;
     if ("target" in a && a.target !== null && target === undefined) return fail("stale_element");
+
+    // Check 4: the value (section 4 §8.5, §6.9).
+    let action = a;
+    if (a.type === "type") {
+      const v = this.#secretValue(a.value);
+      if (v === "joined") return block("secret.whole_value");
+      action = { ...a, value: v };
+      if (v.kind === "text" && MASK_TOKEN.test(v.text)) return block("value.mask_token");
+      if (p.actor === "handler" && v.kind === "input") return block("allowlist.action");
+      if (p.actor === "reviewer" && v.kind !== "input") return block("allowlist.action");
+      if (v.kind === "secret") {
+        const rule = this.#secrets.check(v.name, o.url, target?.field);
+        if (rule !== null) return block(rule, null, { path });
+      } else if (target?.field?.kind === "password") {
+        // Why: section 4 §8.5, a password field accepts only a password secret.
+        return block("secret.field_kind", null, { path });
+      }
+    }
+
+    // Check 5: the risk class (section 4 §7).
     if (target !== undefined && o.dialog?.kind === "prompt") {
       // Why: section 4 §6.10, intyy cannot know what text is safe to enter.
       return block("browser.prompt");
@@ -333,7 +352,7 @@ class ActionGate implements Gate {
         return this.#go(
           p,
           this.#decide(p, "allowed", "risk.human_approved", risk, extra),
-          a,
+          action,
           true,
           signal,
         );
@@ -347,7 +366,7 @@ class ActionGate implements Gate {
         return this.#go(
           p,
           this.#decide(p, "allowed", "risk.authorized", risk, extra),
-          a,
+          action,
           true,
           signal,
         );
@@ -358,7 +377,7 @@ class ActionGate implements Gate {
     return this.#go(
       p,
       this.#decide(p, "allowed", "risk.allowed", risk, extra),
-      a,
+      action,
       risk !== "idempotent",
       signal,
     );
@@ -425,14 +444,52 @@ class ActionGate implements Gate {
     a: GateAction,
     nonIdempotent: boolean,
     signal?: AbortSignal,
-  ): Promise<Outcome<GateResult, "stale_element" | "page_gone">> {
+  ): Promise<Outcome<GateResult, GateFailure>> {
     this.#lastActor = p.actor;
-    const acted = await this.hands.act(this.#resolve(a), p.lease, signal);
+    const acted =
+      a.type === "type" && a.value.kind === "secret"
+        ? await this.#typeSecret(a, a.value.name, p.lease, p.step, signal)
+        : await this.hands.act(this.#resolve(a), p.lease, signal);
     if (!acted.ok) return acted;
     // Why: forward only. A commit that may have gone out counts as sent (section 4 §7.8, check 3).
     if (result.risk === "irreversible" && acted.value.dispatched !== false) this.#commitSent = true;
     if (nonIdempotent && acted.value.dispatched !== false) this.#inFlight = true;
     return ok({ ...result, act: acted.value });
+  }
+
+  /**
+   * Types a secret. The value is fetched now and dropped after (section 4 §8.5). Any failure,
+   * and any thrown error, carries only the fixed text of §8.7.
+   */
+  async #typeSecret(
+    a: Extract<GateAction, { type: "type" }>,
+    name: string,
+    lease: LeaseToken,
+    step: string | null,
+    signal?: AbortSignal,
+  ): Promise<Outcome<ActResult, GateFailure>> {
+    const fixed = secretErrorText(name, step ?? "the target field");
+    const value = await this.#secrets.fetch(name, signal);
+    if (!value.ok) return value;
+    try {
+      const acted = await this.hands.act(
+        { type: "type", target: a.target, text: value.value },
+        lease,
+        signal,
+      );
+      return acted.ok ? acted : fail(acted.failure, fixed);
+    } catch {
+      // Why: a library error might echo its inputs. Rethrow a bug with the fixed text only.
+      throw new Error(fixed);
+    }
+  }
+
+  /** Reads `{secret.x}` typed as text as secret `x`. Joined secrets come back as `joined`. */
+  #secretValue(v: TypeValue): TypeValue | "joined" {
+    if (v.kind !== "text") return v;
+    const found = secretInText(v.text);
+    if (found === "joined") return "joined";
+    return found === null ? v : { kind: "secret", name: found.name };
   }
 
   /** Turns a gated action into what the hands take. */
@@ -441,6 +498,8 @@ class ActionGate implements Gate {
       case "navigate":
         return { type: "navigate", url: new URL(a.to, this.cfg.origin).href };
       case "type":
+        // Why: secrets go through #typeSecret, which fetches the value at act time.
+        if (a.value.kind === "secret") throw new Error("a secret must go through #typeSecret");
         return { type: "type", target: a.target, text: a.value.text };
       default:
         return a;

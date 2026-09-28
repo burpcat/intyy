@@ -259,8 +259,9 @@ class FakeEyes implements Eyes {
     const page = this.b.active;
     if (!this.b.open || page === null) return Promise.resolve(fail("page_gone"));
     const els = page.screen.elements;
+    // Why: raw snapshots hold no field values, like the adapter's (section 3 §7.6, section 4 §2.6).
     const text = (el: FakeElement): string =>
-      [el.name, el.text, page.fields.get(el.id)?.value].filter((t) => t !== undefined).join(" ");
+      [el.name ?? el.label, el.text].filter((t) => t !== undefined).join(" ");
     const dom =
       page.screen.dom ??
       `<html><body>${els.map((el) => `<div role="${el.role}">${text(el)}</div>`).join("")}</body></html>`;

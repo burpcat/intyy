@@ -14,6 +14,7 @@ import type {
 import {
   DISCOVERY,
   LEASE,
+  TEST_PASSWORD,
   gateConfig,
   openTestGate,
   testDeps,
@@ -219,6 +220,24 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
         });
         expect(r).toMatchObject({ decision: "allowed", act: { dispatched: true } });
         expect(find(await look(g.eyes), "Member ID").field?.value).toBe("100107");
+        // Why: raw snapshots hold no field values (section 3 §7.6).
+        const snaps = await g.eyes.snapshots();
+        expect(snaps.ok && snaps.value.dom + snaps.value.a11y).not.toContain("100107");
+      });
+
+      test("a secret fills a password box and reads back only as filled", async () => {
+        const g = await start();
+        const r = await act(g, {
+          type: "type",
+          target: find(g.o, "Password").ref,
+          value: { kind: "secret", name: "operator_password" },
+        });
+        expect(r).toMatchObject({ decision: "allowed", act: { dispatched: true } });
+        const o = await look(g.eyes);
+        expect(find(o, "Password").field).toEqual({ kind: "password", filled: true });
+        const snaps = await g.eyes.snapshots();
+        // Why: section 4 §8.6, a secret-filled field is never read back into intyy.
+        expect(JSON.stringify([o, snaps, g.lines])).not.toContain(TEST_PASSWORD);
       });
 
       test("a checkbox and a select change state", async () => {

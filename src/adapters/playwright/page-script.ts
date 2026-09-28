@@ -277,3 +277,17 @@ export function markSecretField(el: Element, secretKey: string): void {
   set.add(el);
   w[secretKey] = set;
 }
+
+/**
+ * Serializes the frame's DOM from a copy with every input value and textarea text removed
+ * (section 3 §7.6). Why in the page: a secret-filled field's value never enters intyy (section 4 §2.6).
+ * Runs in the page.
+ */
+export function serializeFrame(): string {
+  const copy = document.documentElement.cloneNode(true) as HTMLElement;
+  for (const el of copy.querySelectorAll("input")) el.removeAttribute("value");
+  for (const el of copy.querySelectorAll("textarea")) el.textContent = "";
+  for (const el of copy.querySelectorAll("option")) el.removeAttribute("selected");
+  const doctype = document.doctype === null ? "" : `<!DOCTYPE ${document.doctype.name}>`;
+  return `${doctype}${copy.outerHTML}`;
+}
