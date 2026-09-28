@@ -61,7 +61,7 @@ One gate that every action must cross, a browser adapter that can only act throu
 
 - [x] 1. Write the path matcher and its tests: every example in section 4 §6.3, plus the normalizing tricks.
 - [x] 2. Write the allowlist per actor (section 4 §6.9), with keys and browser features (§6.10).
-- [ ] 3. Write the risk classifier. Test every row of section 4 §7.12, plus word, role, and context cases.
+- [x] 3. Write the risk classifier. Test every row of section 4 §7.12, plus word, role, and context cases.
 - [ ] 4. Write the redactor, rule by rule, test first. Include the US detectors, ITIN, and the known-limit test (marked expected).
 - [ ] 5. Write the snapshot surface fake and the surface contract suite.
 - [ ] 6. Write the Playwright adapter: session and guard first, then eyes, then hands, then events.

@@ -15,6 +15,13 @@ export type Png = Opaque<"Png">;
 /** A reference to one element. Valid until the next page change. Section 9 §5.2. M02. */
 export type ElementRef = Opaque<"ElementRef">;
 
+/**
+ * A role group: roles that stand in for each other (section 7 §6.1). A stripped button may lose
+ * its `button` role but stays `button_like`. `navigation` is a link to a plain path, a tab, or a tree item.
+ */
+export type RoleGroup =
+  "button_like" | "text_entry" | "choice" | "check" | "navigation" | "container";
+
 /** What a request loads (section 4 §6.8). A document is a page or a frame; a resource is anything else. */
 export type RequestKind = "document" | "resource" | "websocket";
 
