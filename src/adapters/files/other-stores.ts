@@ -8,6 +8,7 @@ import { assertSafeName, assertSafeRelPath } from "../../core/model/safe-path.js
 import type { Masked } from "../../ports/masked.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type {
+  AppendOptions,
   CandidateStore,
   DocId,
   EvidenceStore,
@@ -190,8 +191,12 @@ class FileRunFolder implements RunFolder {
     this.#tmpDir = tmpDir;
   }
 
-  appendEvent(line: Masked<unknown>): Promise<Outcome<void, "write_failed">> {
-    return guardWrite(() => appendLine(join(this.#dir, "events.jsonl"), JSON.stringify(line)));
+  /** Appends one line. `durable` forces it to disk first: the write-ahead rule (section 3 §6.6). */
+  appendEvent(line: Masked<unknown>, opts?: AppendOptions): Promise<Outcome<void, "write_failed">> {
+    const durable = opts?.durable === true;
+    return guardWrite(() =>
+      appendLine(join(this.#dir, "events.jsonl"), JSON.stringify(line), durable),
+    );
   }
 
   async writeFile(
