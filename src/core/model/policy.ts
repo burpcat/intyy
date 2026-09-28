@@ -25,6 +25,9 @@ export const ActionType = z.enum([
   "scroll",
 ]);
 
+/** One action type. Example: `click`. */
+export type ActionType = z.infer<typeof ActionType>;
+
 /** Built-in detectors, US set (updates file §3.1). */
 export const Detector = z.enum(["ssn", "card", "email", "phone", "money"]);
 

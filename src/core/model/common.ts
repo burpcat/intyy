@@ -49,6 +49,11 @@ export const KeyName = z.string().regex(/^[A-Z][A-Za-z0-9]*$/, "a key name like 
 /** Hosts that may use `http` (section 4 §5.4): the local bank app. */
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
+/** True when a URL host name is an IP address. The URL parser writes IPv6 in brackets. */
+function isIpAddress(hostname: string): boolean {
+  return /^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.startsWith("[");
+}
+
 /** True when `origin`'s host is loopback. */
 export function isLoopback(origin: string): boolean {
   return URL.canParse(origin) && LOOPBACK.has(new URL(origin).hostname);
@@ -56,7 +61,8 @@ export function isLoopback(origin: string): boolean {
 
 /**
  * An origin: scheme, host, and port, with no path, user name, or password (section 4 §5.4).
- * `https` only, except a loopback host may use `http`. Example: `http://127.0.0.1:8080`.
+ * `https` only, except a loopback host may use `http`. An IP address only for loopback (§6.2).
+ * Example: `http://127.0.0.1:8080`.
  */
 export const Origin = z.string().superRefine((value, ctx) => {
   if (!URL.canParse(value)) {
@@ -69,6 +75,9 @@ export const Origin = z.string().superRefine((value, ctx) => {
   }
   if (url.origin !== value) {
     ctx.addIssue({ code: "custom", message: `origin holds no path; write ${url.origin}` });
+  }
+  if (isIpAddress(url.hostname) && !LOOPBACK.has(url.hostname)) {
+    ctx.addIssue({ code: "custom", message: "an IP address is allowed only for loopback" });
   }
   if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK.has(url.hostname))) {
     ctx.addIssue({

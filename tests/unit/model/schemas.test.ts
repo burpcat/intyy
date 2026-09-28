@@ -190,6 +190,12 @@ describe("intyy.settings/1.0", () => {
     ).toBe(false);
   });
 
+  test("an IP address origin is allowed only for loopback (section 4 §6.2)", () => {
+    expect(Settings.safeParse(withApp("origin", "https://10.0.0.7")).success).toBe(false);
+    expect(Settings.safeParse(withApp("origin", "https://[2001:db8::1]")).success).toBe(false);
+    expect(Settings.safeParse(withApp("origin", "http://[::1]:8080")).success).toBe(true);
+  });
+
   test("environment is test or production", () => {
     expect(Settings.safeParse(withApp("environment", "staging")).success).toBe(false);
   });

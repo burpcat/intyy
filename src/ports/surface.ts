@@ -15,8 +15,24 @@ export type Png = Opaque<"Png">;
 /** A reference to one element. Valid until the next page change. Section 9 §5.2. M02. */
 export type ElementRef = Opaque<"ElementRef">;
 
-/** The allowlist the network guard enforces. Section 4 §6. M02. */
-export type Allowlist = Opaque<"Allowlist">;
+/** What a request loads (section 4 §6.8). A document is a page or a frame; a resource is anything else. */
+export type RequestKind = "document" | "resource" | "websocket";
+
+/** The allowlist's answer for one address. `irreversible`: arriving there changes data (section 4 §6.4). */
+export type AllowVerdict =
+  | { allowed: true; irreversible: boolean }
+  | { allowed: false; rule: "allowlist.host" | "allowlist.path" | "allowlist.path_malformed" };
+
+/**
+ * The allowlist the network guard enforces: hosts × paths (section 4 §6.1). The core builds it,
+ * so the path rules live once. The adapter only asks.
+ */
+export interface Allowlist {
+  /** Checks one full address, like `http://127.0.0.1:8080/members/100107`. */
+  check(url: string, kind: RequestKind): AllowVerdict;
+  /** Pop-up windows may open inside the allowlist (section 4 §6.10). Else every pop-up is closed. */
+  readonly popups: boolean;
+}
 
 /** The browser viewport size. Section 7. M02. */
 export type Viewport = { width: number; height: number };
