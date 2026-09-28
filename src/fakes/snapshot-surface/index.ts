@@ -260,6 +260,7 @@ class FakeEyes implements Eyes {
         popups: this.b.popup === null ? 0 : 1,
         dialog: d,
         viewport: this.b.viewport,
+        scroll: { x: 0, y: 0 },
         // Why: section 7 §9.1, while a box is open only its elements are candidates.
         elements:
           d === null

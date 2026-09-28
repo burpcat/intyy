@@ -1,6 +1,8 @@
 // Masked images: which elements get a box in a screenshot, and which crops may be kept.
 // Follows design section 4 §2.7 (mask what you cannot read), §9.11 (what gets a box, drawn at
-// capture, fail closed), §9.12 (image crops), and section 2 §13.4 (crop safety rules).
+// capture, fail closed), §9.12 (image crops), section 2 §13.4 (crop safety rules), and section 6
+// §8.4 (ID tags on the masked picture).
+import type { Marker, Tag } from "../../../ports/marker.js";
 import type { Masked } from "../../../ports/masked.js";
 import { fail, ok, type Outcome } from "../../../ports/outcome.js";
 import type {
@@ -145,4 +147,18 @@ export async function maskedCrop(
   if (boxed.some((b) => b.box !== null && overlaps(b.box, box))) return fail("boxed");
   const crop = await eyes.crop(target, signal);
   return crop.ok ? ok(mask(crop.value)) : fail("stale");
+}
+
+/**
+ * Draws ID tags on a masked screenshot (section 6 §8.4). The result stays masked: the marker
+ * adds only tags like `e6`, which carry no screen data. Null when the marker fails.
+ */
+export async function markScreenshot(
+  marker: Marker,
+  shot: Masked<Png>,
+  tags: readonly Tag[],
+  signal?: AbortSignal,
+): Promise<Masked<Png> | null> {
+  const drawn = await marker.mark(shot, tags, signal);
+  return drawn.ok ? mask(drawn.value) : null;
 }

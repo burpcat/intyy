@@ -107,7 +107,7 @@ export class PlaywrightEyes implements Eyes {
       const dialog = { kind: d.type() as "alert" | "confirm" | "prompt", message: d.message() };
       const elements = dialogElements(this.s, d.type(), d.message());
       // Why: the box blocks page script, so the title cannot be read.
-      return ok({ ...base, title: "", dialog, elements });
+      return ok({ ...base, title: "", scroll: { x: 0, y: 0 }, dialog, elements });
     }
     try {
       const elements: SurfaceElement[] = [];
@@ -128,7 +128,8 @@ export class PlaywrightEyes implements Eyes {
             : ((await (await frame.frameElement()).getAttribute("data-intyy-ref")) ?? undefined);
         for (const raw of raws) elements.push(toElement(prefix, raw, holder));
       }
-      return ok({ ...base, title: await page.title(), dialog: null, elements });
+      const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+      return ok({ ...base, title: await page.title(), scroll, dialog: null, elements });
     } catch {
       return fail("page_gone");
     }

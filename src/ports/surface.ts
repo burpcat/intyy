@@ -79,6 +79,8 @@ export type Observation = {
   popups: number;
   dialog: NativeDialog | null;
   viewport: Viewport;
+  /** How far the active page is scrolled. A box minus this is its place in the screenshot. */
+  scroll: { x: number; y: number };
   elements: readonly SurfaceElement[];
 };
 

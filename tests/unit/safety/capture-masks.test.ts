@@ -62,6 +62,7 @@ const screen: Observation = {
   popups: 0,
   dialog: null,
   viewport: { width: 1280, height: 800 },
+  scroll: { x: 0, y: 0 },
   elements: [
     // Rule 1: text the rules change. The known member ID, and a cell under a "Name" header.
     el("r1_member", { clues: { path: "p", text: "Member 100107" } }),

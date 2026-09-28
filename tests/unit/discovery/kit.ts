@@ -54,6 +54,7 @@ export function screen(elements: SurfaceElement[], extra: Partial<Observation> =
     popups: 0,
     dialog: null,
     viewport: { width: 1280, height: 800 },
+    scroll: { x: 0, y: 0 },
     elements,
     ...extra,
   };
