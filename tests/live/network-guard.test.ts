@@ -1,9 +1,11 @@
 // The network guard on the live bank app: the NCUA footer link, a redirect off the list, and a
 // jump to `/__test__/faultlog` are all blocked. The gate allows each action first, so the guard
-// is what is tested. It also saves one masked screenshot of the start page for the owner check.
+// is what is tested. It also types a made-up value on the start page, never submits it, and
+// saves the masked screenshot to state/var/live-evidence/start_page.png for the owner check.
 // Touches only the bank app's base URL, its NCUA link, and a blocked `/__test__/` jump (spec M02).
 // Design section 4 §6.8, §9.11, §14 ("Network guard"); section 9 §12.2 (instance lock); M02 task 12.
 // Set INTYY_VISIBLE=1 to watch it in a visible browser.
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { playwrightFactory } from "../../src/adapters/playwright/session.js";
@@ -14,6 +16,8 @@ import { SystemIds } from "../../src/adapters/system/ids.js";
 import { capture } from "../../src/core/capture/capture.js";
 import { LockManager } from "../../src/core/locks/manager.js";
 import type { GateAction, GateResult } from "../../src/core/safety/gate/gate.js";
+import { scanForCanaries } from "../../src/core/safety/canary/scan.js";
+import { boxedElements } from "../../src/core/safety/redaction/images.js";
 import { Redactor, redactionRules } from "../../src/core/safety/redaction/redactor.js";
 import type { LockHold } from "../../src/ports/locks.js";
 import type { Observation, SurfaceEvent } from "../../src/ports/surface.js";
@@ -24,13 +28,19 @@ import {
   testPolicy,
   type Opened,
 } from "../contract/surface/gate-kit.js";
-import { tempRoot } from "../unit/safety/canary-kit.js";
+import { readTree, tempRoot } from "../unit/safety/canary-kit.js";
 import { startFixtureServer, type FixtureServer } from "./fixture-server.js";
 
 /** The bank app's only entry point (CONTRACT §1). */
 const BANK = "http://127.0.0.1:8080";
 const VISIBLE = process.env.INTYY_VISIBLE === "1";
 const NCUA = "https://www.ncua.gov";
+
+/** A made-up value for the masking check. It is no member's data and never leaves the field. */
+const MADE_UP = "MASKCHECK4417";
+
+/** Where the masked screenshot for the owner check lands. `state/` is not in git. */
+const OWNER_DIR = join(import.meta.dirname, "../../state/var/live-evidence");
 
 /**
  * The tiny test policy: the start page, the helper's two pages, and `/__test__/*` denied.
@@ -131,15 +141,25 @@ test("the start page loads inside the tiny policy", async () => {
   expect(new URL(o.url).origin, "the start page left the bank origin or was blocked").toBe(BANK);
 });
 
-test("one masked screenshot of the start page is saved for the owner check", async () => {
+test("a made-up value typed on the start page is boxed and never written", async () => {
+  // Why: a page with nothing to mask proves little. Type a made-up value, never submit it,
+  // and check that the saved files hold it nowhere (owner's stronger masking check, M02).
+  const o = await look();
+  const field = o.elements.find((e) => e.field?.kind === "text" && e.field.value === "");
+  expect(field, "no empty text field on the start page").toBeDefined();
+  if (field === undefined) return;
+  await pause();
+  expect(
+    await act({ type: "type", target: field.ref, value: { kind: "text", text: MADE_UP } }),
+  ).toMatchObject({ decision: "allowed" });
+
+  const r = new Redactor(redactionRules(policy));
+  expect(boxedElements(await look(), r).map((e) => e.ref)).toContain(field.ref);
   const t = await tempRoot("intyy-live-evidence-");
-  const store = new FileEvidenceStore({
-    root: join(t.root, "evidence"),
-    tmpDir: join(t.root, "tmp"),
-  });
+  const root = join(t.root, "evidence");
+  const store = new FileEvidenceStore({ root, tmpDir: join(t.root, "tmp") });
   const folder = await store.createRun("keystone", new SystemIds(clock).runId());
   if (!folder.ok) throw new Error("no run folder");
-  const r = new Redactor(redactionRules(policy));
   const got = await capture(
     g.eyes,
     r,
@@ -152,8 +172,15 @@ test("one masked screenshot of the start page is saved for the owner check", asy
     },
   );
   expect(got.ok && got.value.withheld).toBeNull();
-  // Why: the owner opens this file by hand (M02 owner check). It is left in place.
-  console.log(`Masked capture for the owner check: ${join(t.root, "evidence")}`);
+  const files = await readTree(root);
+  expect(files.some((f) => f.path.endsWith("screens/00001_start_page.png"))).toBe(true);
+  expect(scanForCanaries(files, [MADE_UP])).toEqual([]);
+
+  // Why: the owner opens this one file by hand (M02 owner check). A fixed, gitignored path.
+  const shot = files.find((f) => f.path.endsWith(".png"));
+  await mkdir(OWNER_DIR, { recursive: true });
+  await writeFile(join(OWNER_DIR, "start_page.png"), shot?.bytes ?? new Uint8Array());
+  await t.remove();
 });
 
 test("the NCUA footer link is blocked after a human yes", async () => {
