@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.settings/1.0"
+    },
+    "tenant": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "revision": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "apps": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string"
+          },
+          "app_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "test",
+              "production"
+            ]
+          },
+          "locale": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"
+          },
+          "time_zone": {
+            "type": "string"
+          },
+          "extra_origins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secrets": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "const": "env"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^INTYY_[A-Z0-9_]+$"
+                }
+              },
+              "required": [
+                "source",
+                "key"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "origin",
+          "app_version",
+          "environment",
+          "locale",
+          "time_zone",
+          "extra_origins",
+          "secrets"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "system_secrets": {
+      "type": "object",
+      "properties": {
+        "request_index_keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key_id": {
+                "type": "string",
+                "pattern": "^k\\d+$"
+              },
+              "source": {
+                "type": "string",
+                "const": "env"
+              },
+              "key": {
+                "type": "string",
+                "pattern": "^INTYY_[A-Z0-9_]+$"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "current",
+                  "previous"
+                ]
+              }
+            },
+            "required": [
+              "key_id",
+              "source",
+              "key",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "request_index_keys"
+      ],
+      "additionalProperties": false
+    },
+    "approved": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "by",
+        "at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "tenant",
+    "revision",
+    "apps"
+  ],
+  "additionalProperties": false
+}

@@ -71,7 +71,7 @@ export class FileDocumentStore<T> implements DocumentStore<T> {
     if (read.kind === "bad") return fail("invalid", read.detail);
     const check = checkSealed(read.value, line, findLine(index.value, "approved", id, rev));
     if (!check.ok) return check;
-    const parsed = this.#kind.schema.safeParse(read.value);
+    const parsed = this.#kind.parse(read.value);
     if (!parsed.success) return fail("invalid", `${line.path}: ${parsed.error.message}`);
     return ok({
       id,
@@ -91,7 +91,7 @@ export class FileDocumentStore<T> implements DocumentStore<T> {
     const read = await readJson(path);
     if (read.kind === "missing") return fail("not_found", `no candidate for ${id}`);
     if (read.kind === "bad") return fail("invalid", read.detail);
-    const checked = checkCandidate(this.#kind, read.value);
+    const checked = checkCandidate(this.#kind, id, read.value);
     if (!checked.ok) return checked;
     return ok({ id, rev: this.#kind.revOf(checked.value), doc: checked.value });
   }
@@ -117,7 +117,7 @@ export class FileDocumentStore<T> implements DocumentStore<T> {
   /** Writes the candidate as `<rev>.candidate.json`, replacing any other open candidate. */
   async putCandidate(id: DocId, doc: T): Promise<Outcome<void, "invalid" | "conflict">> {
     assertSafeRelPath(id);
-    const checked = checkCandidate(this.#kind, doc);
+    const checked = checkCandidate(this.#kind, id, doc);
     if (!checked.ok) return checked;
     const rev = this.#kind.revOf(checked.value);
     assertSafeRelPath(rev);
@@ -143,7 +143,7 @@ export class FileDocumentStore<T> implements DocumentStore<T> {
     const read = await readJson(path);
     if (read.kind !== "ok")
       return fail("invalid", read.kind === "bad" ? read.detail : `no candidate for ${id}`);
-    const checked = checkCandidate(this.#kind, read.value);
+    const checked = checkCandidate(this.#kind, id, read.value);
     if (!checked.ok) return checked;
     const rev = this.#kind.revOf(checked.value);
     const hash = sealHash(read.value);

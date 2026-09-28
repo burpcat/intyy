@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.config/1.0"
+    },
+    "library": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publish": {
+      "type": "string",
+      "minLength": 1
+    },
+    "default_tenant": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "model_keys": {
+      "type": "object",
+      "properties": {
+        "claude": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "jev": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        }
+      },
+      "required": [
+        "claude",
+        "jev"
+      ],
+      "additionalProperties": false
+    },
+    "canary_members": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\d+$"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "library",
+    "state",
+    "publish",
+    "default_tenant",
+    "model_keys",
+    "canary_members"
+  ],
+  "additionalProperties": false
+}

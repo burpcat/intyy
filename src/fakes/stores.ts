@@ -84,7 +84,7 @@ export class FakeDocumentStore<T> implements DocumentStore<T> {
   /** Writes or replaces the candidate. */
   putCandidate(id: DocId, doc: T): Promise<Outcome<void, "invalid" | "conflict">> {
     assertSafeRelPath(id);
-    const checked = checkCandidate(this.#kind, doc);
+    const checked = checkCandidate(this.#kind, id, doc);
     if (!checked.ok) return Promise.resolve(checked);
     const rev = this.#kind.revOf(checked.value);
     if (findLine(this.#index, "sealed", id, rev))
@@ -141,7 +141,7 @@ export class FakeDocumentStore<T> implements DocumentStore<T> {
 
   #candidate(id: DocId): Outcome<Candidate<T>, "not_found" | "invalid"> {
     if (!this.#candidates.has(id)) return fail("not_found", `no candidate for ${id}`);
-    const checked = checkCandidate(this.#kind, this.#candidates.get(id));
+    const checked = checkCandidate(this.#kind, id, this.#candidates.get(id));
     if (!checked.ok) return checked;
     return ok({ id, rev: this.#kind.revOf(checked.value), doc: checked.value });
   }
@@ -152,7 +152,7 @@ export class FakeDocumentStore<T> implements DocumentStore<T> {
     if (!line || raw === undefined) return fail("not_found", `${id} ${rev} is not sealed`);
     const check = checkSealed(raw, line, findLine(this.#index, "approved", id, rev));
     if (!check.ok) return check;
-    const parsed = this.#kind.schema.safeParse(raw);
+    const parsed = this.#kind.parse(raw);
     if (!parsed.success) return fail("invalid", issues(parsed.error));
     return ok({
       id,

@@ -9,10 +9,15 @@ import type { IndexLine } from "./store-index.js";
 export type DocKind<T> = {
   /** The index line's `kind`. Examples: `policy`, `settings`. */
   name: string;
-  /** The record's schema. */
-  schema: z.ZodType<T>;
+  /** Checks a record against its schema. A function, so a kind may pick a schema by content. */
+  parse(raw: unknown): z.ZodSafeParseResult<T>;
   /** The revision a document declares. Example: policy `revision: 3` gives `"3"`. */
   revOf(doc: T): string;
+  /**
+   * The store ID a document's own fields name. The store checks it matches, because folder
+   * names never decide meaning (section 9 §6.2). Example: a keystone tenant layer names `tenant/keystone`.
+   */
+  idOf?(doc: T): string;
 };
 
 /** The seal hash: canonical JSON of the document without its top-level `approved` block. */
@@ -58,16 +63,28 @@ export function checkSealed(
   return fail("hash_mismatch", `${sealed.path} approval does not match the index`);
 }
 
-/** Checks a document is fit to be a candidate: it passes its schema and carries no approval. */
-export function checkCandidate<T>(kind: DocKind<T>, doc: unknown): Outcome<T, "invalid"> {
-  const parsed = kind.schema.safeParse(doc);
-  if (!parsed.success)
-    return fail(
-      "invalid",
-      parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
-    );
+/**
+ * Checks a document is fit to be the candidate for `id`: it passes its schema, carries no
+ * approval, and its own fields name `id`.
+ */
+export function checkCandidate<T>(
+  kind: DocKind<T>,
+  id: string,
+  doc: unknown,
+): Outcome<T, "invalid"> {
+  const parsed = kind.parse(doc);
+  if (!parsed.success) return fail("invalid", issueText(parsed.error));
   if (approvedBlock(doc) !== undefined) return fail("invalid", "a candidate has no approved block");
+  const named = kind.idOf?.(parsed.data);
+  if (named !== undefined && named !== id) {
+    return fail("invalid", `the file names ${named}, but it is stored as ${id}`);
+  }
   return ok(parsed.data);
+}
+
+/** One line per Zod issue: `path: message`. */
+export function issueText(error: z.ZodError): string {
+  return error.issues.map((i) => `${i.path.join(".") || "(file)"}: ${i.message}`).join("; ");
 }
 
 /** Checks one approval: once only, and never by the sealer (section 9 §6.4, four eyes). */

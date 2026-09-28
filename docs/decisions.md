@@ -45,4 +45,9 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-28 · M01 · `Opaque<Name>` in `src/ports/opaque.ts` brands every placeholder type · One helper replaces about 20 hand-written brands like build plan §5.3's `SurfaceFactory`. Same effect.
 - 2026-09-28 · M01 · The lock rules live once, in `src/core/locks/manager.ts`, over a small `LockSlots` interface · Files and memory supply only storage. The order, parent, stale, and wait rules cannot drift between the adapter and its fake.
 - 2026-09-28 · M01 · A lock file is created by hard-linking a finished temp file to the lock name · The link fails if the name exists, so create stays exclusive. A reader never sees half a lock file.
+- 2026-09-28 · M01 · Settings secret bindings must name an `INTYY_` variable · Section 4 §8.3 fixes that convention. A secret value pasted into `key` then fails the load (§5.4).
+- 2026-09-28 · M01 · A missing policy block or field counts as its strictest value · Section 4 §4.4 makes every block optional. Deny by default (§2.1) fills the gap.
+- 2026-09-28 · M01 · Browser switches accept only the values the design names · `block` for downloads, uploads, and service workers; `allowlist` or `block` for pop-ups; `surface` for dialogs. Section 4 §6.10 was not in M01's reading.
+- 2026-09-28 · M01 · The full path-pattern parse and the ID format parse wait for M02 · M01 checks that a pattern starts with `/` and has no spaces. M02 builds the path matcher and the redactor (section 4 §6.3, §9.8).
+- 2026-09-28 · M01 · `DocKind` takes a `parse` function and an optional `idOf` · Policy errors then name the fields of the file's own level. A file stored under another ID fails the load (section 9 §6.2).
 - 2026-09-28 · M01 · A lock file that does not parse counts as held · When unsure, assume the worst (section 4 §2.3). `run sweep --force-unlock` clears it.

@@ -69,7 +69,7 @@ Every seam later work plugs into: ports, stores, locks, the CLI shell, identity,
 - [x] 5. Write the file store adapters. Run the same suites in a temporary data root.
 - [x] 6. Add durable append to the evidence store. Test a failed write returns `write_failed`.
 - [x] 7. Write the locks and their tests: busy, fail fast, bounded wait, child shares the hold, stale cleared, other host held.
-- [ ] 8. Write the config, staff, policy, settings, index, and lock schemas.
+- [x] 8. Write the config, staff, policy, settings, index, and lock schemas.
 - [ ] 9. Write the policy merge. Test that a loosening layer fails to load, and that the hash is stable.
 - [ ] 10. Write the CLI shell: flags, output rules, exit codes, the `.env` loader, role checks, the sweep stub.
 - [ ] 11. Write the test that no command accepts an input value as a flag.

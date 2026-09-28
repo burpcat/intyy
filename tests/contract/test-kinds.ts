@@ -21,7 +21,7 @@ export type TestDoc = z.infer<typeof TestDoc>;
 /** The test kind the document store suite uses. */
 export const testKind: DocKind<TestDoc> = {
   name: "test",
-  schema: TestDoc,
+  parse: (raw) => TestDoc.safeParse(raw),
   revOf: (d) => String(d.revision),
 };
 
