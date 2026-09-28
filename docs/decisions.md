@@ -43,3 +43,6 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-28 · M01 · Sensitive label words go in a new policy field, `redaction.labels`, a map from kind to words · Section 4 §9.7 lists the labels but names no field. Owner approved.
 - 2026-09-28 · M01 · `DocumentStore` gains `getCandidate`, and `approve` may also return `not_found`, `hash_mismatch`, or `invalid` · `check` and `edit` must read a candidate. Approve reads the sealed file first, and every read checks the hash.
 - 2026-09-28 · M01 · `Opaque<Name>` in `src/ports/opaque.ts` brands every placeholder type · One helper replaces about 20 hand-written brands like build plan §5.3's `SurfaceFactory`. Same effect.
+- 2026-09-28 · M01 · The lock rules live once, in `src/core/locks/manager.ts`, over a small `LockSlots` interface · Files and memory supply only storage. The order, parent, stale, and wait rules cannot drift between the adapter and its fake.
+- 2026-09-28 · M01 · A lock file is created by hard-linking a finished temp file to the lock name · The link fails if the name exists, so create stays exclusive. A reader never sees half a lock file.
+- 2026-09-28 · M01 · A lock file that does not parse counts as held · When unsure, assume the worst (section 4 §2.3). `run sweep --force-unlock` clears it.
