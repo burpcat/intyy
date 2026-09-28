@@ -39,7 +39,9 @@ export class PlaywrightHands implements Hands {
         return done;
       }
       if (a.type === "press" && a.target === null) {
-        await page.keyboard.press(a.key);
+        const step = page.keyboard.press(a.key);
+        step.catch(() => undefined);
+        await Promise.race([step, this.s.nextDialog()]);
         return done;
       }
       if (a.target === null) return done;
@@ -60,9 +62,17 @@ export class PlaywrightHands implements Hands {
       }
 
       const opts = { timeout: STEP_TIMEOUT_MS };
+      /**
+       * Why: an action that opens a native box does not return while the box is open. The box
+       * is proof the action went out, so it counts as dispatched; the action ends once answered.
+       */
+      const orDialog = async (step: Promise<unknown>): Promise<void> => {
+        step.catch(() => undefined);
+        await Promise.race([step, this.s.nextDialog()]);
+      };
       switch (a.type) {
         case "click":
-          await t.locator.click(opts);
+          await orDialog(t.locator.click(opts));
           return done;
         case "type": {
           const secret = a.text instanceof Secret;
@@ -78,7 +88,7 @@ export class PlaywrightHands implements Hands {
           await t.locator.setChecked(a.checked, opts);
           return done;
         case "press":
-          await t.locator.press(a.key, opts);
+          await orDialog(t.locator.press(a.key, opts));
           return done;
       }
     } catch (e) {

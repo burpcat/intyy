@@ -22,11 +22,35 @@ export class BrowserState {
   dialog: Dialog | null = null;
   generation = 0;
   closed = false;
+  #dialogSignal!: Promise<"dialog">;
+  #resolveDialog!: () => void;
 
   constructor(
     readonly hub: EventHub<SurfaceEvent>,
     readonly viewport: Viewport,
-  ) {}
+  ) {
+    this.#arm();
+  }
+
+  /** Makes a fresh "a dialog opened" signal. */
+  #arm(): void {
+    this.#dialogSignal = new Promise((resolve) => {
+      this.#resolveDialog = () => {
+        resolve("dialog");
+      };
+    });
+  }
+
+  /** Resolves when the next native dialog opens. */
+  nextDialog(): Promise<"dialog"> {
+    return this.#dialogSignal;
+  }
+
+  /** Called when a native dialog opens: wakes every action waiting on it. */
+  dialogOpened(): void {
+    this.#resolveDialog();
+    this.#arm();
+  }
 
   /** The active page, or null when every window is gone. */
   get active(): Page | null {

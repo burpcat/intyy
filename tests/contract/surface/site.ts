@@ -101,6 +101,22 @@ export function fixtureSite(origin: string): FakeSite {
             box: box(240),
           },
           {
+            id: "joint",
+            role: "checkbox",
+            roleGroup: "check",
+            label: "Joint",
+            field: { kind: "check", checked: false },
+            box: box(304),
+          },
+          {
+            id: "kind",
+            role: "combobox",
+            roleGroup: "choice",
+            label: "Kind",
+            field: { kind: "choice", value: "Savings" },
+            box: box(336),
+          },
+          {
             id: "chart",
             role: "img",
             roleGroup: "container",

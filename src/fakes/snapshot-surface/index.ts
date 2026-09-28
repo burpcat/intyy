@@ -2,7 +2,13 @@
 // graph: screens by path, and what each click does. Follows design section 9 §5.2 and §5.9,
 // section 7 §9 (native dialogs and pop-ups), and section 4 §6.8 (the network guard).
 import { EventHub } from "../../core/events/hub.js";
-import type { ActResult, Hands, ResolvedAction, SurfaceSession } from "../../ports/hands.js";
+import {
+  toFactory,
+  type ActResult,
+  type Hands,
+  type ResolvedAction,
+  type SurfaceSession,
+} from "../../ports/hands.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import { Secret } from "../../ports/secret.js";
 import type {
@@ -16,6 +22,7 @@ import type {
   Png,
   RoleGroup,
   SessionConfig,
+  SurfaceFactory,
   SurfaceElement,
   SurfaceEvent,
   Viewport,
@@ -368,4 +375,9 @@ export class SnapshotSurface implements SurfaceSession {
     }
     return Promise.resolve();
   }
+}
+
+/** An unopened snapshot surface over a scripted site. Only the gate can open it. */
+export function snapshotFactory(site: FakeSite): SurfaceFactory {
+  return toFactory(new SnapshotSurface(site));
 }

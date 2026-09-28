@@ -25,7 +25,9 @@ const PAGES: Record<string, string> = {
     <button type="button" onclick="confirm('Delete member?')">Delete</button>
     <button type="button" onclick="window.open('/lookup')">Lookup</button>
     <iframe src="/frame" title="help" width="300" height="60"></iframe>
-    <canvas width="200" height="100" aria-label="Chart"></canvas>`,
+    <canvas width="200" height="100" aria-label="Chart"></canvas>
+    <p><label><input type="checkbox"> Joint</label></p>
+    <p><label for="kind">Kind</label> <select id="kind"><option>Savings</option><option>Checking</option></select></p>`,
   ),
   "/frame": page("Frame", `<button type="button">Help</button>`),
   "/members": page("Members", `<h1>Members</h1>`),

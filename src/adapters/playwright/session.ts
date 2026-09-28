@@ -3,7 +3,7 @@
 // §6.8 (the guard), §6.10 (browser features), §8.8 (browser hygiene), and section 7 §9.
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright";
 import { EventHub } from "../../core/events/hub.js";
-import type { Hands, SurfaceSession } from "../../ports/hands.js";
+import { toFactory, type Hands, type SurfaceSession } from "../../ports/hands.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type {
   Allowlist,
@@ -11,6 +11,7 @@ import type {
   RequestKind,
   SessionConfig,
   SurfaceEvent,
+  SurfaceFactory,
 } from "../../ports/surface.js";
 import { PlaywrightEyes } from "./eyes.js";
 import { PlaywrightHands } from "./hands.js";
@@ -41,7 +42,9 @@ async function guard(
     rule: "allowlist.host" | "allowlist.path" | "allowlist.path_malformed",
   ): Promise<void> => {
     hub.emit({ kind: "network_blocked", url, request: kind, rule });
-    await route.abort("blockedbyclient");
+    // Why: a page load aborted as "blocked by client" commits Chrome's error page. "aborted" acts
+    // like the Stop button: the current page stays, and the request still never leaves.
+    await route.abort(kind === "document" ? "aborted" : "blockedbyclient");
   };
   const first = allowlist.check(request.url(), kind);
   if (!first.allowed) return block(request.url(), first.rule);
@@ -98,6 +101,7 @@ function watchPage(s: BrowserState, page: Page): void {
   // Why: section 4 §6.10, a native box is never answered automatically. Holding it keeps it open.
   page.on("dialog", (d) => {
     s.dialog = d;
+    s.dialogOpened();
     hub.emit({
       kind: "dialog_opened",
       dialog: { kind: d.type() as "alert" | "confirm" | "prompt", message: d.message() },
@@ -211,7 +215,7 @@ export class PlaywrightSurface implements SurfaceSession {
       });
     } catch (e) {
       // Why: a start page the guard blocks leaves a blank window. Anything else is unreachable.
-      if (!(e instanceof Error && /ERR_BLOCKED_BY_CLIENT/.test(e.message))) {
+      if (!(e instanceof Error && /ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/.test(e.message))) {
         await this.close();
         return fail("unreachable");
       }
@@ -228,4 +232,9 @@ export class PlaywrightSurface implements SurfaceSession {
     this.#browser = null;
     await b?.close();
   }
+}
+
+/** An unopened Playwright surface. Only the gate can open it (build plan §5.3). */
+export function playwrightFactory(): SurfaceFactory {
+  return toFactory(new PlaywrightSurface());
 }
