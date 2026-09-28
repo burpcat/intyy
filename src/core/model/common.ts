@@ -1,6 +1,7 @@
 // Small shared schemas: IDs, names, words, patterns, and origins.
 // Follows design section 9 §6.1, §7.7, section 4 §4.8 (loader checks), and §5.4.
 import { z } from "zod";
+import { parsePattern } from "../safety/policy/paths.js";
 
 /** A tenant ID. Example: `keystone`. */
 export const TenantId = z.string().regex(/^[a-z][a-z0-9_-]*$/, "a tenant ID is lower case");
@@ -26,10 +27,16 @@ export const Word = z
   .regex(new RegExp(`^${WORD_PART}(?: ${WORD_PART}){0,2}$`), "lower case, one to three words");
 
 /**
- * A path pattern: starts with `/`, no spaces (section 4 §4.8). Example: `/members/*`.
- * M02's path matcher adds the full parse (section 4 §6.3).
+ * A path pattern (section 4 §4.8, §6.3). Example: `/members/*`. The regex is the part JSON Schema
+ * can show. The path matcher's parse adds the rest.
  */
-export const PathPattern = z.string().regex(/^\/\S*$/, "a path pattern starts with /");
+export const PathPattern = z
+  .string()
+  .regex(/^\/\S*$/, "a path pattern starts with /")
+  .superRefine((value, ctx) => {
+    const p = parsePattern(value);
+    if (!p.ok) ctx.addIssue({ code: "custom", message: p.detail ?? "not a path pattern" });
+  });
 
 /** A capability pattern (section 4 §4.6). Examples: `kvfcu/*@1`, `kvfcu/close_account@*`, `*`. */
 export const CapabilityPattern = z
