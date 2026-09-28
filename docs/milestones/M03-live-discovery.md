@@ -69,7 +69,7 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 - [x] 6. Write the loop with a scripted planner. Run it on the snapshot surface in `unit`.
 - [x] 7. Write the Claude adapter with the model call order. Test with a fake HTTP layer: stored bytes equal sent bytes.
 - [x] 8. Write the mailbox adapter and `operator list | show | decide`.
-- [ ] 9. Write the LLM view test: stored prompts hold no canary value.
+- [x] 9. Write the LLM view test: stored prompts hold no canary value.
 - [ ] 10. Write the app policy skeleton. Stop. Ask the owner for the manual look and the paths.
 - [ ] 11. Draft `sign_in.json` with the owner. Stop. Ask the owner to run the real discovery.
 - [ ] 12. Run the canary scan over the run folder. Copy its masked turns into `tests/fixtures/cassettes/sign_in/`.
