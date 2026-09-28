@@ -61,7 +61,7 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 
 ## Tasks, in order
 
-- [ ] 1. Write the run spec schema and `spec new | edit | check`. Test bad example values and missing fields.
+- [x] 1. Write the run spec schema and `spec new | edit | check`. Test bad example values and missing fields.
 - [ ] 2. Write the observation builder. Test masking, caps, frames, dialogs, and visible labels with dropped markup labels.
 - [ ] 3. Write the marked screenshot and text tags.
 - [ ] 4. Write the tools and their checks. Test stale IDs, mask tokens, unknown outputs, and `done` rules.

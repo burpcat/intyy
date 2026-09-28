@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Config } from "../src/core/model/config.js";
 import { LockFile } from "../src/core/model/lock.js";
 import { Policy } from "../src/core/model/policy.js";
+import { RunSpec } from "../src/core/model/runspec.js";
 import { Settings } from "../src/core/model/settings.js";
 import { StaffFile } from "../src/core/model/staff.js";
 import { IndexLine } from "../src/core/model/store-index.js";
@@ -18,6 +19,7 @@ const formats: Record<string, z.ZodType> = {
   "intyy.settings-1.0": Settings,
   "intyy.index-1.0": IndexLine,
   "intyy.lock-1.0": LockFile,
+  "intyy.runspec-1.0": RunSpec,
 };
 
 const dir = join(import.meta.dirname, "..", "schemas");

@@ -80,7 +80,7 @@ function requireKnownStaff(ctx: Ctx): string {
 }
 
 /** Opens `$VISUAL` or `$EDITOR` on a file and waits for it to close. */
-function runEditor(ctx: Ctx, path: string): void {
+export function runEditor(ctx: Ctx, path: string): void {
   const editor = ctx.io.env.VISUAL ?? ctx.io.env.EDITOR;
   if (editor === undefined || editor === "") {
     throw new CliExit(EXIT.usage, "set EDITOR to edit a candidate");

@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { AppId, TenantId } from "../../core/model/common.js";
 import { policyKind } from "../../core/model/kinds.js";
 import type { AppPolicy, GlobalPolicy, Policy, TenantPolicy } from "../../core/model/policy.js";
-import { mergePolicy, type MergeInput } from "../../core/safety/policy/merge.js";
+import { mergePolicy, type MergeInput, type MergeResult } from "../../core/safety/policy/merge.js";
 import type { Ctx } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
 import { answer } from "../output.js";
@@ -150,6 +150,30 @@ async function effectiveApp(ctx: Ctx, opts: Record<string, unknown>): Promise<st
   return apps.length === 1 ? apps[0] : undefined;
 }
 
+/**
+ * Merges the approved layers that exist, for `appName` if given (docs/decisions.md, M01).
+ * `missing` also names an absent tenant layer. A merge that loosens a rule exits 7.
+ */
+export async function effectivePolicy(ctx: Ctx, appName: string | undefined): Promise<MergeResult> {
+  const g = await load(target(ctx, { level: "global" }), ["approved"]);
+  if (!g) throw new CliExit(EXIT.invalid, "policy global has no approved revision");
+  const a =
+    appName === undefined
+      ? undefined
+      : await load(target(ctx, { level: "app", app: appName }), ["approved"]);
+  const t = await load(target(ctx, { level: "tenant", tenant: ctx.tenant }), ["approved"]);
+  const input: MergeInput = { global: as(g.doc, "global") };
+  if (a) input.app = as(a.doc, "app");
+  if (t) input.tenant = as(t.doc, "tenant");
+  if (appName !== undefined) input.appName = appName;
+  const merged = mergePolicy(input);
+  if (!merged.ok) throw new CliExit(EXIT.invalid, `effective policy:\n${merged.detail ?? ""}`);
+  return {
+    ...merged.value,
+    missing: [...merged.value.missing, ...(t ? [] : [`tenant:${ctx.tenant}`])],
+  };
+}
+
 /** Registers the policy commands. */
 export const registerPolicy: Register = (program: Command, ctxOf) => {
   const policy = program
@@ -232,38 +256,25 @@ export const registerPolicy: Register = (program: Command, ctxOf) => {
     .action(
       act(ctxOf, async (ctx, _args, opts) => {
         const appName = await effectiveApp(ctx, opts);
-        const g = await load(target(ctx, { level: "global" }), ["approved"]);
-        if (!g) throw new CliExit(EXIT.invalid, "policy global has no approved revision");
-        const a =
-          appName === undefined
-            ? undefined
-            : await load(target(ctx, { level: "app", app: appName }), ["approved"]);
-        const t = await load(target(ctx, { level: "tenant", tenant: ctx.tenant }), ["approved"]);
-        const input: MergeInput = { global: as(g.doc, "global") };
-        if (a) input.app = as(a.doc, "app");
-        if (t) input.tenant = as(t.doc, "tenant");
-        if (appName !== undefined) input.appName = appName;
-        const merged = mergePolicy(input);
-        if (!merged.ok)
-          throw new CliExit(EXIT.invalid, `effective policy:\n${merged.detail ?? ""}`);
-        const missing = [...merged.value.missing, ...(t ? [] : [`tenant:${ctx.tenant}`])];
-        const layers = Object.entries(merged.value.layers).map(([k, v]) => `${k} ${String(v)}`);
+        const merged = await effectivePolicy(ctx, appName);
+        const missing = merged.missing;
+        const layers = Object.entries(merged.layers).map(([k, v]) => `${k} ${String(v)}`);
         const lines = [
           `layers: ${layers.join(", ")}`,
           ...(missing.length > 0
             ? [`missing: ${missing.join(", ")} (no approved revision yet)`]
             : []),
-          `hash: ${merged.value.hash}`,
+          `hash: ${merged.hash}`,
           "Use --json for the full rules.",
         ];
         return answer(
           {
             tenant: ctx.tenant,
             app: appName ?? null,
-            layers: merged.value.layers,
+            layers: merged.layers,
             missing,
-            hash: merged.value.hash,
-            effective: merged.value.effective,
+            hash: merged.hash,
+            effective: merged.effective,
           },
           lines.join("\n"),
         );
