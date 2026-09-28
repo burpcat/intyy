@@ -64,7 +64,7 @@ One gate that every action must cross, a browser adapter that can only act throu
 - [x] 3. Write the risk classifier. Test every row of section 4 §7.12, plus word, role, and context cases.
 - [x] 4. Write the redactor, rule by rule, test first. Include the US detectors, ITIN, and the known-limit test (marked expected).
 - [x] 5. Write the snapshot surface fake and the surface contract suite. (Action tests arrive with the gate in task 7; owner decision.)
-- [ ] 6. Write the Playwright adapter: session and guard first, then eyes, then hands, then events.
+- [x] 6. Write the Playwright adapter: session and guard first, then eyes, then hands, then events.
 - [ ] 7. Write the gate. Test the gate matrix: each actor × class × run kind gives the right decision.
 - [ ] 8. Write secret injection. Test joined secrets, wrong page, and wrong field kind: all blocked.
 - [ ] 9. Write screenshot boxes, crops, and snapshot masking. Test that boxes cover every element rules 1 to 4 name.

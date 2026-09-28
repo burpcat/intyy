@@ -14,6 +14,7 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-26 · M00 · `dependency-cruiser` 18 · Enforces the four import rules (build plan §5.3).
 - 2026-09-26 · M00 · `commander` 15 · The CLI parser, the only runtime dependency so far (build plan §5.5).
 - 2026-09-28 · M01 · `zod` 4 · Zod schemas for every file format and port input (section 9 §5.1). Runtime dependency. `z.toJSONSchema` writes `schemas/`.
+- 2026-09-28 · M02 · `playwright` 1.63, the library only, not `@playwright/test` · It drives Chromium for the surface adapter. Runtime dependency. Build plan §5.5 names it; Vitest runs the tests. The owner runs `npx playwright install chromium` once; it downloads a browser, with no native build step.
 
 ## Other decisions
 
@@ -85,3 +86,7 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-28 · M02 · A new surface event, `browser_blocked`, reports a blocked download, file chooser, or pop-up. · Section 4 §6.10 logs these features. The section 9 §5.2 event table has no event for them.
 - 2026-09-28 · M02 · A surface element also carries `tooltip`, `href`, `form`, and `unreadable`. · The risk rules read the tooltip and a link's target (section 4 §7.3, §7.4). C1 needs the form (§7.5). Screenshot rule 4 needs to know what the redactor cannot read (§9.11).
 - 2026-09-28 · M02 · One event hub, in `src/core/events/hub.ts`, serves `events()` for both the Playwright adapter and the snapshot fake. · The two then cannot drift, and the contract suite tests one behavior.
+- 2026-09-28 · M02 · The network guard fetches each allowed request itself, with redirects off. It checks the `Location` hop against the allowlist, then hands the answer to the browser · Playwright routes only the first request of a redirect chain. Section 4 §6.6 says each redirect hop is checked.
+- 2026-09-28 · M02 · After `npm install` adds a package, `package-lock.json` keeps every platform's optional binding entries. Only the new package's entries are added · An npm bug (npm/cli#4828) dropped vitest's rolldown bindings for every platform. CI on Linux would then fail to start.
+- 2026-09-28 · M02 · Page code that reads the DOM lives in `src/adapters/playwright/page-script.ts`, with a `/// <reference lib="dom" />` line. The rest of the project keeps `lib: ES2024` without DOM types · Only code that runs inside the browser may use `document` and `window`.
+- 2026-09-28 · M02 · `cli/wiring.ts` does not wire the surface yet. M03 adds it with the first command that opens a browser · No M02 command uses the surface. The spec lists no new commands for M02.

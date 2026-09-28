@@ -8,7 +8,7 @@ export const FAKE_ORIGIN = "http://127.0.0.1:9180";
 
 /** Paths the suite's allowlist allows. `/__test__/*` is denied, as in the kvfcu app layer. */
 export const SITE_PATHS = {
-  allow: ["/", "/members", "/lookup"],
+  allow: ["/", "/members", "/lookup", "/frame"],
   deny: ["/__test__/*"],
   irreversible: [],
   case_sensitive: true,
