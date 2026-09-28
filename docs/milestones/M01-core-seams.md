@@ -1,6 +1,6 @@
 # M01 — Core seams
 
-> **Phase:** A · **Size:** M · **Depends on:** M00 · **Status:** not started
+> **Phase:** A · **Size:** M · **Depends on:** M00 · **Status:** done
 
 ## Read first
 
