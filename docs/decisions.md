@@ -50,4 +50,7 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-28 · M01 · Browser switches accept only the values the design names · `block` for downloads, uploads, and service workers; `allowlist` or `block` for pop-ups; `surface` for dialogs. Section 4 §6.10 was not in M01's reading.
 - 2026-09-28 · M01 · The full path-pattern parse and the ID format parse wait for M02 · M01 checks that a pattern starts with `/` and has no spaces. M02 builds the path matcher and the redactor (section 4 §6.3, §9.8).
 - 2026-09-28 · M01 · `DocKind` takes a `parse` function and an optional `idOf` · Policy errors then name the fields of the file's own level. A file stored under another ID fails the load (section 9 §6.2).
+- 2026-09-28 · M01 · `risk.reversible_words` merges as an allow list: lower layers may only remove words · A reversible word moves an unsure label below irreversible, so adding one lowers risk (section 4 §2.4). The safe-word exception is for safe words only (§4.2).
+- 2026-09-28 · M01 · The merge compares path and secret-path patterns as plain strings · A tenant may keep or drop an app pattern, not write a narrower one. M02's path matcher can accept a pattern the parent's pattern covers.
+- 2026-09-28 · M01 · A merge reports every problem, one line each, not just the first · Section 4 §4.3 wants loosening to fail loudly. One load then shows the author every mistake.
 - 2026-09-28 · M01 · A lock file that does not parse counts as held · When unsure, assume the worst (section 4 §2.3). `run sweep --force-unlock` clears it.
