@@ -68,7 +68,7 @@ One gate that every action must cross, a browser adapter that can only act throu
 - [x] 7. Write the gate. Test the gate matrix: each actor × class × run kind gives the right decision.
 - [x] 8. Write secret injection. Test joined secrets, wrong page, and wrong field kind: all blocked.
 - [x] 9. Write screenshot boxes, crops, and snapshot masking. Test that boxes cover every element rules 1 to 4 name.
-- [ ] 10. Write the canary scanner and the capture helper.
+- [x] 10. Write the canary scanner and the capture helper.
 - [ ] 11. Write the secret canary test: a scripted run on the snapshot fake types a marked fake secret. Then scan every file written.
 - [ ] 12. Write the live tests: the surface contract suite on Playwright, and the network guard.
 
