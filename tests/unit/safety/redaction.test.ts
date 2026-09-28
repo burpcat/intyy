@@ -354,6 +354,26 @@ describe("per-run tokens (section 4 §9.3)", () => {
   });
 });
 
+describe("structured values (section 3 §6.7)", () => {
+  test("every string inside a value is masked; keys and numbers stay", () => {
+    const r = fresh();
+    r.addKnown({
+      ref: "input.member_id",
+      value: "100107",
+      label: "pii",
+      type: "text",
+      kind: "member",
+    });
+    expect(
+      r.value({ seq: 3, path: "/members/100107", data: { names: ["Name: DANA Q"], ok: true } }),
+    ).toEqual({
+      seq: 3,
+      path: "/members/{input.member_id}",
+      data: { names: ["Name: [name#1]"], ok: true },
+    });
+  });
+});
+
 describe("known limit (section 4 §14)", () => {
   // Why: section 4 §15.3. A name with no label, no input, and no shape leaks. Tracked, not hidden.
   test.fails("a name inside a free sentence is masked", () => {

@@ -239,6 +239,22 @@ export class Redactor {
     );
   }
 
+  /**
+   * Masks every string inside a value: objects, arrays, and their keys' values. Keys and
+   * non-strings stay. The run log writer uses it on each line (section 3 §6.7).
+   */
+  value<T>(v: T): Masked<T> {
+    const walk = (x: unknown): unknown => {
+      if (typeof x === "string") return this.text(x);
+      if (Array.isArray(x)) return x.map(walk);
+      if (x !== null && typeof x === "object") {
+        return Object.fromEntries(Object.entries(x).map(([k, val]) => [k, walk(val)]));
+      }
+      return x;
+    };
+    return mask(walk(v) as T);
+  }
+
   /** Runs rules 2 to 6 on one line. */
   #line(line: string, label: string | undefined): string {
     let segs: Segment[] = [{ text: line, masked: false }];
