@@ -90,8 +90,8 @@ One gate that every action must cross, a browser adapter that can only act throu
 
 ### Owner checks
 
-- [ ] Watch the network guard test once with `visible: true`. The browser never reaches `www.ncua.gov`.
-- [ ] Open one masked screenshot from a live test. Nothing sensitive shows.
+- [x] Watch the network guard test once with `visible: true`. The browser never reaches `www.ncua.gov`.
+- [x] Open one masked screenshot from a live test. Nothing sensitive shows.
 
 ## Evidence produced
 
