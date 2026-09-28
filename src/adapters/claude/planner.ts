@@ -75,6 +75,17 @@ function bodyBytes(body: unknown): Uint8Array<ArrayBuffer> {
   throw new Error("the SDK sent a body intyy cannot store");
 }
 
+/** The planner reply in an API message: its one tool call, or `refused` (section 9 §5.3). */
+export function replyOf(msg: Anthropic.Message): PlannerReply | "refused" {
+  if (msg.stop_reason === "refusal") return "refused";
+  const use = msg.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+  return {
+    call: use === undefined ? null : { name: use.name, input: use.input },
+    model: msg.model,
+    usage: { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens },
+  };
+}
+
 /** The Claude planner. One client per run; retries are the loop's, not the SDK's. */
 export class ClaudePlanner implements Planner {
   readonly #opts: ClaudeOptions;
@@ -127,12 +138,7 @@ export class ClaudePlanner implements Planner {
       if (f === null) throw e;
       return fail(f);
     }
-    if (msg.stop_reason === "refusal") return fail("refused");
-    const use = msg.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-    return ok({
-      call: use === undefined ? null : { name: use.name, input: use.input },
-      model: msg.model,
-      usage: { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens },
-    });
+    const reply = replyOf(msg);
+    return reply === "refused" ? fail("refused") : ok(reply);
   }
 }

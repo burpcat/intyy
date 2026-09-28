@@ -28,7 +28,13 @@ export class FakeOperator implements OperatorPort {
     this.#next += 1;
     if (a !== "silent") return Promise.resolve(ok({ kind: "decided", ...a }));
     return new Promise((resolve) => {
-      signal?.addEventListener("abort", () => { resolve(fail("closed")); }, { once: true });
+      signal?.addEventListener(
+        "abort",
+        () => {
+          resolve(fail("closed"));
+        },
+        { once: true },
+      );
     });
   }
 

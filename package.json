@@ -25,7 +25,8 @@
     "docs:verify": "tsx scripts/docs-verify.ts",
     "bankapp:smoke": "tsx scripts/bankapp-smoke.ts",
     "schemas": "tsx scripts/schemas.ts",
-    "schemas:check": "tsx scripts/schemas.ts --check"
+    "schemas:check": "tsx scripts/schemas.ts --check",
+    "canary:scan": "tsx scripts/canary-scan.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

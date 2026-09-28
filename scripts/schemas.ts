@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { Cassette } from "../src/core/model/cassette.js";
 import { Config } from "../src/core/model/config.js";
 import { LockFile } from "../src/core/model/lock.js";
 import { ClosedFile, DecisionFile, Intervention } from "../src/core/model/mailbox.js";
@@ -24,6 +25,7 @@ const formats: Record<string, z.ZodType> = {
   "intyy.intervention-1.0": Intervention,
   "intyy.decision-1.0": DecisionFile,
   "intyy.closed-1.0": ClosedFile,
+  "intyy.cassette-1.0": Cassette,
 };
 
 const dir = join(import.meta.dirname, "..", "schemas");
