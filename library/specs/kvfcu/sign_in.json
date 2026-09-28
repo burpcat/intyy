@@ -1,0 +1,18 @@
+{
+  "schema": "intyy.runspec/1.0",
+  "kind": "discovery",
+  "caller": {
+    "tenant": "keystone",
+    "agent_id": "op_017"
+  },
+  "app": "kvfcu",
+  "capability": "sign_in",
+  "goal": "Sign in as the operator and reach the home page.",
+  "inputs": [],
+  "outputs": [],
+  "expected_effect": "read_only",
+  "session": null,
+  "entry": "/",
+  "model": "claude-sonnet-5",
+  "prompt": "discovery@1.0"
+}

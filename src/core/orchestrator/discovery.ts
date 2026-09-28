@@ -29,6 +29,8 @@ export const DISCOVERY_VIEWPORT: Viewport = { width: 1280, height: 800 };
 
 /** What one discovery run starts from. The CLI loads and checks each file first. */
 export type DiscoveryInput = {
+  /** The run's ID. The caller makes it first, because the instance lock names its owner. */
+  runId: string;
   spec: RunSpec;
   tenant: string;
   /** The operator who started it. */
@@ -256,7 +258,7 @@ export async function runDiscovery(
   const { spec, policy } = input;
   const prompt = PROMPTS[spec.prompt];
   const app = input.settings.doc.apps[spec.app];
-  const runId = deps.ids.runId();
+  const runId = input.runId;
   const created = await deps.evidence.createRun(input.tenant, runId, deps.signal);
   if (!created.ok) return { runId, status: "failed", code: "evidence_write_failed", problems: [] };
   const folder = created.value;

@@ -27,7 +27,7 @@ const REVEAL_OK = new Set(["replay", "reconcile"]);
 const MODELS_OK = new Set(["replay", "certify", "reconcile"]);
 
 /** Reads the version from package.json. The same path works from src/cli/ and dist/cli/. */
-function readVersion(): string {
+export function readVersion(): string {
   const pkg: unknown = createRequire(import.meta.url)("../../package.json");
   if (
     typeof pkg === "object" &&

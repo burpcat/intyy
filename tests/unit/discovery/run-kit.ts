@@ -242,8 +242,10 @@ export async function run(opts: {
   const planner = opts.planner ?? new ScriptedPlanner(opts.steps ?? SIGN_IN_STEPS);
   const operator = new FakeOperator(opts.answers ?? []);
   const clock = new SteppingClock("2026-09-28T14:00:00.000Z");
+  const ids = new SeededIds(clock);
   const result = await runDiscovery(
     {
+      runId: ids.runId(),
       spec: opts.spec ?? SIGN_IN,
       tenant: "keystone",
       staff: "op_017",
@@ -256,7 +258,7 @@ export async function run(opts: {
     {
       evidence,
       clock,
-      ids: new SeededIds(clock),
+      ids,
       secrets: new MapSecrets(
         opts.secrets ?? {
           INTYY_KEYSTONE_KVFCU_OPERATOR_USERNAME: "teller-one",
