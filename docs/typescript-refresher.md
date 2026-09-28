@@ -69,7 +69,8 @@ function show(o: Outcome<string>): string {
 - **The brand exists only at compile time.** At run time the value is a plain string.
 
 ```ts
-type Masked<T> = T & { readonly __masked: unique symbol };
+declare const maskedBrand: unique symbol;               // a key that exists only at compile time
+type Masked<T> = T & { readonly [maskedBrand]: true };
 
 function logText(text: Masked<string>): void { /* ... */ }
 logText("100107"); // compile error: a raw string is not Masked
@@ -121,3 +122,24 @@ await checkHome(new URL("http://127.0.0.1:8080")); // top-level await in an ES m
 ```
 
 - **Why intyy uses it:** browser steps, file writes, and HTTP calls are all asynchronous. An unawaited step could run out of order.
+
+## 9. `#private` class fields
+
+- **A `#` field** is private at run time, not only at compile time. The old `private` keyword is a compile-time check only.
+- **Code outside the class cannot read it.** `Object.keys`, spreads, `JSON.stringify`, and `console.log` do not see it.
+- **A `static` method inside the class** may still read it on any instance.
+
+```ts
+class Secret {
+  readonly #value: string;
+  constructor(value: string) { this.#value = value; }
+  static open(s: Secret): string { return s.#value; } // allowed: inside the class
+  toString(): string { return "[secret]"; }
+}
+
+const s = new Secret("pw");
+Object.keys(s);      // []
+String(s);           // "[secret]"
+```
+
+- **Why intyy uses it:** a `Secret` must never print its value (section 9 §5.1). A `#` field cannot leak through a log line.
