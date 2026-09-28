@@ -144,6 +144,25 @@ describe("intyy.policy/1.0", () => {
     expect(parsePolicy(bad).success).toBe(false);
   });
 
+  test("a format pattern must parse (section 4 §9.8)", () => {
+    const withFormat = (format: string) => ({
+      ...globalExample,
+      redaction: { formats: [{ format, kind: "member" }] },
+    });
+    expect(parsePolicy(withFormat('"A"9999')).success).toBe(true);
+    expect(parsePolicy(withFormat('"A9999')).success).toBe(false);
+    expect(parsePolicy(withFormat('""9999')).success).toBe(false);
+  });
+
+  test("a path pattern must parse (section 4 §6.3)", () => {
+    const withAllow = (allow: string[]) => ({
+      ...appExample,
+      paths: { allow },
+    });
+    expect(parsePolicy(withAllow(["/members/*"])).success).toBe(true);
+    expect(parsePolicy(withAllow(["/members/../admin"])).success).toBe(false);
+  });
+
   test("errors name the field of the level the file declares", () => {
     const result = parsePolicy({ ...tenantExample, capabilities: { allow: ["not a pattern"] } });
     expect(result.success).toBe(false);

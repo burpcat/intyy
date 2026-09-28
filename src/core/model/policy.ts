@@ -11,6 +11,7 @@ import {
   TenantId,
   Word,
 } from "./common.js";
+import { parseIdFormat } from "../safety/redaction/id-format.js";
 import { Approval } from "./store-index.js";
 
 /** Action types (section 4 §6.9). */
@@ -95,7 +96,18 @@ const RiskWords = {
 };
 
 /** One ID shape pattern for masking (section 4 §9.8). Example: `{ "format": "SH99999999", "kind": "account" }`. */
-const IdFormat = z.object({ format: z.string().min(1), kind: RedactionKind }).strict();
+const IdFormat = z
+  .object({
+    format: z
+      .string()
+      .min(1)
+      .superRefine((value, ctx) => {
+        const re = parseIdFormat(value);
+        if (!re.ok) ctx.addIssue({ code: "custom", message: re.detail ?? "not a format pattern" });
+      }),
+    kind: RedactionKind,
+  })
+  .strict();
 
 const Redaction = z
   .object({
