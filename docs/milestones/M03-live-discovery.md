@@ -79,12 +79,12 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 
 ### Automated (CI `check` job)
 
-- [ ] Run spec checks, element list builder, tool call checks (section 6 §18).
-- [ ] The loop completes a scripted goal on the snapshot surface.
-- [ ] Model call order: stored bytes equal sent bytes; a failed write stops the call.
-- [ ] Two model failures end the run `model_unavailable`.
-- [ ] Discovery approvals: `request.json` written, decision read, `closed.json` written.
-- [ ] LLM view: no canary value in any stored prompt.
+- [x] Run spec checks, element list builder, tool call checks (section 6 §18).
+- [x] The loop completes a scripted goal on the snapshot surface.
+- [x] Model call order: stored bytes equal sent bytes; a failed write stops the call.
+- [x] Two model failures end the run `model_unavailable`.
+- [x] Discovery approvals: `request.json` written, decision read, `closed.json` written.
+- [x] LLM view: no canary value in any stored prompt.
 
 ### Live (`npm run test:live`)
 
