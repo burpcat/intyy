@@ -255,6 +255,11 @@ export class Redactor {
     return mask(walk(v) as T);
   }
 
+  /** True when `label` holds a sensitive label phrase (§9.7), so a text beside it masks whole. */
+  sensitiveLabel(label: string): boolean {
+    return this.#labelKind(label) !== null;
+  }
+
   /** Runs rules 2 to 6 on one line. */
   #line(line: string, label: string | undefined): string {
     let segs: Segment[] = [{ text: line, masked: false }];

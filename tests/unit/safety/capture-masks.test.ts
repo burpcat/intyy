@@ -57,6 +57,7 @@ function el(id: string, extra: Partial<SurfaceElement> = {}): SurfaceElement {
 /** A screen with one element of each kind the rules name, and some that stay visible. */
 const screen: Observation = {
   url: "http://127.0.0.1:9183/",
+  title: "",
   page: "main",
   popups: 0,
   dialog: null,

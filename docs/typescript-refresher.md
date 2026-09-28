@@ -163,3 +163,19 @@ for await (const t of ticks(3)) console.log(t); // 1, 2, 3
 ```
 
 - **Why intyy uses it:** `Eyes.events()` returns surface events as an `AsyncIterable`. The engine reads them with `for await` (section 9 §5.2).
+
+## 11. Tagged templates
+
+- **A tagged template** is a template literal with a function name in front: ``tag`a ${x} b` ``.
+- **The function gets the literal parts and the inserted values apart.** Example: `["a ", " b"]` and `[x]`.
+- **So the function can treat code text and data differently.** Its parameter types can also restrict what may be inserted.
+
+```ts
+function masked(parts: TemplateStringsArray, ...pieces: Masked<string>[]): Masked<string> {
+  return parts.reduce((out, p, i) => out + p + (pieces[i] ?? ""), "") as Masked<string>;
+}
+
+masked`e${id} button "${name}"`; // compiles only when id and name are already Masked
+```
+
+- **Why intyy uses it:** the element list joins masked screen text with fixed words from code (section 6 §8.2). A raw string in a `${}` slot fails to compile (`src/core/safety/redaction/compose.ts`).

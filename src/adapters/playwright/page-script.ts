@@ -270,8 +270,10 @@ export function collectElements(arg: CollectArg): RawElement[] {
   for (const el of document.body.querySelectorAll("*")) {
     const role = roleOf(el);
     if (role === null && !clickable(el) && !hasOwnText(el)) continue;
-    if (["script", "style", "noscript", "option", "label"].includes(el.tagName.toLowerCase()))
-      continue;
+    if (["script", "style", "noscript", "option"].includes(el.tagName.toLowerCase())) continue;
+    // Why: a tied label is its field's `label` clue. An untied one stays as plain text, so
+    // section 6 §13.2 can find the visible label by layout when `KVFCU_DROP_LABELS` cuts the tie.
+    if (el instanceof HTMLLabelElement && el.control !== null) continue;
     const style = window.getComputedStyle(el);
     const r = el.getBoundingClientRect();
     if (style.display === "none" || style.visibility === "hidden") continue;

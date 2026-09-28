@@ -62,7 +62,12 @@ export type FakeElement = {
 };
 
 /** One scripted screen. `dom` and `a11y` override the generated raw snapshots. */
-export type FakeScreen = { elements: readonly FakeElement[]; dom?: string; a11y?: string };
+export type FakeScreen = {
+  elements: readonly FakeElement[];
+  title?: string;
+  dom?: string;
+  a11y?: string;
+};
 
 /** A scripted site: one origin and its screens by path. */
 export type FakeSite = { origin: string; screens: Readonly<Record<string, FakeScreen>> };
@@ -250,6 +255,7 @@ class FakeEyes implements Eyes {
     return Promise.resolve(
       ok({
         url: page.url,
+        title: d === null ? (page.screen.title ?? "") : "",
         page: this.b.popup === null ? "main" : "popup",
         popups: this.b.popup === null ? 0 : 1,
         dialog: d,

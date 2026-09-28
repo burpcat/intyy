@@ -71,6 +71,8 @@ export type NativeDialog = { kind: "alert" | "confirm" | "prompt"; message: stri
 export type Observation = {
   /** The active page's full address. */
   url: string;
+  /** The active page's title. Empty while a native box is open (section 6 §8.1). */
+  title: string;
   /** The active page: the newest open window (section 7 §9.2). */
   page: "main" | "popup";
   /** How many pop-up windows are open. */
