@@ -110,6 +110,23 @@ function buildProgram(io: Io, deps: RunDeps, setCtx: (c: Ctx) => void, ctxOf: ()
   return program;
 }
 
+/**
+ * The command tree alone, for checks that walk every command and option. Nothing runs, so the
+ * streams and the context are never used.
+ */
+export function commandTree(commands: readonly Register[]): Command {
+  const quiet: Io = {
+    stdout: { write: () => true },
+    stderr: { write: () => true },
+    env: {},
+    cwd: "/",
+  };
+  const noCtx = (): Ctx => {
+    throw new Error("the command tree has no context");
+  };
+  return buildProgram(quiet, { commands }, () => undefined, noCtx);
+}
+
 /** Runs one `intyy` call and returns its exit code. Never throws. */
 export async function run(argv: readonly string[], io: Io, deps: RunDeps = {}): Promise<number> {
   let ctx: Ctx | undefined;

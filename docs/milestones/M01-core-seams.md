@@ -72,7 +72,7 @@ Every seam later work plugs into: ports, stores, locks, the CLI shell, identity,
 - [x] 8. Write the config, staff, policy, settings, index, and lock schemas.
 - [x] 9. Write the policy merge. Test that a loosening layer fails to load, and that the hash is stable.
 - [x] 10. Write the CLI shell: flags, output rules, exit codes, the `.env` loader, role checks, the sweep stub.
-- [ ] 11. Write the test that no command accepts an input value as a flag.
+- [x] 11. Write the test that no command accepts an input value as a flag.
 - [ ] 12. Write the staff, policy, and settings commands. Four eyes: approve refuses the sealer, exit 6.
 - [ ] 13. Draft the four library files as candidates. Stop. Ask the owner to seal and approve them.
 
