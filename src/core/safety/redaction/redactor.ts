@@ -43,6 +43,36 @@ export type KnownValue = {
   kind: string;
 };
 
+/** Shapes a fact may take: strings intyy makes itself, never screen or model text. */
+const FACT_SHAPES = [
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/, // an ISO time
+  /^(run|batch|lease|alert)_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]{10}$/, // an ID (section 3 §7.2)
+  /^sha256:[0-9a-f]{64}$/, // a hash
+  /^(screens|dom|a11y|crops|llm|blobs)\/\d{5}_[a-z0-9_]+\.(png|html|yaml|json)$/, // a run file (§7.4)
+];
+
+/**
+ * A string intyy made itself, like a file name or a hash. `Redactor.value` keeps it as is.
+ * Why: the digit-run rule (§9.9) would turn `screens/00031_observation.png` into a token.
+ */
+export class Fact {
+  private constructor(readonly text: string) {}
+
+  /** Makes a fact. A string of any other shape is a bug, so it throws. */
+  static of(text: string): Fact {
+    if (!FACT_SHAPES.some((re) => re.test(text))) throw new Error("not a fact shape");
+    return new Fact(text);
+  }
+
+  /** A fact serializes as its plain text. */
+  toJSON(): string {
+    return this.text;
+  }
+}
+
+/** Shorthand for {@link Fact.of}. */
+export const fact = (text: string): Fact => Fact.of(text);
+
 /** Makes a Masked value. Why a cast: the brand has no runtime form (section 9 §5.1). */
 function mask<T>(value: T): Masked<T> {
   return value as Masked<T>;
@@ -249,11 +279,12 @@ export class Redactor {
   }
 
   /**
-   * Masks every string inside a value: objects, arrays, and their keys' values. Keys and
-   * non-strings stay. The run log writer uses it on each line (section 3 §6.7).
+   * Masks every string inside a value: objects, arrays, and their keys' values. Keys,
+   * non-strings, and facts stay. The run log writer uses it on each line (section 3 §6.7).
    */
   value<T>(v: T): Masked<T> {
     const walk = (x: unknown): unknown => {
+      if (x instanceof Fact) return x.text;
       if (typeof x === "string") return this.text(x);
       if (Array.isArray(x)) return x.map(walk);
       if (x !== null && typeof x === "object") {

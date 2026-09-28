@@ -5,7 +5,7 @@ import type { Masked } from "../../ports/masked.js";
 import type { RunFolder } from "../../ports/stores.js";
 import type { ElementRef, Eyes, Observation, SurfaceElement } from "../../ports/surface.js";
 import { maskedCrop } from "../safety/redaction/images.js";
-import type { Redactor } from "../safety/redaction/redactor.js";
+import { fact, type Fact, type Redactor } from "../safety/redaction/redactor.js";
 import { childrenOf, maskedName } from "./observation.js";
 
 /** Roles that name a container for `within` (section 6 §13.1). */
@@ -19,7 +19,8 @@ export type Fingerprint = {
   text: Masked<string> | null;
   /** Document position and size divided by the viewport size. Scrolling does not move it. */
   region: { x: number; y: number; w: number; h: number } | null;
-  crop: string | null;
+  /** The crop file, a fact the log keeps as is. */
+  crop: Fact | null;
   /** Why no crop was kept, when none was. */
   crop_dropped: string | null;
   path: Masked<string>;
@@ -94,7 +95,7 @@ export async function captureFingerprint(
             w: round(el.box.width / vw),
             h: round(el.box.height / vh),
           },
-    crop: cropPath,
+    crop: cropPath === null ? null : fact(cropPath),
     crop_dropped: crop.ok ? null : crop.failure,
     path: r.text(el.clues.path),
     within: withinOf(r, el, o, kids),

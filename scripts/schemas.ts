@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { Config } from "../src/core/model/config.js";
 import { LockFile } from "../src/core/model/lock.js";
+import { ClosedFile, DecisionFile, Intervention } from "../src/core/model/mailbox.js";
 import { Policy } from "../src/core/model/policy.js";
 import { RunSpec } from "../src/core/model/runspec.js";
 import { Settings } from "../src/core/model/settings.js";
@@ -20,6 +21,9 @@ const formats: Record<string, z.ZodType> = {
   "intyy.index-1.0": IndexLine,
   "intyy.lock-1.0": LockFile,
   "intyy.runspec-1.0": RunSpec,
+  "intyy.intervention-1.0": Intervention,
+  "intyy.decision-1.0": DecisionFile,
+  "intyy.closed-1.0": ClosedFile,
 };
 
 const dir = join(import.meta.dirname, "..", "schemas");

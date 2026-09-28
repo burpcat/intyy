@@ -13,7 +13,7 @@ import type { FullLimits, RunSpec } from "../model/runspec.js";
 import type { RunLog } from "../orchestrator/run-log.js";
 import type { Gate, GateResult, Proposal } from "../safety/gate/gate.js";
 import { masked, maskedTurn, wireBytes } from "../safety/redaction/compose.js";
-import type { Redactor } from "../safety/redaction/redactor.js";
+import { fact, type Redactor } from "../safety/redaction/redactor.js";
 import { captureFingerprint } from "./fingerprint.js";
 import {
   buildScreen,
@@ -235,7 +235,13 @@ async function observe(
     event: "observation",
     step: `t${String(s.turn)}`,
     by: "engine",
-    data: { location: view.location, title: view.title, elements: view.ids.size, files, marked },
+    data: {
+      location: view.location,
+      title: view.title,
+      elements: view.ids.size,
+      files: files.map(fact),
+      marked,
+    },
   });
   return { o, view, image, shot, withheld };
 }

@@ -5,6 +5,7 @@ import { EnvSecrets } from "../adapters/env-secrets/secrets.js";
 import { FileDocumentStore } from "../adapters/files/document-store.js";
 import { FileLockSlots, systemLockEnv } from "../adapters/files/locks.js";
 import { FileEvidenceStore } from "../adapters/files/other-stores.js";
+import { MailboxDesk } from "../adapters/mailbox/mailbox.js";
 import { SystemClock } from "../adapters/system/clock.js";
 import { SystemIds } from "../adapters/system/ids.js";
 import { LockManager } from "../core/locks/manager.js";
@@ -14,10 +15,11 @@ import type { Policy } from "../core/model/policy.js";
 import type { Settings } from "../core/model/settings.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Locks } from "../ports/locks.js";
+import type { InterventionDesk } from "../ports/operator.js";
 import type { Secrets } from "../ports/secrets.js";
 import type { DocumentStore, EvidenceStore } from "../ports/stores.js";
 
-/** Every port an M01 command may use. Commands see ports only, never adapters. */
+/** Every port a command may use. Commands see ports only, never adapters. */
 export type Wiring = {
   clock: Clock;
   ids: Ids;
@@ -26,6 +28,8 @@ export type Wiring = {
   settings: DocumentStore<Settings>;
   locks: Locks;
   evidence: EvidenceStore;
+  /** The operator CLI's side of the mailbox (section 9 §10.5). */
+  desk: InterventionDesk;
   /** Staging for atomic writes and edit buffers: `<state>/var/tmp`. */
   tmpDir: string;
 };
@@ -52,6 +56,7 @@ export function wire(
     ),
     locks: new LockManager(new FileLockSlots(join(state, "var", "locks")), clock, systemLockEnv()),
     evidence: new FileEvidenceStore({ root: join(state, "evidence"), tmpDir }),
+    desk: new MailboxDesk({ evidenceRoot: join(state, "evidence"), tmpDir }),
     tmpDir,
   };
 }

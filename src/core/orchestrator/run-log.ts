@@ -3,7 +3,7 @@
 // line), §6.6 (durable writes), and §6.7 (the redactor sits inside the log writer).
 import type { Clock } from "../../ports/clock.js";
 import type { RunFolder } from "../../ports/stores.js";
-import type { Redactor } from "../safety/redaction/redactor.js";
+import { fact, type Redactor } from "../safety/redaction/redactor.js";
 
 /** Who wrote a line. */
 export type By = "engine" | "gate" | "llm" | "human" | "handler" | "reviewer";
@@ -48,8 +48,8 @@ export class RunLog {
     this.#seq += 1;
     const full = {
       seq: this.#seq,
-      at: this.clock.now().toISOString(),
-      run_id: this.folder.runId,
+      at: fact(this.clock.now().toISOString()),
+      run_id: fact(this.folder.runId),
       ...line,
     };
     const masked = this.redactor.value(full);

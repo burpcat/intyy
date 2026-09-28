@@ -4,8 +4,14 @@ import type { Masked } from "./masked.js";
 import type { Opaque } from "./opaque.js";
 import type { Outcome } from "./outcome.js";
 
-/** One intervention request. Section 7 §13. M07. */
-export type Intervention = Opaque<"Intervention">;
+/**
+ * One intervention request (section 7 §13.1). The core builds it and checks it against
+ * `intyy.intervention/1.0`; the adapter only stores it.
+ */
+export type Intervention = { schema: "intyy.intervention/1.0"; kind: string } & Record<
+  string,
+  unknown
+>;
 
 /** A handle to one open intervention. */
 export type Handle = Opaque<"OperatorHandle">;
@@ -25,4 +31,33 @@ export interface OperatorPort {
   next(h: Handle, signal?: AbortSignal): Promise<Outcome<OperatorEvent, "closed">>;
   /** Closes a request. */
   close(h: Handle, how: "resolved" | "timed_out" | "run_ended"): Promise<void>;
+}
+
+/** The open request of one run, as the operator CLI sees it. `request` is the raw file. */
+export type OpenRequest = {
+  /** The request's folder name, like `01_approval`. */
+  folder: string;
+  request: unknown;
+  /** True once `decision.json` exists. */
+  decided: boolean;
+  /** The run folder on disk, so the CLI can print a full screenshot path. */
+  runDir: string;
+};
+
+/** The operator CLI's side of the mailbox: read the open request, write one decision. */
+export interface InterventionDesk {
+  /** The newest request of a run with no `closed.json`, or null when none is open. */
+  openRequest(
+    tenant: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<Outcome<OpenRequest | null, "not_found">>;
+  /** Writes `decision.json` with exclusive create, so a second answer fails (section 9 §10.5). */
+  decide(
+    tenant: string,
+    runId: string,
+    folder: string,
+    decision: Masked<unknown>,
+    signal?: AbortSignal,
+  ): Promise<Outcome<void, "already_decided" | "write_failed">>;
 }

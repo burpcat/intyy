@@ -77,6 +77,18 @@ describe("a scripted sign-in (section 6 §10.1)", () => {
   });
 });
 
+describe("facts in the log", () => {
+  test("file paths, hashes, and the run ID are not masked as digit runs", async () => {
+    const r = await go({});
+    const obs = r.events.find((e) => e.event === "observation") as { data: { files: string[] } };
+    expect(obs.data.files[0]).toMatch(/^screens\/\d{5}_observation\.png$/);
+    expect(r.events[0]).toMatchObject({
+      run_id: r.result.runId,
+      data: { frozen: { settings: { hash: `sha256:${"0".repeat(64)}` } } },
+    });
+  });
+});
+
 describe("how a run ends (section 6 §10.4)", () => {
   test("two model failures in a row end the run model_unavailable", async () => {
     const r = await go({ steps: [{ failure: "timeout" }, { failure: "unavailable" }] });
@@ -117,7 +129,7 @@ describe("how a run ends (section 6 §10.4)", () => {
       ],
     });
     expect(r.result).toMatchObject({ status: "failed", code: "ended_by_operator" });
-    expect(r.supervisor.stucks).toHaveLength(1);
+    expect(r.operator.requests.map((q) => q.kind)).toEqual(["takeover"]);
     const seen = (r.planner as ScriptedPlanner).seen;
     expect(seen[1]?.message).toContain(
       "<feedback>unknown element e99. Use an ID from this turn's list.</feedback>",
@@ -131,7 +143,11 @@ describe("how a run ends (section 6 §10.4)", () => {
 
   test("a stuck call asks the operator", async () => {
     const r = await go({ steps: [{ name: "stuck", input: { reason: "No sign-in form." } }] });
-    expect(r.supervisor.stucks[0]?.reason).toBe("No sign-in form.");
+    expect(r.operator.requests[0]).toMatchObject({
+      reason: "stuck",
+      trouble: { detail: "No sign-in form." },
+      decisions: ["end_run"],
+    });
     expect(r.result.code).toBe("ended_by_operator");
   });
 
@@ -206,10 +222,16 @@ describe("approvals in discovery (section 4 §7.7)", () => {
     const r = await go({
       spec: TRANSFER,
       steps,
-      answers: [{ kind: "decided", staff: "op_017", hint: "irreversible" }],
+      answers: [{ staff: "op_017", decision: "approve_irreversible" }],
     });
-    expect(r.supervisor.approvals).toHaveLength(1);
-    expect(r.supervisor.approvals[0]?.label).toBe("Submit Transfer");
+    expect(r.operator.requests).toHaveLength(1);
+    expect(r.operator.requests[0]).toMatchObject({
+      kind: "approval",
+      reason: "discovery_irreversible",
+      approval: { words: "Submit Transfer", risk: "irreversible" },
+      decisions: ["approve_irreversible", "approve_reversible", "approve_idempotent", "decline"],
+    });
+    expect(r.operator.closed).toEqual(["resolved"]);
     expect(r.result.status).toBe("success");
     const esc = r.events.filter((e) => e.event === "escalation");
     expect(esc).toMatchObject([
@@ -229,7 +251,7 @@ describe("approvals in discovery (section 4 §7.7)", () => {
     const r = await go({
       spec: TRANSFER,
       steps,
-      answers: [{ kind: "decided", staff: "op_017", hint: null }],
+      answers: [{ staff: "op_017", decision: "decline" }],
     });
     const seen = (r.planner as ScriptedPlanner).seen;
     expect(seen[5]?.message).toContain("<feedback>The operator declined that action.</feedback>");
@@ -244,6 +266,6 @@ describe("approvals in discovery (section 4 §7.7)", () => {
     expect(seen[5]?.message).toContain(
       "<feedback>Blocked: this task must not change data.</feedback>",
     );
-    expect(r.supervisor.approvals).toHaveLength(0);
+    expect(r.operator.requests).toHaveLength(0);
   });
 });

@@ -4,11 +4,13 @@
 // §6.4 and §6.5 (event types, frozen facts), §7.1 (evidence layout), and section 4 §10.6.
 import type { Clock, Ids } from "../../ports/clock.js";
 import type { Marker } from "../../ports/marker.js";
+import type { OperatorPort } from "../../ports/operator.js";
 import type { Planner } from "../../ports/models.js";
 import type { Secrets } from "../../ports/secrets.js";
 import type { EvidenceStore, RunFolder } from "../../ports/stores.js";
 import type { LeaseToken, SurfaceFactory, Viewport } from "../../ports/surface.js";
-import { runLoop, type LoopEnd, type Supervisor } from "../discovery/loop.js";
+import { runLoop, type LoopEnd } from "../discovery/loop.js";
+import { OperatorSupervisor } from "../discovery/supervisor.js";
 import { PROMPTS } from "../discovery/prompts/index.js";
 import { checkSpec } from "../discovery/spec-checks.js";
 import { taskView } from "../discovery/task-view.js";
@@ -18,7 +20,7 @@ import type { Settings } from "../model/settings.js";
 import { openGate } from "../safety/gate/gate.js";
 import { buildAllowlist } from "../safety/policy/allowlist.js";
 import type { MergeResult } from "../safety/policy/merge.js";
-import { Redactor, redactionRules } from "../safety/redaction/redactor.js";
+import { fact, Redactor, redactionRules } from "../safety/redaction/redactor.js";
 import { startCheck, type SecretSources } from "../safety/secrets/injector.js";
 import { RunLog } from "./run-log.js";
 
@@ -50,8 +52,8 @@ export type DiscoveryDeps = {
   surface: SurfaceFactory;
   marker: Marker;
   planner: Planner;
-  /** The operator side, for this run. The mailbox lives in the run folder (section 9 §10.5). */
-  supervisor: (run: { runId: string; tenant: string; capability: string }) => Supervisor;
+  /** The operator port for this run. The mailbox lives in the run folder (section 9 §10.5). */
+  operator: (run: { runId: string; tenant: string }) => OperatorPort;
   signal?: AbortSignal;
 };
 
@@ -159,8 +161,8 @@ function frozenFacts(input: DiscoveryInput, runKind: "discovery"): unknown {
       session: null,
       app_version: app?.app_version ?? null,
       engine_version: input.engineVersion,
-      policy: { layers: policy.layers, hash: policy.hash },
-      settings: { revision: Number(settings.rev), hash: settings.hash },
+      policy: { layers: policy.layers, hash: fact(policy.hash) },
+      settings: { revision: Number(settings.rev), hash: fact(settings.hash) },
       evidence_level: policy.effective.evidence.level,
       spec: {
         kind: spec.kind,
@@ -209,14 +211,14 @@ async function finish(
   await folder.writeRunJson(
     r.value({
       schema: "intyy.run/1.0",
-      run_id: folder.runId,
+      run_id: fact(folder.runId),
       tenant: input.tenant,
       kind: "discovery",
       capability: `${input.spec.app}/${input.spec.capability}`,
       status: facts.status,
       code: facts.code,
-      started_at: facts.startedAt,
-      ended_at: at,
+      started_at: fact(facts.startedAt),
+      ended_at: fact(at),
       counts:
         facts.loop === null
           ? null
@@ -232,8 +234,8 @@ async function finish(
   await deps.evidence.appendIndex(
     input.tenant,
     r.value({
-      run_id: folder.runId,
-      at,
+      run_id: fact(folder.runId),
+      at: fact(at),
       status: facts.status,
       code: facts.code,
       kind: "discovery",
@@ -267,8 +269,8 @@ export async function runDiscovery(
   await deps.evidence.appendIndex(
     input.tenant,
     r.value({
-      run_id: runId,
-      at: startedAt,
+      run_id: fact(runId),
+      at: fact(startedAt),
       status: "running",
       code: null,
       kind: "discovery",
@@ -360,7 +362,18 @@ export async function runDiscovery(
       gate,
       marker: deps.marker,
       planner: deps.planner,
-      supervisor: deps.supervisor({ runId, tenant: input.tenant, capability }),
+      supervisor: new OperatorSupervisor(
+        deps.operator({ runId, tenant: input.tenant }),
+        deps.clock,
+        r,
+        {
+          runId,
+          tenant: input.tenant,
+          capability,
+          // Why a fallback of 5: a missing bound counts as its strictest value (M01 decision).
+          deadlineMinutes: policy.effective.escalation.approval_minutes ?? 5,
+        },
+      ),
       redactor: r,
       clock: deps.clock,
       log,
@@ -378,8 +391,8 @@ export async function runDiscovery(
         await deps.evidence.appendIndex(
           input.tenant,
           r.value({
-            run_id: runId,
-            at: deps.clock.now().toISOString(),
+            run_id: fact(runId),
+            at: fact(deps.clock.now().toISOString()),
             status: s,
             code: null,
             kind: "discovery",

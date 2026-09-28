@@ -15,8 +15,7 @@ import { FakeMarker } from "../../../src/fakes/marker.js";
 import { ScriptedPlanner, type Step } from "../../../src/fakes/scripted-planner.js";
 import { MapSecrets } from "../../../src/fakes/secrets.js";
 import { snapshotFactory, type FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
-import { ScriptedSupervisor } from "../../../src/fakes/supervisor.js";
-import type { Answer } from "../../../src/core/discovery/loop.js";
+import { FakeOperator, type FakeAnswer } from "../../../src/fakes/operator.js";
 import type { Planner } from "../../../src/ports/models.js";
 import { readTree, tempRoot } from "../safety/canary-kit.js";
 
@@ -222,16 +221,16 @@ export type Ran = {
   files: { path: string; bytes: Uint8Array }[];
   root: string;
   planner: Planner;
-  supervisor: ScriptedSupervisor;
+  operator: FakeOperator;
   remove: () => Promise<void>;
 };
 
-/** Runs one discovery on SITE with a scripted planner and supervisor. */
+/** Runs one discovery on SITE with a scripted planner and a fake operator. */
 export async function run(opts: {
   steps?: Step[];
   planner?: Planner;
   spec?: RunSpec;
-  answers?: Answer[];
+  answers?: FakeAnswer[];
   secrets?: Record<string, string>;
   site?: FakeSite;
 }): Promise<Ran> {
@@ -241,7 +240,7 @@ export async function run(opts: {
     tmpDir: join(root, "tmp"),
   });
   const planner = opts.planner ?? new ScriptedPlanner(opts.steps ?? SIGN_IN_STEPS);
-  const supervisor = new ScriptedSupervisor(opts.answers ?? []);
+  const operator = new FakeOperator(opts.answers ?? []);
   const clock = new SteppingClock("2026-09-28T14:00:00.000Z");
   const result = await runDiscovery(
     {
@@ -249,7 +248,7 @@ export async function run(opts: {
       tenant: "keystone",
       staff: "op_017",
       policy: testPolicy(),
-      settings: { doc: SETTINGS, rev: "1", hash: "sha256:test" },
+      settings: { doc: SETTINGS, rev: "1", hash: `sha256:${"0".repeat(64)}` },
       engineVersion: "0.1.0",
       canaries: ["999999"],
       visible: false,
@@ -267,13 +266,13 @@ export async function run(opts: {
       surface: snapshotFactory(opts.site ?? SITE),
       marker: new FakeMarker(),
       planner,
-      supervisor: () => supervisor,
+      operator: () => operator,
     },
   );
   const ev = await evidence.events("keystone", result.runId);
   const events = ev.ok ? (ev.value as Record<string, unknown>[]) : [];
   const files = await readTree(join(root, "evidence", "keystone", "runs", result.runId));
-  return { result, events, files, root, planner, supervisor, remove };
+  return { result, events, files, root, planner, operator, remove };
 }
 
 /** The event names, in order. */
