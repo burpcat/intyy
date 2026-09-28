@@ -1,0 +1,4 @@
+{"event":"sealed","kind":"policy","id":"global","rev":"1","path":"global/1.json","hash":"sha256:06e87c05c6eca235b6258c34214893997ee457c698f12840b1db1eb0d1384599","by":"op_017","at":"2026-09-28T19:27:19.316Z"}
+{"event":"approved","kind":"policy","id":"global","rev":"1","path":"global/1.json","hash":"sha256:06e87c05c6eca235b6258c34214893997ee457c698f12840b1db1eb0d1384599","by":"op_031","at":"2026-09-28T19:27:55.213Z"}
+{"event":"sealed","kind":"policy","id":"tenant/keystone","rev":"1","path":"tenant/keystone/1.json","hash":"sha256:f7bf5eca4480149124259f646d2ceeb36958d16c2687d5141d48100f22c68c82","by":"op_017","at":"2026-09-28T19:28:06.273Z"}
+{"event":"approved","kind":"policy","id":"tenant/keystone","rev":"1","path":"tenant/keystone/1.json","hash":"sha256:f7bf5eca4480149124259f646d2ceeb36958d16c2687d5141d48100f22c68c82","by":"op_022","at":"2026-09-28T19:28:16.483Z"}

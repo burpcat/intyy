@@ -74,33 +74,33 @@ Every seam later work plugs into: ports, stores, locks, the CLI shell, identity,
 - [x] 10. Write the CLI shell: flags, output rules, exit codes, the `.env` loader, role checks, the sweep stub.
 - [x] 11. Write the test that no command accepts an input value as a flag.
 - [x] 12. Write the staff, policy, and settings commands. Four eyes: approve refuses the sealer, exit 6.
-- [ ] 13. Draft the four library files as candidates. Stop. Ask the owner to seal and approve them.
+- [x] 13. Draft the four library files as candidates. Stop. Ask the owner to seal and approve them.
 
 ## Test gate
 
 ### Automated (CI `check` job)
 
-- [ ] Store contract suites pass on fakes and on file adapters.
-- [ ] Store sealing: seal writes the index; the hash excludes `approved`; a changed file fails to load with exit 7.
-- [ ] Four eyes: every approve refuses the sealer, exit 6.
-- [ ] Policy merge: loosening fails; bounds hold; the hash is stable.
-- [ ] Locks: all six cases above. Busy exits 8.
-- [ ] Exit codes: each status and refusal maps to its code (section 9 §7.5).
-- [ ] Output rules: terminal versus pipe; `--json` prints exactly one document.
-- [ ] No inputs on flags.
-- [ ] The `.env` loader never overrides a variable already set.
-- [ ] `Secret` never appears in JSON, `console.log`, or error text.
-- [ ] The masked type test fails to compile a raw string.
+- [x] Store contract suites pass on fakes and on file adapters.
+- [x] Store sealing: seal writes the index; the hash excludes `approved`; a changed file fails to load with exit 7.
+- [x] Four eyes: every approve refuses the sealer, exit 6.
+- [x] Policy merge: loosening fails; bounds hold; the hash is stable.
+- [x] Locks: all six cases above. Busy exits 8.
+- [x] Exit codes: each status and refusal maps to its code (section 9 §7.5).
+- [x] Output rules: terminal versus pipe; `--json` prints exactly one document.
+- [x] No inputs on flags.
+- [x] The `.env` loader never overrides a variable already set.
+- [x] `Secret` never appears in JSON, `console.log`, or error text.
+- [x] The masked type test fails to compile a raw string.
 
 ### Live
 
-- [ ] None.
+- [x] None.
 
 ### Owner checks
 
-- [ ] The four library files are sealed and approved through the CLI.
-- [ ] `intyy staff whoami` prints `op_017` and its roles.
-- [ ] `intyy settings check --secrets` shows every bound name as "set".
+- [x] The four library files are sealed and approved through the CLI.
+- [x] `intyy staff whoami` prints `op_017` and its roles.
+- [x] `intyy settings check --secrets` shows every bound name as "set".
 
 ## Evidence produced
 

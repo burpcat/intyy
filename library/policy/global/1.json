@@ -1,0 +1,237 @@
+{
+  "schema": "intyy.policy/1.0",
+  "scope": {
+    "level": "global"
+  },
+  "revision": 1,
+  "reason": "First global floor: action types, the full default word lists, US detectors and sensitive labels, and bounds.",
+  "actions": {
+    "types": [
+      "navigate",
+      "click",
+      "type",
+      "select",
+      "set_checked",
+      "press",
+      "read",
+      "scroll"
+    ],
+    "keys": [
+      "Enter",
+      "Tab",
+      "Escape",
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+      "PageUp",
+      "PageDown"
+    ]
+  },
+  "browser": {
+    "downloads": "block",
+    "uploads": "block",
+    "popups": "allowlist",
+    "native_dialogs": "surface",
+    "service_workers": "block"
+  },
+  "risk": {
+    "irreversible_words": [
+      "confirm",
+      "submit",
+      "transfer",
+      "pay",
+      "send",
+      "delete",
+      "remove",
+      "approve",
+      "authorize",
+      "authorise",
+      "post",
+      "commit",
+      "execute",
+      "process",
+      "finalize",
+      "finalise",
+      "disburse",
+      "withdraw",
+      "deposit",
+      "credit",
+      "debit",
+      "reverse",
+      "void",
+      "save",
+      "update",
+      "apply",
+      "sanction",
+      "release",
+      "block",
+      "unblock",
+      "freeze",
+      "activate",
+      "deactivate",
+      "close account",
+      "open account"
+    ],
+    "reversible_words": [
+      "add",
+      "append",
+      "insert",
+      "attach",
+      "duplicate",
+      "logout",
+      "log out",
+      "sign out"
+    ],
+    "safe_words": [
+      "search",
+      "find",
+      "look up",
+      "lookup",
+      "view",
+      "show",
+      "display",
+      "details",
+      "open",
+      "back",
+      "previous",
+      "close",
+      "refresh",
+      "expand",
+      "collapse",
+      "sort",
+      "filter",
+      "help",
+      "home",
+      "menu",
+      "login",
+      "log in",
+      "sign in",
+      "list",
+      "get"
+    ]
+  },
+  "redaction": {
+    "detectors": [
+      "ssn",
+      "card",
+      "email",
+      "phone",
+      "money"
+    ],
+    "digit_run_min": 5,
+    "labels": {
+      "name": [
+        "name",
+        "customer name",
+        "member name",
+        "account holder",
+        "holder name",
+        "joint owner",
+        "beneficiary",
+        "mother's maiden name"
+      ],
+      "address": [
+        "address",
+        "street",
+        "city",
+        "state",
+        "zip",
+        "zip code",
+        "postal code"
+      ],
+      "ssn": [
+        "ssn",
+        "social security",
+        "social security number",
+        "tax id",
+        "tin",
+        "itin"
+      ],
+      "dob": [
+        "dob",
+        "date of birth",
+        "birth date"
+      ],
+      "phone": [
+        "mobile",
+        "phone",
+        "telephone"
+      ],
+      "email": [
+        "email",
+        "e-mail"
+      ],
+      "member": [
+        "member id",
+        "customer id",
+        "cif"
+      ],
+      "account": [
+        "account no",
+        "account number",
+        "a/c no",
+        "acct no"
+      ],
+      "money": [
+        "balance",
+        "available balance",
+        "amount",
+        "limit",
+        "salary"
+      ]
+    }
+  },
+  "formats": {
+    "date": [
+      "YYYY-MM-DD",
+      "MM/DD/YYYY",
+      "DD/MM/YYYY",
+      "MM/DD/YY",
+      "DD-MMM-YYYY"
+    ],
+    "money": [
+      "0.00",
+      "#,##0.00",
+      "0"
+    ]
+  },
+  "correlation": {
+    "notes": false
+  },
+  "llm": {
+    "send_screenshots": true,
+    "mask_screenshots": true,
+    "replay_jev": true,
+    "replay_reviewer": true
+  },
+  "evidence": {
+    "level": {
+      "options": [
+        "minimal",
+        "standard",
+        "full"
+      ],
+      "default": "standard"
+    }
+  },
+  "authorization": {
+    "max_lifetime_minutes": {
+      "min": 5,
+      "max": 120,
+      "default": 30
+    },
+    "require_signed": false
+  },
+  "escalation": {
+    "approval_minutes": {
+      "min": 5,
+      "max": 120,
+      "default": 30
+    }
+  },
+  "approved": {
+    "by": "op_031",
+    "at": "2026-09-28T19:27:55.213Z"
+  }
+}
