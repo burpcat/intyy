@@ -46,7 +46,9 @@ describe("system prompt (section 6 §11.1)", () => {
   test("the text is frozen for this version", () => {
     const text = prompt.system(taskView(SIGN_IN, redactor(), SECRETS));
     // Why: section 6 §11.4, a new prompt can change what the LLM does. Change text, add a version.
-    expect(sha256Hex(text)).toBe("346f3a1ed938b7578749f4cee12d4200abc1ab26a66bb592d52df4b741f58d67");
+    expect(sha256Hex(text)).toBe(
+      "346f3a1ed938b7578749f4cee12d4200abc1ab26a66bb592d52df4b741f58d67",
+    );
   });
 
   test("a sensitive input shows only its reference; a none input shows its value", () => {

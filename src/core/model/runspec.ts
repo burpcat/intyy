@@ -77,7 +77,7 @@ export const Limits = z
   .strict();
 
 /** Every limit, filled in. */
-export type FullLimits = Required<z.infer<typeof Limits>>;
+export type FullLimits = Record<keyof z.infer<typeof Limits>, number>;
 
 /** The defaults of section 6 §6.2. */
 export const DEFAULT_LIMITS: FullLimits = {
@@ -123,5 +123,12 @@ export type RunSpec = z.infer<typeof RunSpec>;
 
 /** The spec's limits with the defaults filled in. */
 export function fullLimits(spec: RunSpec): FullLimits {
-  return { ...DEFAULT_LIMITS, ...spec.limits };
+  const l = spec.limits ?? {};
+  return {
+    max_steps: l.max_steps ?? DEFAULT_LIMITS.max_steps,
+    max_minutes: l.max_minutes ?? DEFAULT_LIMITS.max_minutes,
+    max_blocked: l.max_blocked ?? DEFAULT_LIMITS.max_blocked,
+    max_invalid: l.max_invalid ?? DEFAULT_LIMITS.max_invalid,
+    max_repeat: l.max_repeat ?? DEFAULT_LIMITS.max_repeat,
+  };
 }

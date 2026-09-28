@@ -36,7 +36,12 @@ function labelOf(el: SurfaceElement, all: readonly SurfaceElement[]): string | u
 }
 
 /** Masks one text by the label rule when a sensitive label sits beside it (section 4 §9.7). */
-function maskBeside(r: Redactor, text: string, el: SurfaceElement, label?: string): Masked<string> {
+export function maskBeside(
+  r: Redactor,
+  text: string,
+  el: SurfaceElement,
+  label?: string,
+): Masked<string> {
   const beside = [label, el.context?.column, el.context?.left].find(
     (l): l is string => l !== undefined && r.sensitiveLabel(l),
   );
@@ -138,7 +143,9 @@ function lineOf(
 }
 
 /** Children per parent, in page order. A parent missing from the list makes a top element. */
-function childrenOf(elements: readonly SurfaceElement[]): Map<ElementRef | null, SurfaceElement[]> {
+export function childrenOf(
+  elements: readonly SurfaceElement[],
+): Map<ElementRef | null, SurfaceElement[]> {
   const known = new Set(elements.map((e) => e.ref));
   const out = new Map<ElementRef | null, SurfaceElement[]>();
   for (const e of elements) {
@@ -277,4 +284,20 @@ export function historyText(lines: readonly Masked<string>[]): Masked<string> {
   if (lines.length <= MAX_HISTORY) return masked`${lines}`;
   const older = lines.length - MAX_HISTORY;
   return masked`(${older} earlier actions)\n${lines.slice(older)}`;
+}
+
+/**
+ * One element's masked name, the same way the element list shows it: a field's name as is, a
+ * parent's name with its descendants' masks kept. Null when it has no words.
+ */
+export function maskedName(
+  r: Redactor,
+  el: SurfaceElement,
+  kids: Map<ElementRef | null, SurfaceElement[]>,
+): Masked<string> | null {
+  const raw = el.clues.name ?? el.clues.text;
+  if (raw === undefined || raw.trim() === "") return null;
+  return quoteScreen(
+    el.field === undefined ? maskComposite(r, raw, el, partsUnder(r, el, kids)) : r.text(raw),
+  );
 }
