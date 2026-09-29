@@ -8,6 +8,7 @@ import { Cassette } from "../src/core/model/cassette.js";
 import { Config } from "../src/core/model/config.js";
 import { LockFile } from "../src/core/model/lock.js";
 import { ClosedFile, DecisionFile, Intervention } from "../src/core/model/mailbox.js";
+import { Patch } from "../src/core/model/patch.js";
 import { Policy } from "../src/core/model/policy.js";
 import { RunSpec } from "../src/core/model/runspec.js";
 import { Settings } from "../src/core/model/settings.js";
@@ -17,6 +18,7 @@ import { IndexLine } from "../src/core/model/store-index.js";
 /** Every file format, by its schema name. */
 const formats: Record<string, z.ZodType> = {
   "intyy.artifact-1.0": Artifact,
+  "intyy.patch-1.0": Patch,
   "intyy.config-1.0": Config,
   "intyy.staff-1.0": StaffFile,
   "intyy.policy-1.0": Policy,
