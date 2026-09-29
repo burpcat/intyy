@@ -1,0 +1,2 @@
+{"seq":1,"at":"2026-09-24T14:00:00.000Z","run_id":"run_2026-09-24_0000000005","step":"t1","by":"engine","event":"observation","data":{"location":"/account/new","title":"Confirmation","elements":4,"files":[],"marked":false}}
+{"seq":2,"at":"2026-09-24T14:00:01.000Z","run_id":"run_2026-09-24_0000000005","step":"t1","by":"engine","event":"extract","data":{"output":"account_number","raw":"SH00219981","value":"SH00219981"}}

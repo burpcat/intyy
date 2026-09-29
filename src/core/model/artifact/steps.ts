@@ -7,6 +7,9 @@ import { SnakeId } from "./shared.js";
 /** How a step may be retried (section 2 §15.1). Only `idempotent` steps are retried (§15.3). */
 export const RiskKind = z.enum(["idempotent", "reversible", "irreversible"]);
 
+/** One step's risk. */
+export type RiskKind = z.infer<typeof RiskKind>;
+
 /** `read.source` (section 2 §15.2): reads visible text, or a control's current value. */
 const ReadSource = z.enum(["text", "value"]);
 

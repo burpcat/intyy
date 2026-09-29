@@ -65,6 +65,9 @@ export const SpecOutput = z
   .object({ name: FieldName, type: ValueType, description: z.string().min(1) })
   .strict();
 
+/** One output of a run spec. */
+export type SpecOutput = z.infer<typeof SpecOutput>;
+
 /** Run limits (section 6 §6.2). Every field is optional; defaults fill the gaps. */
 export const Limits = z
   .object({
