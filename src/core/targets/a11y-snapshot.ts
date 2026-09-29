@@ -75,7 +75,12 @@ export function fromA11ySnapshot(text: string, location: string): ScreenView {
       enabled: parsed.disabled !== true,
     };
     if (parent !== undefined) el.parent = parent;
-    if (parsed.name !== undefined) el.name = parsed.name;
+    // Why both clues: the format's own "Name" is "the accessible name, else the visible label"
+    // (docs/formats/a11y-snapshot.md §3), so a target recorded under either clue still matches.
+    if (parsed.name !== undefined) {
+      el.name = parsed.name;
+      el.label = parsed.name;
+    }
     if (parsed.text !== undefined) el.text = parsed.text;
     if (parsed.checked === true) el.checked = true;
     elements.push(el);

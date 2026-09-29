@@ -31,7 +31,7 @@ export function applyRiskDecisions(
   steps: readonly Step[],
   decisions: readonly CandidateDecision[],
   gateRiskByStepId: ReadonlyMap<string, RiskKind>,
-  riskHintByByStepId: ReadonlyMap<string, string | null>,
+  riskHintByStepId: ReadonlyMap<string, string | null>,
   issues: RecorderIssue[],
 ): Step[] {
   const riskDecisions = lastBySubject(decisions, "risk");
@@ -45,7 +45,7 @@ export function applyRiskDecisions(
     const finalRisk = decision === undefined ? s.risk : (decision.value as RiskKind);
     const rulesRisk = gateRiskByStepId.get(s.id) ?? "irreversible";
     if (rulesRisk === "irreversible" && finalRisk !== "irreversible") {
-      const loweredBy = decision?.by ?? riskHintByByStepId.get(s.id) ?? null;
+      const loweredBy = decision?.by ?? riskHintByStepId.get(s.id) ?? null;
       const looks = secondLooks.get(s.id) ?? [];
       const confirmed = looks.some((l) => loweredBy === null || l.by !== loweredBy);
       if (!confirmed) {

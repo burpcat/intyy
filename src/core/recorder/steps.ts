@@ -4,6 +4,7 @@ import type { Condition } from "../model/artifact/conditions.js";
 import type { RiskKind, Step, StepAction } from "../model/artifact/steps.js";
 import type { Target } from "../model/artifact/targets.js";
 import { fromA11ySnapshot } from "../targets/a11y-snapshot.js";
+import { evaluate, type EvalCtx } from "../targets/evaluate.js";
 import {
   allOf,
   ConditionRegistry,
@@ -161,6 +162,45 @@ function landmarkFor(a: TaggedAction, afterLocation: string, snapshots: Snapshot
   return newLandmarks(bv, av)[0] ?? null;
 }
 
+/**
+ * The "false before" check (principle 2.3, section 6 §14.5): a checkpoint must be false on the
+ * screen before its action, and true after. Tests `checkpoint` on the saved `a11y` snapshot from
+ * right before `a` ran. `true` there is a bug the checkpoint cannot catch a stuck run with, so
+ * it becomes a blocking issue; `unknown` (an a11y snapshot has no field values, so a `type` or
+ * `select` checkpoint is always `unknown` here) is only ever a warning, never a pass or a block
+ * (owner decision, docs/decisions.md, M04); `false` needs no issue. Silent when no snapshot was
+ * saved for this turn: there is nothing to test against.
+ */
+function checkFalseBefore(
+  a: TaggedAction,
+  checkpoint: NestedLeaf,
+  checkpointId: string,
+  stepId: string,
+  ctx: EvalCtx,
+  snapshots: Snapshots,
+  issues: RecorderIssue[],
+): void {
+  const before = snapshots.a11yByTurn.get(a.turn);
+  if (before === undefined) return;
+  const screen = fromA11ySnapshot(before, a.beforeLocation);
+  const answer = evaluate(checkpoint, screen, ctx);
+  if (answer === "true") {
+    issues.push({
+      level: "blocking",
+      code: "checkpoint_true_before",
+      subject: checkpointId,
+      message: `${checkpointId} is already true on the screen before ${stepId} runs; it cannot prove the action changed anything.`,
+    });
+  } else if (answer === "unknown") {
+    issues.push({
+      level: "warning",
+      code: "checkpoint_unknown_before",
+      subject: checkpointId,
+      message: `${checkpointId} could not be checked against the screen before ${stepId} runs.`,
+    });
+  }
+}
+
 /** The last step's checkpoint, from `done.proof` (section 6 §14.5). `null` when there is no
  * `done` call to build from, so the caller falls back to the plain after-location. Adds a
  * blocking issue only when a `done` call exists but its proof text cannot be found. */
@@ -201,7 +241,7 @@ export type StepsResult = {
    * rules said. */
   gateRiskByStepId: ReadonlyMap<string, RiskKind>;
   /** Step ID to the staff who gave the approval hint the draft used, when one exists. */
-  riskHintByByStepId: ReadonlyMap<string, string | null>;
+  riskHintByStepId: ReadonlyMap<string, string | null>;
 };
 
 /**
@@ -233,13 +273,14 @@ export function buildSteps(
 
   const { targets, targetIdOf, crops } = buildTargets(eligible);
   const finalActions = mergeRepeatedType(eligible, targetIdOf);
+  const evalCtx: EvalCtx = { targets: new Map(targets.map((t) => [t.id, t])) };
 
   const registry = new ConditionRegistry();
   const usedStepIds = new Set<string>();
   const steps: Step[] = [];
   const became = new Map<TaggedAction, string>();
   const gateRiskByStepId = new Map<string, RiskKind>();
-  const riskHintByByStepId = new Map<string, string | null>();
+  const riskHintByStepId = new Map<string, string | null>();
   let fillsSincePageChange: string[] = [];
   let lastLocation: string | null = null;
 
@@ -308,6 +349,7 @@ export function buildSteps(
       `${stepId}_checkpoint`,
       `After ${stepId.replace(/_/g, " ")}.`,
     );
+    checkFalseBefore(a, checkpoint, checkpointId, stepId, evalCtx, snapshots, issues);
     if (isFill) fillsSincePageChange.push(checkpointId);
 
     const timeoutMs = draftTimeoutMs(isFill ? "fill" : "request", observedMs(a));
@@ -327,7 +369,7 @@ export function buildSteps(
       });
     }
     if (a.gateRisk !== null) gateRiskByStepId.set(stepId, a.gateRisk);
-    if (a.riskHint !== null) riskHintByByStepId.set(stepId, a.riskHintBy);
+    if (a.riskHint !== null) riskHintByStepId.set(stepId, a.riskHintBy);
 
     steps.push({
       id: stepId,
@@ -350,6 +392,6 @@ export function buildSteps(
     issues,
     became,
     gateRiskByStepId,
-    riskHintByByStepId,
+    riskHintByStepId,
   };
 }

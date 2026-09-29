@@ -100,7 +100,7 @@ export function record(input: RecorderInput): RecorderOutput {
     stepsResult.steps,
     decisions,
     stepsResult.gateRiskByStepId,
-    stepsResult.riskHintByByStepId,
+    stepsResult.riskHintByStepId,
     issues,
   );
 
