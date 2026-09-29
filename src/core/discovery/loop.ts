@@ -320,6 +320,13 @@ async function oneTurn(
   const seen = await observe(d, s);
   if ("status" in seen) return seen;
   const { o, view, image, shot, withheld } = seen;
+  // Why: section 4 §6.8, a page or frame load the guard blocked is told to the discovery LLM, and
+  // the run goes on. Without it, a frame page just looks empty. The rule's details stay out (§10.2).
+  const blocked = d.gate.blockedLoads().length;
+  if (blocked > 0) {
+    const told = masked`Blocked by policy: ${blocked} page or frame load(s) on this screen are not allowed, so parts may look empty. Find another way.`;
+    s.feedback = s.feedback === null ? told : masked`${s.feedback} ${told}`;
+  }
   const message = d.prompt.turn({
     turn: s.turn,
     limit: d.limits.max_steps,

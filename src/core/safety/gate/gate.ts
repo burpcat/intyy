@@ -100,7 +100,7 @@ export type GateLine = {
   why: { kind: "policy"; ref: RuleId };
   data: {
     actor: Actor;
-    action: GateAction["type"] | "download" | "upload";
+    action: GateAction["type"] | "download" | "upload" | "document" | "resource" | "websocket";
     decision: Decision;
     risk?: RiskClass;
     label?: Masked<string>;
@@ -121,6 +121,9 @@ export type GateDeps = {
   secrets: SecretSources;
 };
 
+/** A page or frame load the network guard blocked, and who acted last before it (section 4 §6.8). */
+export type BlockedLoad = { actor: Actor; path: Masked<string>; rule: RuleId };
+
 /** Failures `gate.act` may return. `secret_unavailable`: the value vanished after the start check. */
 export type GateFailure = "stale_element" | "page_gone" | "secret_unavailable";
 
@@ -130,6 +133,11 @@ export interface Gate {
   act(p: Proposal, signal?: AbortSignal): Promise<Outcome<GateResult, GateFailure>>;
   /** Marks the last action as settled: nothing is in flight (section 4 §7.9, `risk.in_flight`). */
   settled(): void;
+  /**
+   * The page and frame loads the network guard blocked since the last call, oldest first.
+   * The caller acts per actor (section 4 §6.8): a discovery LLM is told, and the run goes on.
+   */
+  blockedLoads(): BlockedLoad[];
   /** Closes the session. */
   close(): Promise<void>;
 }
@@ -177,6 +185,10 @@ class ActionGate implements Gate {
   #inFlight = false;
   /** Who acted last. A download or file chooser that follows is logged under this actor. */
   #lastActor: Actor = "engine";
+  /** Page and frame loads the guard blocked, not yet collected by the caller. */
+  #blocked: BlockedLoad[] = [];
+  /** Hosts already logged for a blocked resource: once per host per run (section 4 §6.8). */
+  readonly #loggedHosts = new Set<string>();
   /** Forms that received a `financial` input, for C1 (section 4 §7.5). */
   readonly #moneyForms = new Set<string>();
   readonly #declared: PathMatcher[] | null;
@@ -194,9 +206,17 @@ class ActionGate implements Gate {
     void this.#logBrowserBlocks();
   }
 
-  /** Writes a gate line for each blocked download or file chooser (section 4 §6.10). */
+  /**
+   * Writes a gate line for each blocked download or file chooser (section 4 §6.10), and for each
+   * request the network guard cancelled (section 4 §6.8): every page or frame load, and other
+   * requests once per host.
+   */
   async #logBrowserBlocks(): Promise<void> {
     for await (const e of this.eyes.events()) {
+      if (e.kind === "network_blocked") {
+        this.#logNetworkBlock(e.url, e.request, e.rule);
+        continue;
+      }
       if (e.kind !== "browser_blocked" || e.feature === "popup") continue;
       const ref = e.feature === "download" ? "browser.download" : "browser.upload";
       this.deps.log({
@@ -207,6 +227,33 @@ class ActionGate implements Gate {
         data: { actor: this.#lastActor, action: e.feature, decision: "blocked" },
       });
     }
+  }
+
+  /** Logs one cancelled request, and keeps a page or frame load for the caller. */
+  #logNetworkBlock(
+    url: string,
+    request: "document" | "resource" | "websocket",
+    rule: RuleId,
+  ): void {
+    const u = URL.canParse(url) ? new URL(url) : null;
+    if (request !== "document") {
+      const host = u === null ? url : u.host;
+      if (this.#loggedHosts.has(host)) return;
+      this.#loggedHosts.add(host);
+    }
+    const path = this.deps.redactor.text(u === null ? url : `${u.pathname}${u.search}`);
+    this.deps.log({
+      event: "gate",
+      step: null,
+      by: "gate",
+      why: { kind: "policy", ref: rule },
+      data: { actor: this.#lastActor, action: request, decision: "blocked", path },
+    });
+    if (request === "document") this.#blocked.push({ actor: this.#lastActor, path, rule });
+  }
+
+  blockedLoads(): BlockedLoad[] {
+    return this.#blocked.splice(0);
   }
 
   settled(): void {

@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { RunSpec } from "../../../src/core/model/runspec.js";
 import { ScriptedPlanner } from "../../../src/fakes/scripted-planner.js";
-import { names, run, SIGN_IN, SIGN_IN_STEPS, type Ran } from "./run-kit.js";
+import { names, run, SIGN_IN, SIGN_IN_STEPS, SITE, type Ran } from "./run-kit.js";
 
 const done: Ran[] = [];
 afterEach(async () => {
@@ -199,6 +199,48 @@ describe("gate feedback (section 6 §10.2)", () => {
     );
     expect(seen[1]?.message).not.toContain("allowlist");
     expect(r.result.status).toBe("success");
+  });
+
+  test("a page load the network guard blocks is logged and told; the run goes on", async () => {
+    const home = SITE.screens["/home"];
+    if (home === undefined) throw new Error("SITE has no home page");
+    const site = {
+      ...SITE,
+      screens: {
+        ...SITE.screens,
+        "/home": {
+          ...home,
+          elements: [
+            ...home.elements,
+            {
+              id: "rep",
+              role: "button" as const,
+              roleGroup: "button_like" as const,
+              name: "View report",
+              onClick: { go: "/reports/100107" },
+            },
+          ],
+        },
+      },
+    };
+    const steps = [
+      ...SIGN_IN_STEPS.slice(0, 3),
+      { name: "click", input: { element: "e3", ...why } },
+      { name: "done", input: { summary: "Signed in.", proof: ["e1"] } },
+    ];
+    const r = await go({ site, steps });
+    expect(r.result.status).toBe("success");
+    const seen = (r.planner as ScriptedPlanner).seen;
+    expect(seen[4]?.message).toContain(
+      "<feedback>Blocked by policy: 1 page or frame load(s) on this screen are not allowed, so parts may look empty. Find another way.</feedback>",
+    );
+    const line = r.events.find(
+      (e) => e.event === "gate" && (e.data as { action: string }).action === "document",
+    );
+    expect(line).toMatchObject({
+      why: { kind: "policy", ref: "allowlist.path" },
+      data: { actor: "llm", decision: "blocked", path: "/reports/[digits#1]" },
+    });
   });
 
   test("a typed mask token is blocked and told", async () => {
