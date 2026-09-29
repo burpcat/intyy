@@ -220,3 +220,6 @@ The design wins over this file. This file fills gaps the design leaves open.
 - 2026-09-29 · M04 · Click, press, and navigate count as steps that send a request; other action kinds are fills · Section 6 §14.11 does not define it. Owner approved.
 - 2026-09-29 · M04 · `recorder_version` is a constant in `src/core/recorder/`, bumped with each golden change · Section 6 names no source. Owner approved.
 - 2026-09-29 · M04 · A `ref` condition may leave out `check: "ref"` and write only `{ "ref": "<id>" }` · Section 2 §14.2 marks `check` as required, but the §21 full example omits it for `ref`. The example is the fuller reading.
+- 2026-09-29 · M04 · Until M08, the voter counts the `image` clue as missing on every candidate, so it leaves the vote · Picture likeness is M08 (section 7 §6.3). Section 7 §6.4 says a clue the candidate lacks leaves the vote.
+- 2026-09-29 · M04 · A candidate's role group comes from the eyes. A target's recorded `role` maps to a group by a fixed table. A role not in the table matches only the same raw role · Section 7 §6.1 filters by group. Guessing a group for an unknown role could drop the element the target recorded.
+- 2026-09-29 · M04 · `checked`, `unchecked`, and `selected` answer unknown when the screen does not report that state · Only true passes (section 2 §14). A false from missing data would be a guess.
