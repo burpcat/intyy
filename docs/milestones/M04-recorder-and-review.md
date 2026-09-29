@@ -56,7 +56,7 @@ The real `sign_in` run becomes a reviewed, sealed, versioned artifact: `kvfcu/si
 ## Tasks, in order
 
 - [x] 1. Write the artifact schema, block by block, with doc comments that cite section 2.
-- [ ] 2. Write the loader checks. Test that each check accepts and rejects the right files.
+- [x] 2. Write the loader checks. Test that each check accepts and rejects the right files.
 - [ ] 3. Write the patch schema and its loader checks.
 - [ ] 4. Write the JSON Schema export and the freshness check.
 - [ ] 5. Write the condition evaluator. Test the three answers, and that `not` of unknown never passes.
