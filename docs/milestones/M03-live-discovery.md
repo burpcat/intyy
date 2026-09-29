@@ -71,9 +71,9 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 - [x] 8. Write the mailbox adapter and `operator list | show | decide`.
 - [x] 9. Write the LLM view test: stored prompts hold no canary value.
 - [x] 10. Write the app policy skeleton. Stop. Ask the owner for the manual look and the paths.
-- [ ] 11. Draft `sign_in.json` with the owner. Stop. Ask the owner to run the real discovery.
-- [ ] 12. Run the canary scan over the run folder. Copy its masked turns into `tests/fixtures/cassettes/sign_in/`.
-- [ ] 13. Write the cassette test in `live`: it replays the owner's run on the bank app.
+- [x] 11. Draft `sign_in.json` with the owner. Stop. Ask the owner to run the real discovery.
+- [x] 12. Run the canary scan over the run folder. Copy its masked turns into `tests/fixtures/cassettes/sign_in/`.
+- [x] 13. Write the cassette test in `live`: it replays the owner's run on the bank app.
 
 ## Test gate
 
@@ -88,13 +88,13 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 
 ### Live (`npm run test:live`)
 
-- [ ] The cassette replays the saved `sign_in` run on the bank app.
-- [ ] A changed observation stops the cassette loudly.
+- [x] The cassette replays the saved `sign_in` run on the bank app.
+- [x] A changed observation stops the cassette loudly.
 
 ### Owner checks
 
 - [x] `library/policy/app/kvfcu/1.json` is sealed and approved.
-- [ ] A real `sign_in` discovery run ended with `done` accepted.
+- [x] A real `sign_in` discovery run ended with `done` accepted.
 - [ ] You read its `llm/` folder and screenshots. Nothing sensitive shows. The canary scan is clean.
 
 ## Evidence produced

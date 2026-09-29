@@ -14,12 +14,19 @@ import type {
 import { fail, ok, type Outcome } from "../ports/outcome.js";
 import { fakeRequestBytes } from "./scripted-planner.js";
 
+/**
+ * A message as the cassette compares it: every digit run is `#`. Why: the app shows real times,
+ * like the last login, that change on every run (CONTRACT §7). Words, roles, and structure still
+ * must match exactly.
+ */
+export const shape = (message: string): string => message.replace(/\d+/g, "#");
+
 /** The first line where two texts differ, as a short report. */
 function firstDiff(want: string, got: string): string {
   const a = want.split("\n");
   const b = got.split("\n");
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if (a[i] !== b[i])
+    if (shape(a[i] ?? "") !== shape(b[i] ?? "") || (a[i] === undefined) !== (b[i] === undefined))
       return `line ${String(i + 1)}:\n  saved: ${a[i] ?? "(none)"}\n  now:   ${b[i] ?? "(none)"}`;
   }
   return "(no line differs)";
@@ -48,7 +55,7 @@ export class CassettePlanner implements Planner {
       );
     if (`sha256:${sha256Hex(turn.system)}` !== this.cassette.system)
       throw new Error(`cassette ${this.cassette.run_id}: the system prompt changed`);
-    if (turn.message !== saved.message)
+    if (shape(turn.message) !== shape(saved.message))
       throw new Error(
         `cassette ${this.cassette.run_id}: turn ${String(n)} saw a changed observation, ${firstDiff(saved.message, turn.message)}`,
       );

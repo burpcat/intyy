@@ -61,6 +61,34 @@ describe("planner cassette", () => {
     expect(planner.played).toBe(4);
   });
 
+  test("a changed number, like a real login time, still replays", async () => {
+    // Why: CONTRACT §7, some times follow the real clock, so digits may differ run to run.
+    const home = SITE.screens["/"];
+    if (home === undefined) throw new Error("SITE has no start page");
+    const withTime = (t: string): FakeSite => ({
+      ...SITE,
+      screens: {
+        ...SITE.screens,
+        "/": {
+          ...home,
+          elements: [
+            ...home.elements,
+            { id: "clock", role: "generic", roleGroup: "container", text: `Last login ${t}` },
+          ],
+        },
+      },
+    });
+    const r1 = await run({ planner: claude(), site: withTime("12:01:27") });
+    done.push(r1);
+    const c = cassetteOf(
+      join(r1.root, "evidence", "keystone", "runs", r1.result.runId),
+      r1.result.runId,
+    );
+    const r2 = await run({ planner: new CassettePlanner(c), site: withTime("12:38:58") });
+    done.push(r2);
+    expect(r2.result.status).toBe("success");
+  });
+
   test("a changed observation stops the replay loudly", async () => {
     const cassette = await record();
     const root = SITE.screens["/"];
