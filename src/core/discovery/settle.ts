@@ -21,7 +21,9 @@ function stateKey(o: Observation): string {
 
 /**
  * Looks until two looks in a row agree, then returns the last one. At the cap it returns the
- * newest look anyway: discovery goes on, and the LLM sees what is there.
+ * newest look anyway: discovery goes on, and the LLM sees what is there. A failed look counts as
+ * "still loading": right after a click the page is often mid-navigation. Only a page that is
+ * still unreadable at the cap is `page_gone`.
  * ponytail: a still screen, not the network's quiet; add request events if pages flicker.
  */
 export async function settle(
@@ -30,14 +32,13 @@ export async function settle(
   signal?: AbortSignal,
 ): Promise<Outcome<Observation, "page_gone">> {
   const start = clock.now().getTime();
-  let prev = await eyes.observe(signal);
-  if (!prev.ok) return fail("page_gone");
+  let prev: Observation | null = null;
   for (;;) {
-    if (clock.now().getTime() - start >= SETTLE_CAP_MS) return ok(prev.value);
-    await clock.after(POLL_MS, signal);
     const cur = await eyes.observe(signal);
-    if (!cur.ok) return fail("page_gone");
-    if (stateKey(cur.value) === stateKey(prev.value)) return ok(cur.value);
-    prev = cur;
+    if (cur.ok && prev !== null && stateKey(cur.value) === stateKey(prev)) return ok(cur.value);
+    if (cur.ok) prev = cur.value;
+    if (clock.now().getTime() - start >= SETTLE_CAP_MS)
+      return prev === null ? fail("page_gone") : ok(prev);
+    await clock.after(POLL_MS, signal);
   }
 }
