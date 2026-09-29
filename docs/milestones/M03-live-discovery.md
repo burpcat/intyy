@@ -1,6 +1,6 @@
 # M03 — Live discovery
 
-> **Phase:** A · **Size:** M · **Depends on:** M02 · **Status:** not started
+> **Phase:** A · **Size:** M · **Depends on:** M02 · **Status:** done
 
 ## Read first
 
@@ -95,7 +95,7 @@ A real LLM completes `sign_in` on the bank app, through the gate, with a masked 
 
 - [x] `library/policy/app/kvfcu/1.json` is sealed and approved.
 - [x] A real `sign_in` discovery run ended with `done` accepted.
-- [ ] You read its `llm/` folder and screenshots. Nothing sensitive shows. The canary scan is clean.
+- [x] You read its `llm/` folder and screenshots. Nothing sensitive shows. The canary scan is clean.
 
 ## Evidence produced
 
