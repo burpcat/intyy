@@ -5,6 +5,7 @@
 import type { Masked } from "../../../ports/masked.js";
 import type { EffectivePolicy } from "../policy/merge.js";
 import { normalizeWords } from "../risk/classify.js";
+import { Secret } from "../../../ports/secret.js";
 import { escapeRegex, parseIdFormat } from "./id-format.js";
 
 /** The rule set, from the merged policy. Kinds are the names of section 4 §9.4. */
@@ -258,6 +259,21 @@ export class Redactor {
   noneValue(ref: string): Masked<string> | null {
     const v = this.#known.find((k) => k.ref === ref);
     return v?.label === "none" ? mask(v.value) : null;
+  }
+
+  /**
+   * Adds a secret's value as a known value, so an app that shows it back, like "Welcome,
+   * kv_teller_4821", masks as `{secret.operator_username}` (docs/decisions.md, M03). The value
+   * stays in this run's memory only, like every known value (§9.1).
+   */
+  addSecret(name: string, secret: Secret): void {
+    this.#known.push({
+      ref: `secret.${name}`,
+      value: Secret.open(secret),
+      label: "pii",
+      type: "text",
+      kind: "name",
+    });
   }
 
   /** Rule 1: a secret-filled field is never read. Its content is always `[secret]` (§9.5). */

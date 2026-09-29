@@ -303,6 +303,13 @@ export async function runDiscovery(
     return { runId, status, code, problems };
   }
 
+  // Why: an app may show a secret back, like the signed-in user ID. Known secrets mask as
+  // `{secret.name}` everywhere the run writes or sends text (docs/decisions.md, M03).
+  for (const [name, binding] of Object.entries(sources.bindings)) {
+    if (!(name in sources.declared)) continue;
+    const got = await deps.secrets.resolve(binding, deps.signal);
+    if (got.ok) r.addSecret(name, got.value);
+  }
   const cfg = {
     origin: app.origin,
     allowlist: buildAllowlist({

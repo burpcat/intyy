@@ -15,7 +15,7 @@ const CANARY =
     .canary_members[0] ?? "";
 const USERNAME = "teller-canary-user";
 
-/** SITE, with the canary member shown on the home page as text, a table cell, and a link. */
+/** SITE, with the canary member on the home page as text, a table cell, and a link, and a greeting that shows the username secret. */
 function canarySite(): FakeSite {
   const home = SITE.screens["/home"];
   if (home === undefined) throw new Error("SITE has no home page");
@@ -27,6 +27,13 @@ function canarySite(): FakeSite {
         ...home,
         elements: [
           ...home.elements,
+          // Why: the bank app greets the operator by user ID after sign-in (the real M03 run).
+          {
+            id: "hello",
+            role: "generic",
+            roleGroup: "container",
+            text: `Welcome, ${USERNAME} | Logout`,
+          },
           {
             id: "recent",
             role: "generic",
@@ -78,6 +85,8 @@ describe("the LLM's view (section 4 §10)", () => {
       llm.filter((f) => f.path.endsWith("_request.json")).at(-1)?.bytes,
     );
     expect(last).toContain("Teller Workstation");
+    // Why: a secret the app shows back masks as its reference (docs/decisions.md, M03).
+    expect(last).toContain("Welcome, {secret.operator_username} | Logout");
     expect(scanForCanaries(ran.files, [CANARY, PASSWORD, USERNAME])).toEqual([]);
   });
 
