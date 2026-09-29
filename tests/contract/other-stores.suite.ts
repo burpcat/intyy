@@ -207,6 +207,30 @@ export function evidenceStoreContract(label: string, make: () => Promise<Evidenc
       });
     });
 
+    test("readFile reads back written bytes; a missing file is not_found; reading never writes", async () => {
+      const store = await make();
+      const run = await store.createRun("keystone", RUN);
+      if (!run.ok) throw new Error("createRun failed");
+      const text = '{"masked":true}';
+      await run.value.writeFile("a11y/00013_observation.a11y.yaml", masked(text));
+
+      // Why: task 10's candidate new opens a finished run to read it. Read-only means no
+      // index line and no event get added just by reading (docs/decisions.md, M04).
+      const before = await store.index("keystone");
+      const opened = await store.openRun("keystone", RUN);
+      if (!opened.ok) throw new Error("openRun failed");
+      expect(await opened.value.readFile("a11y/00013_observation.a11y.yaml")).toEqual({
+        ok: true,
+        value: new TextEncoder().encode(text),
+      });
+      expect(await opened.value.readFile("llm/00099_planner_request.json")).toMatchObject({
+        ok: false,
+        failure: "not_found",
+      });
+      expect(await store.index("keystone")).toEqual(before);
+      expect(await store.events("keystone", RUN)).toEqual({ ok: true, value: [] });
+    });
+
     test("run.json is replaced whole", async () => {
       const store = await make();
       const run = await store.createRun("keystone", RUN);
@@ -261,6 +285,9 @@ export function evidenceStoreContract(label: string, make: () => Promise<Evidenc
       const run = await store.createRun("keystone", RUN);
       if (!run.ok) throw new Error("createRun failed");
       await expect(later(() => run.value.writeFile("../run.json", masked("x")))).rejects.toThrow(
+        "unsafe store path",
+      );
+      await expect(later(() => run.value.readFile("../run.json"))).rejects.toThrow(
         "unsafe store path",
       );
     });

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.candidate_runs/1.0"
+    },
+    "positive": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_\\d{4}-\\d{2}-\\d{2}_[0-9a-hjkmnp-tv-z]{10}$"
+        },
+        "tenant": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      },
+      "required": [
+        "run_id",
+        "tenant"
+      ],
+      "additionalProperties": false
+    },
+    "negatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "pattern": "^run_\\d{4}-\\d{2}-\\d{2}_[0-9a-hjkmnp-tv-z]{10}$"
+          },
+          "tenant": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "required": [
+          "run_id",
+          "tenant"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "positive",
+    "negatives"
+  ],
+  "additionalProperties": false
+}

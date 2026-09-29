@@ -9,7 +9,7 @@ export const CROCKFORD = "0123456789abcdefghjkmnpqrstvwxyz";
 export const ID_RANDOM_CHARS = 10;
 
 /** The prefix of each ID kind. Only the run ID is in the design; the rest share its shape (docs/decisions.md). */
-export type IdKind = "run" | "batch" | "lease" | "alert";
+export type IdKind = "run" | "batch" | "lease" | "alert" | "cand";
 
 /**
  * Builds an ID: kind, UTC date, and 10 Crockford characters. Example: `run_2026-09-24_7kq2m9x4tb`.
@@ -27,3 +27,6 @@ export function formatId(kind: IdKind, date: Date, random: Uint8Array): string {
 
 /** A valid run ID. 25 characters. */
 export const RunId = z.string().regex(/^run_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]{10}$/);
+
+/** A valid candidate ID: `cand_` plus the run ID shape (docs/decisions.md, M04). */
+export const CandidateId = z.string().regex(/^cand_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]{10}$/);

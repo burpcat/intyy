@@ -33,6 +33,11 @@ export class SystemIds implements Ids {
     return this.#make("alert");
   }
 
+  /** A new candidate ID. */
+  candidateId(): string {
+    return this.#make("cand");
+  }
+
   #make(kind: IdKind): string {
     return formatId(kind, this.#clock.now(), randomBytes(ID_RANDOM_CHARS));
   }

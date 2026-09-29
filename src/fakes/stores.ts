@@ -403,6 +403,16 @@ class FakeRunFolder implements RunFolder {
     this.#run.runJson = roundTrip(run);
     return Promise.resolve(ok(undefined));
   }
+
+  /** Reads one file already in the folder. Read-only: never touches the folder. */
+  readFile(path: string): Promise<Outcome<Uint8Array, "not_found">> {
+    assertSafeRelPath(path);
+    const bytes = this.#run.files.get(path);
+    if (bytes === undefined) return Promise.resolve(fail("not_found", path));
+    return Promise.resolve(
+      ok(typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes),
+    );
+  }
 }
 
 /** In-memory evidence store. Set `failWrites` to make every write return `write_failed`. */

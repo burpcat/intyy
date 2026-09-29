@@ -34,6 +34,11 @@ export class SeededIds implements Ids {
     return this.#make("alert");
   }
 
+  /** The next candidate ID. */
+  candidateId(): string {
+    return this.#make("cand");
+  }
+
   #make(kind: IdKind): string {
     const bytes = Uint8Array.from({ length: ID_RANDOM_CHARS }, () => this.#nextByte());
     return formatId(kind, this.#clock.now(), bytes);

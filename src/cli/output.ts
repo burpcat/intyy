@@ -5,6 +5,17 @@
 export type Io = {
   stdout: { write(text: string): unknown; isTTY?: boolean };
   stderr: { write(text: string): unknown };
+  /**
+   * Standard input, for `--note` (piped) and the `review` guided walk (a terminal).
+   * Follows docs/decisions.md, M04: input values never go on a flag.
+   */
+  stdin: {
+    isTTY?: boolean;
+    /** Reads every byte already waiting, as text. Piped input only: a terminal has no EOF. */
+    readAll(): Promise<string>;
+    /** Asks one question on a terminal and reads the answered line. */
+    question(prompt: string): Promise<string>;
+  };
   env: Record<string, string | undefined>;
   cwd: string;
 };

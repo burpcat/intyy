@@ -19,4 +19,6 @@ export interface Ids {
   leaseToken(): string;
   /** An alert ID, same shape with `alert_`. */
   alertId(): string;
+  /** A candidate ID, same shape with `cand_` (docs/decisions.md, M04). */
+  candidateId(): string;
 }

@@ -119,6 +119,7 @@ export function commandTree(commands: readonly Register[]): Command {
   const quiet: Io = {
     stdout: { write: () => true },
     stderr: { write: () => true },
+    stdin: { readAll: () => Promise.resolve(""), question: () => Promise.resolve("") },
     env: {},
     cwd: "/",
   };

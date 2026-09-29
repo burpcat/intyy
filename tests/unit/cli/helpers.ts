@@ -46,14 +46,31 @@ export type Call = {
 /** Runs `intyy` in-process with fake streams. */
 export async function call(
   argv: string[],
-  opts: { cwd: string; env?: Record<string, string | undefined>; tty?: boolean; deps?: RunDeps },
+  opts: {
+    cwd: string;
+    env?: Record<string, string | undefined>;
+    tty?: boolean;
+    deps?: RunDeps;
+    /** Whether standard input is a terminal (default: false, like a piped call). */
+    stdinTty?: boolean;
+    /** What a piped `readAll()` call returns, such as a `--note`'s text. */
+    stdin?: string;
+    /** Scripted answers for the `review` walk's `question()` calls, in order. */
+    answers?: readonly string[];
+  },
 ): Promise<Call> {
   let stdout = "";
   let stderr = "";
   const env = { ...(opts.env ?? {}) };
+  const answers = [...(opts.answers ?? [])];
   const io: Io = {
     stdout: { write: (t: string) => (stdout += t), isTTY: opts.tty ?? false },
     stderr: { write: (t: string) => (stderr += t) },
+    stdin: {
+      isTTY: opts.stdinTty ?? false,
+      readAll: () => Promise.resolve(opts.stdin ?? ""),
+      question: () => Promise.resolve(answers.shift() ?? ""),
+    },
     env,
     cwd: opts.cwd,
   };

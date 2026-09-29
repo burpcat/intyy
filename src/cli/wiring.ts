@@ -11,11 +11,17 @@ import { PlaywrightMarker } from "../adapters/playwright/marker.js";
 import { playwrightFactory } from "../adapters/playwright/session.js";
 import { SystemClock } from "../adapters/system/clock.js";
 import { SystemIds } from "../adapters/system/ids.js";
-import { LockManager } from "../core/locks/manager.js";
+import { FileCandidateStore } from "../adapters/files/other-stores.js";
+import { Artifact } from "../core/model/artifact.js";
+import { CandidateDecision } from "../core/model/candidate-decision.js";
+import { CandidateIssues } from "../core/model/candidate-issues.js";
+import { CandidateRuns } from "../core/model/candidate-runs.js";
 import type { Config } from "../core/model/config.js";
 import { policyKind, settingsKind } from "../core/model/kinds.js";
 import type { Policy } from "../core/model/policy.js";
+import type { CandidateFiles } from "../core/recorder/candidates.js";
 import type { Settings } from "../core/model/settings.js";
+import { LockManager } from "../core/locks/manager.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Locks } from "../ports/locks.js";
 import type { Marker } from "../ports/marker.js";
@@ -23,7 +29,7 @@ import type { Planner } from "../ports/models.js";
 import type { InterventionDesk, OperatorPort } from "../ports/operator.js";
 import type { SurfaceFactory } from "../ports/surface.js";
 import type { Secrets } from "../ports/secrets.js";
-import type { DocumentStore, EvidenceStore } from "../ports/stores.js";
+import type { CandidateStore, DocumentStore, EvidenceStore } from "../ports/stores.js";
 
 /** Every port a command may use. Commands see ports only, never adapters. */
 export type Wiring = {
@@ -34,6 +40,7 @@ export type Wiring = {
   settings: DocumentStore<Settings>;
   locks: Locks;
   evidence: EvidenceStore;
+  candidates: CandidateStore<CandidateFiles, CandidateDecision>;
   /** The operator CLI's side of the mailbox (section 9 §10.5). */
   desk: InterventionDesk;
   /** What a discovery run opens: the browser, the marker, the model, and the mailbox (section 6 §4). */
@@ -69,6 +76,14 @@ export function wire(
     ),
     locks: new LockManager(new FileLockSlots(join(state, "var", "locks")), clock, systemLockEnv()),
     evidence: new FileEvidenceStore({ root: join(state, "evidence"), tmpDir }),
+    candidates: new FileCandidateStore<CandidateFiles, CandidateDecision>(
+      {
+        files: { "runs.json": CandidateRuns, "candidate.json": Artifact, "issues.json": CandidateIssues },
+        decision: CandidateDecision,
+      },
+      { dir: join(library, "candidates"), artifactsDir: join(library, "artifacts"), tmpDir },
+      clock,
+    ),
     desk: new MailboxDesk({ evidenceRoot: join(state, "evidence"), tmpDir }),
     discovery: {
       surface: playwrightFactory,

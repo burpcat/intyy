@@ -1,6 +1,6 @@
 // The candidate, log, and evidence stores on plain files.
 // Follows design section 9 §5.8, §6.2, §6.3, and section 3 §6.1, §7.1, §7.3.
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile as readFileBytes, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { z } from "zod";
 import { sha256Hex } from "../../core/model/canonical.js";
@@ -292,6 +292,17 @@ class FileRunFolder implements RunFolder {
     return guardWrite(() =>
       writeAtomic(this.#tmpDir, join(this.#dir, "run.json"), prettyJson(run)),
     );
+  }
+
+  /** Reads one file already in the folder. Read-only: never touches the folder. */
+  async readFile(path: string): Promise<Outcome<Uint8Array, "not_found">> {
+    assertSafeRelPath(path);
+    try {
+      return ok(new Uint8Array(await readFileBytes(join(this.#dir, path))));
+    } catch (e) {
+      if (hasCode(e, "ENOENT")) return fail("not_found", path);
+      throw e;
+    }
   }
 }
 

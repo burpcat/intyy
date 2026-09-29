@@ -9,6 +9,8 @@ import { AppId } from "../../core/model/common.js";
 import { CapabilityName, RunSpec } from "../../core/model/runspec.js";
 import { issueText } from "../../core/model/sealing.js";
 import { checkSpec, type SpecReport } from "../../core/discovery/spec-checks.js";
+import type { SpecLookup } from "../../core/recorder/candidates.js";
+import { fail, ok } from "../../ports/outcome.js";
 import { readChecked, requireRole, type Ctx } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
 import { answer, progress, type Answer } from "../output.js";
@@ -93,6 +95,19 @@ export function readSpec(ctx: Ctx, s: SpecName): RunSpec {
   const path = specPath(ctx, s);
   if (!existsSync(path)) throw new CliExit(EXIT.usage, `spec ${s.app}/${s.name} does not exist`);
   return readChecked(path, RunSpec);
+}
+
+/** A {@link SpecLookup} bound to this command's root: what `src/core/recorder/candidates.ts`
+ * uses to read a linked run's spec, without a `node:fs` import of its own (CLAUDE.md). */
+export function specLookup(ctx: Ctx): SpecLookup {
+  return (app, name) => {
+    try {
+      return Promise.resolve(ok(readSpec(ctx, { app, name })));
+    } catch (e) {
+      if (e instanceof CliExit) return Promise.resolve(fail(e.code === EXIT.invalid ? "invalid" : "not_found", e.message));
+      throw e;
+    }
+  };
 }
 
 /** Registers the spec commands. */

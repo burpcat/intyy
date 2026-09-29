@@ -130,38 +130,44 @@ export const SITE: FakeSite = {
   },
 };
 
-const globalLayer = GlobalPolicy.parse(
+/** The real, sealed global policy layer. Exported so a CLI-level test can seed a document store
+ * with the same raw layers {@link testPolicy} merges (docs/decisions.md, M04). */
+export const GLOBAL_LAYER = GlobalPolicy.parse(
   JSON.parse(
     readFileSync(new URL("../../../library/policy/global/1.json", import.meta.url), "utf8"),
   ),
 );
 
+/** A test kvfcu app layer: SITE's four paths, and both operator secrets on `/`. */
+export const APP_LAYER = AppPolicy.parse({
+  schema: "intyy.policy/1.0",
+  scope: { level: "app", app: "kvfcu" },
+  revision: 1,
+  reason: "Test app layer.",
+  paths: {
+    allow: ["/", "/home", "/transfer", "/done"],
+    deny: ["/__test__/*"],
+    irreversible: [],
+    case_sensitive: true,
+  },
+  secrets: {
+    operator_username: { kind: "username", paths: ["/"] },
+    operator_password: { kind: "password", paths: ["/"] },
+  },
+});
+
+/** A test keystone tenant layer: allows `sign_in` and `transfer` on kvfcu. */
+export const TENANT_LAYER = TenantPolicy.parse({
+  schema: "intyy.policy/1.0",
+  scope: { level: "tenant", tenant: "keystone" },
+  revision: 1,
+  reason: "Test tenant layer.",
+  capabilities: { allow: ["kvfcu/sign_in@1", "kvfcu/transfer@1", "kvfcu/find_member@1"] },
+});
+
 /** The global layer, a test kvfcu app layer, and a keystone tenant layer, merged. */
 export function testPolicy(): MergeResult {
-  const app = AppPolicy.parse({
-    schema: "intyy.policy/1.0",
-    scope: { level: "app", app: "kvfcu" },
-    revision: 1,
-    reason: "Test app layer.",
-    paths: {
-      allow: ["/", "/home", "/transfer", "/done"],
-      deny: ["/__test__/*"],
-      irreversible: [],
-      case_sensitive: true,
-    },
-    secrets: {
-      operator_username: { kind: "username", paths: ["/"] },
-      operator_password: { kind: "password", paths: ["/"] },
-    },
-  });
-  const tenant = TenantPolicy.parse({
-    schema: "intyy.policy/1.0",
-    scope: { level: "tenant", tenant: "keystone" },
-    revision: 1,
-    reason: "Test tenant layer.",
-    capabilities: { allow: ["kvfcu/sign_in@1", "kvfcu/transfer@1"] },
-  });
-  const merged = mergePolicy({ global: globalLayer, app, tenant, appName: "kvfcu" });
+  const merged = mergePolicy({ global: GLOBAL_LAYER, app: APP_LAYER, tenant: TENANT_LAYER, appName: "kvfcu" });
   if (!merged.ok) throw new Error(`test policy does not merge: ${merged.detail ?? ""}`);
   return merged.value;
 }

@@ -165,6 +165,13 @@ export interface RunFolder {
   ): Promise<Outcome<{ sha256: string; bytes: number }, "write_failed">>;
   /** Replaces `run.json` atomically: temp file first, then rename (section 3 §7.3). */
   writeRunJson(run: Masked<unknown>, signal?: AbortSignal): Promise<Outcome<void, "write_failed">>;
+  /**
+   * Reads one file already in the folder, such as an `a11y/*.yaml` snapshot or an `llm/*.json`
+   * request, as bytes. The recorder decodes text with `TextDecoder` in core (docs/decisions.md,
+   * M04): the port stays one shape for text and binary files alike, matching `writeFile`.
+   * Never modifies the folder: opening a finished run to read it is read-only.
+   */
+  readFile(path: string, signal?: AbortSignal): Promise<Outcome<Uint8Array, "not_found">>;
 }
 
 /** Run folders and the tenant's run index (section 9 §5.8). Batches and mailboxes come later. */
