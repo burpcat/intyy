@@ -262,14 +262,12 @@ async function ask(
     message,
     image,
   });
-  for (;;) {
-    const seq = d.log.nextSeq;
+  for (let attempt = 1; ; attempt++) {
+    // Why the attempt number: no log line comes between a failed call and its retry, so both
+    // share one `seq`. The retry must not overwrite the first call's stored bytes.
+    const name = `${pad(d.log.nextSeq)}${attempt === 1 ? "" : `_${String(attempt)}`}_planner`;
     const record = async (part: "request" | "reply", bytes: Uint8Array): Promise<boolean> => {
-      const w = await d.folder.writeFile(
-        `llm/${pad(seq)}_planner_${part}.json`,
-        wireBytes(bytes),
-        d.signal,
-      );
+      const w = await d.folder.writeFile(`llm/${name}_${part}.json`, wireBytes(bytes), d.signal);
       return w.ok;
     };
     const reply = await d.planner.next(turn, record, d.signal);

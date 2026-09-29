@@ -16,7 +16,7 @@ export function cassetteOf(runDir: string, runId: string, prompt = "discovery@1.
   let model = "";
   for (const name of names.filter((n) => n.endsWith("_planner_request.json"))) {
     const replyName = name.replace("_request.json", "_reply.json");
-    // Why: a request with no reply is a failed call; the loop retried it under a new number.
+    // Why: a request with no reply is a failed call; the loop retried it as `<seq>_2_…`.
     if (!names.includes(replyName)) continue;
     const req = JSON.parse(readFileSync(join(llm, name), "utf8")) as Anthropic.MessageCreateParams;
     const sys = Array.isArray(req.system)
@@ -24,9 +24,10 @@ export function cassetteOf(runDir: string, runId: string, prompt = "discovery@1.
       : (req.system ?? "");
     const content = req.messages[0]?.content;
     const text = Array.isArray(content) ? content.find((c) => c.type === "text") : undefined;
-    const reply = replyOf(
-      JSON.parse(readFileSync(join(llm, replyName), "utf8")) as Anthropic.Message,
-    );
+    const raw = JSON.parse(readFileSync(join(llm, replyName), "utf8")) as { type?: unknown };
+    // Why: an API error reply is a failed call; the loop retried it, so it is not a turn.
+    if (raw.type !== "message") continue;
+    const reply = replyOf(raw as Anthropic.Message);
     if (text?.type !== "text" || reply === "refused")
       throw new Error(`${name}: not a replayable turn`);
     system = sys;

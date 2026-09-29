@@ -98,9 +98,13 @@ describe("how a run ends (section 6 §10.4)", () => {
     });
   });
 
-  test("one failure is retried, and the run goes on", async () => {
+  test("one failure is retried, and the run goes on; the retry keeps its own llm/ file", async () => {
     const r = await go({ steps: [{ failure: "timeout" }, ...SIGN_IN_STEPS] });
     expect(r.result.status).toBe("success");
+    const llm = r.files.map((f) => f.path).filter((p) => p.startsWith("llm/"));
+    const first = llm.find((p) => /^llm\/\d{5}_planner_request\.json$/.test(p));
+    expect(first).toBeDefined();
+    expect(llm).toContain((first ?? "").replace("_planner_request", "_2_planner_request"));
   });
 
   test("a failed llm/ write stops the call and the run", async () => {
