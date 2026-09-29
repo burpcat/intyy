@@ -3,6 +3,7 @@
 // registered here. Follows build plan section 10 §5.2.
 import { z } from "zod";
 import { Artifact } from "../src/core/model/artifact.js";
+import { CandidateDecision } from "../src/core/model/candidate-decision.js";
 import { Cassette } from "../src/core/model/cassette.js";
 import { Config } from "../src/core/model/config.js";
 import { LockFile } from "../src/core/model/lock.js";
@@ -18,6 +19,7 @@ import { IndexLine } from "../src/core/model/store-index.js";
 export const formats: Record<string, z.ZodType> = {
   "intyy.artifact-1.0": Artifact,
   "intyy.patch-1.0": Patch,
+  "intyy.candidate_decision-1.0": CandidateDecision,
   "intyy.config-1.0": Config,
   "intyy.staff-1.0": StaffFile,
   "intyy.policy-1.0": Policy,

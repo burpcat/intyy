@@ -2,6 +2,7 @@
 // Design section 9 §5.8 and section 3 §6.1, §7.1, §7.3.
 import { describe, expect, test } from "vitest";
 import { sha256Hex } from "../../src/core/model/canonical.js";
+import type { IndexLine } from "../../src/core/model/store-index.js";
 import type { CandidateStore, EvidenceStore, LogStore } from "../../src/ports/stores.js";
 import {
   masked,
@@ -11,14 +12,23 @@ import {
   type LogRecord,
 } from "./test-kinds.js";
 
+/** What `seal` wrote for one artifact version, read back for verification. */
+export type SealedRead = { artifact: unknown; crops: Record<string, Uint8Array>; index: IndexLine[] };
+
+/** One implementation under test: the store, plus a way to read back what `seal` wrote. */
+export type CandidateStoreFixture = {
+  store: CandidateStore<CandidateFiles, Decision>;
+  readSealed: (artifactId: string, version: string) => Promise<SealedRead | null>;
+};
+
 /** Runs the candidate store contract against one implementation. */
 export function candidateStoreContract(
   label: string,
-  make: () => Promise<CandidateStore<CandidateFiles, Decision>>,
+  make: () => Promise<CandidateStoreFixture>,
 ): void {
   describe(`CandidateStore contract: ${label}`, () => {
     test("files read back; a missing file is not_found", async () => {
-      const store = await make();
+      const { store } = await make();
       expect(await store.putFile("kvfcu/sign_in/c1", "runs.json", { runs: ["r1"] })).toEqual({
         ok: true,
         value: undefined,
@@ -34,7 +44,7 @@ export function candidateStoreContract(
     });
 
     test("a file write replaces the old content", async () => {
-      const store = await make();
+      const { store } = await make();
       await store.putFile("kvfcu/sign_in/c1", "candidate.json", { steps: 1 });
       await store.putFile("kvfcu/sign_in/c1", "candidate.json", { steps: 2 });
       expect(await store.getFile("kvfcu/sign_in/c1", "candidate.json")).toEqual({
@@ -44,7 +54,7 @@ export function candidateStoreContract(
     });
 
     test("decisions append in order; an absent log is empty", async () => {
-      const store = await make();
+      const { store } = await make();
       expect(await store.decisions("kvfcu/sign_in/c1")).toEqual({ ok: true, value: [] });
       await store.appendDecision("kvfcu/sign_in/c1", { by: "op_017", decision: "accept" });
       await store.appendDecision("kvfcu/sign_in/c1", { by: "op_017", decision: "rename" });
@@ -58,11 +68,50 @@ export function candidateStoreContract(
     });
 
     test("list returns candidate IDs, sorted", async () => {
-      const store = await make();
+      const { store } = await make();
       await store.putFile("kvfcu/sign_in/c2", "runs.json", { runs: [] });
       await store.appendDecision("kvfcu/find/c1", { by: "op_017", decision: "accept" });
       expect(await store.list()).toEqual(["kvfcu/find/c1", "kvfcu/sign_in/c2"]);
     });
+
+    test(
+      "seal writes the artifact folder and its crops, and one index line; " +
+        "a version already sealed is refused; the candidate's own files are untouched",
+      async () => {
+        const { store, readSealed } = await make();
+        await store.putFile("kvfcu/sign_in/c1", "runs.json", { runs: ["r1"] });
+        const artifact = { identity: { app: "kvfcu", capability: "sign_in", version: "1.0.0" } };
+        const crop = Uint8Array.from([137, 80, 78, 71]);
+
+        const sealed = await store.seal("kvfcu/sign_in/c1", "1.0.0", "op_017", artifact, {
+          search_button: crop,
+        });
+        if (!sealed.ok) throw new Error("seal failed");
+
+        const read = await readSealed("kvfcu/sign_in", "1.0.0");
+        expect(read?.artifact).toEqual(artifact);
+        expect(read?.crops).toEqual({ search_button: crop });
+        expect(read?.index).toMatchObject([
+          {
+            event: "sealed",
+            kind: "artifact",
+            id: "kvfcu/sign_in",
+            rev: "1.0.0",
+            hash: sealed.value.hash,
+            by: "op_017",
+          },
+        ]);
+
+        expect(
+          await store.seal("kvfcu/sign_in/c1", "1.0.0", "op_017", artifact, {}),
+        ).toMatchObject({ ok: false, failure: "conflict" });
+
+        expect(await store.getFile("kvfcu/sign_in/c1", "runs.json")).toEqual({
+          ok: true,
+          value: { runs: ["r1"] },
+        });
+      },
+    );
   });
 }
 

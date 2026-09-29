@@ -5,6 +5,9 @@ import { join } from "node:path";
 import type { z } from "zod";
 import { sha256Hex } from "../../core/model/canonical.js";
 import { assertSafeName, assertSafeRelPath } from "../../core/model/safe-path.js";
+import { findLine, sealHash } from "../../core/model/sealing.js";
+import { IndexLine } from "../../core/model/store-index.js";
+import type { Clock } from "../../ports/clock.js";
 import type { Masked } from "../../ports/masked.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type {
@@ -13,6 +16,7 @@ import type {
   DocId,
   EvidenceStore,
   LogStore,
+  Rev,
   RunFolder,
 } from "../../ports/stores.js";
 import {
@@ -57,7 +61,24 @@ export type CandidateSchemas<F extends Record<string, unknown>, D> = {
   decision: z.ZodType<D>;
 };
 
+/** Where a file candidate store keeps its candidates, its sealed artifacts, and its temp files. */
+export type CandidateStoreDirs = {
+  /** The candidates folder. Example: `<root>/library/candidates`. */
+  dir: string;
+  /** The sealed artifacts folder. Example: `<root>/library/artifacts`. */
+  artifactsDir: string;
+  /** Staging for atomic writes: `<root>/state/var/tmp`. */
+  tmpDir: string;
+};
+
 const DECISIONS = "decisions.jsonl";
+
+/** A candidate id's `<app>/<capability>` prefix, which sealing writes under (section 9 §6.2). */
+function artifactIdOf(id: DocId): string {
+  const cut = id.indexOf("/", id.indexOf("/") + 1);
+  if (cut < 0) throw new Error(`candidate id has no app/capability: ${id}`);
+  return id.slice(0, cut);
+}
 
 /** A folder per artifact candidate, on files (section 9 §6.2). */
 export class FileCandidateStore<F extends Record<string, unknown>, D> implements CandidateStore<
@@ -66,13 +87,17 @@ export class FileCandidateStore<F extends Record<string, unknown>, D> implements
 > {
   readonly #schemas: CandidateSchemas<F, D>;
   readonly #dir: string;
+  readonly #artifactsDir: string;
   readonly #tmpDir: string;
+  readonly #clock: Clock;
 
-  /** A store in `dir`. Example: `<root>/library/candidates`. */
-  constructor(schemas: CandidateSchemas<F, D>, dirs: { dir: string; tmpDir: string }) {
+  /** A store in `dirs.dir`, sealing into `dirs.artifactsDir`. */
+  constructor(schemas: CandidateSchemas<F, D>, dirs: CandidateStoreDirs, clock: Clock) {
     this.#schemas = schemas;
     this.#dir = dirs.dir;
+    this.#artifactsDir = dirs.artifactsDir;
     this.#tmpDir = dirs.tmpDir;
+    this.#clock = clock;
   }
 
   /** Writes one file atomically. */
@@ -124,6 +149,59 @@ export class FileCandidateStore<F extends Record<string, unknown>, D> implements
       if (cut > 0 && names.has(file.slice(cut + 1))) ids.add(file.slice(0, cut));
     }
     return [...ids].sort();
+  }
+
+  /** Seals a candidate as one artifact version. Refuses a version already sealed. */
+  async seal(
+    id: DocId,
+    version: Rev,
+    staff: string,
+    artifact: unknown,
+    crops: Record<string, Uint8Array>,
+  ): Promise<Outcome<{ hash: string }, "conflict" | "write_failed" | "invalid">> {
+    assertSafeRelPath(id);
+    assertSafeRelPath(version);
+    const artifactId = artifactIdOf(id);
+    const index = await this.#artifactIndex();
+    if (!index.ok) return index;
+    if (findLine(index.value, "sealed", artifactId, version))
+      return fail("conflict", `${artifactId} ${version} is already sealed`);
+    const hash = sealHash(artifact);
+    const base = join(this.#artifactsDir, artifactId, version);
+    const written = await guardWrite(async () => {
+      await writeAtomic(this.#tmpDir, join(base, "artifact.json"), prettyJson(artifact));
+      for (const [targetId, bytes] of Object.entries(crops)) {
+        assertSafeName(targetId);
+        await writeAtomic(this.#tmpDir, join(base, "crops", `${targetId}.png`), bytes);
+      }
+    });
+    if (!written.ok) return written;
+    const line: IndexLine = {
+      event: "sealed",
+      kind: "artifact",
+      id: artifactId,
+      rev: version,
+      path: `${artifactId}/${version}/artifact.json`,
+      hash,
+      by: staff,
+      at: this.#clock.now().toISOString(),
+    };
+    await appendLine(join(this.#artifactsDir, "index.jsonl"), JSON.stringify(line), true);
+    return ok({ hash });
+  }
+
+  /** The artifacts store's `sealed` index lines. */
+  async #artifactIndex(): Promise<Outcome<IndexLine[], "invalid">> {
+    const read = await readJsonLines(join(this.#artifactsDir, "index.jsonl"));
+    if (read === null) return ok([]);
+    if (!read.ok) return fail("invalid", read.detail);
+    const lines: IndexLine[] = [];
+    for (const raw of read.lines) {
+      const parsed = IndexLine.safeParse(raw);
+      if (!parsed.success) return fail("invalid", `index.jsonl: ${parsed.error.message}`);
+      lines.push(parsed.data);
+    }
+    return ok(lines);
   }
 }
 

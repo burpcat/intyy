@@ -60,7 +60,7 @@ The real `sign_in` run becomes a reviewed, sealed, versioned artifact: `kvfcu/si
 - [x] 3. Write the patch schema and its loader checks.
 - [x] 4. Write the JSON Schema export and the freshness check.
 - [x] 5. Write the condition evaluator. Test the three answers, and that `not` of unknown never passes.
-- [ ] 6. Write the candidate store and the decision log.
+- [x] 6. Write the candidate store and the decision log.
 - [ ] 7. Write the recorder, rule by rule, test first, on small saved logs in `tests/fixtures/logs/`.
 - [ ] 8. Write the "false before" check: a checkpoint true before its action is caught.
 - [ ] 9. Write the golden test: a saved masked log plus decisions give the same artifact bytes.

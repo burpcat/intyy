@@ -184,17 +184,31 @@ export type CandidateSchemas<F extends Record<string, unknown>, D> = {
   decision: z.ZodType<D>;
 };
 
+/** A candidate id's `<app>/<capability>` prefix, which sealing writes under (section 9 §6.2). */
+function artifactIdOf(id: DocId): string {
+  const cut = id.indexOf("/", id.indexOf("/") + 1);
+  if (cut < 0) throw new Error(`candidate id has no app/capability: ${id}`);
+  return id.slice(0, cut);
+}
+
+/** One sealed artifact version, kept in memory. */
+type SealedArtifact = { artifact: unknown; crops: Map<string, Uint8Array> };
+
 /** In-memory candidate store. */
 export class FakeCandidateStore<F extends Record<string, unknown>, D> implements CandidateStore<
   F,
   D
 > {
   readonly #schemas: CandidateSchemas<F, D>;
+  readonly #clock: Clock;
   readonly #folders = new Map<DocId, { files: Map<string, unknown>; decisions: unknown[] }>();
+  readonly #sealed = new Map<string, SealedArtifact>();
+  readonly #artifactIndex: IndexLine[] = [];
 
   /** A store whose files and decisions follow `schemas`. */
-  constructor(schemas: CandidateSchemas<F, D>) {
+  constructor(schemas: CandidateSchemas<F, D>, clock: Clock) {
     this.#schemas = schemas;
+    this.#clock = clock;
   }
 
   /** Writes one file. */
@@ -242,6 +256,52 @@ export class FakeCandidateStore<F extends Record<string, unknown>, D> implements
   /** Lists candidate IDs, sorted. */
   list(): Promise<DocId[]> {
     return Promise.resolve([...this.#folders.keys()].sort());
+  }
+
+  /** Seals a candidate as one artifact version. Refuses a version already sealed. */
+  seal(
+    id: DocId,
+    version: Rev,
+    staff: string,
+    artifact: unknown,
+    crops: Record<string, Uint8Array>,
+  ): Promise<Outcome<{ hash: string }, "conflict" | "write_failed" | "invalid">> {
+    assertSafeRelPath(id);
+    assertSafeRelPath(version);
+    const artifactId = artifactIdOf(id);
+    if (findLine(this.#artifactIndex, "sealed", artifactId, version))
+      return Promise.resolve(fail("conflict", `${artifactId} ${version} is already sealed`));
+    const hash = sealHash(artifact);
+    const cropMap = new Map<string, Uint8Array>();
+    for (const [targetId, bytes] of Object.entries(crops)) {
+      assertSafeName(targetId);
+      cropMap.set(targetId, bytes);
+    }
+    this.#sealed.set(`${artifactId}@${version}`, { artifact: roundTrip(artifact), crops: cropMap });
+    this.#artifactIndex.push({
+      event: "sealed",
+      kind: "artifact",
+      id: artifactId,
+      rev: version,
+      path: `${artifactId}/${version}/artifact.json`,
+      hash,
+      by: staff,
+      at: this.#clock.now().toISOString(),
+    });
+    return Promise.resolve(ok({ hash }));
+  }
+
+  /** Test hook: reads back what `seal` wrote for one artifact version, or `null`. */
+  sealed(
+    artifactId: string,
+    version: string,
+  ): { artifact: unknown; crops: Record<string, Uint8Array>; index: IndexLine[] } | null {
+    const found = this.#sealed.get(`${artifactId}@${version}`);
+    if (!found) return null;
+    const crops: Record<string, Uint8Array> = {};
+    for (const [targetId, bytes] of found.crops) crops[targetId] = bytes;
+    const index = this.#artifactIndex.filter((l) => l.id === artifactId && l.rev === version);
+    return { artifact: found.artifact, crops, index };
   }
 
   #folder(id: DocId): { files: Map<string, unknown>; decisions: unknown[] } {

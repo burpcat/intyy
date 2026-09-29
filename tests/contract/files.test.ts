@@ -10,6 +10,7 @@ import {
   FileEvidenceStore,
   FileLogStore,
 } from "../../src/adapters/files/other-stores.js";
+import type { IndexLine } from "../../src/core/model/store-index.js";
 import { ManualClock } from "../../src/fakes/clock.js";
 import { documentStoreContract } from "./document-store.suite.js";
 import {
@@ -66,10 +67,43 @@ documentStoreContract("files", async () => {
 
 candidateStoreContract("files", async () => {
   const { root, tmpDir } = await tempRoot();
-  return new FileCandidateStore(
+  const artifactsDir = join(root, "library", "artifacts");
+  const store = new FileCandidateStore(
     { files: CandidateFiles, decision: Decision },
-    { dir: join(root, "library", "candidates"), tmpDir },
+    { dir: join(root, "library", "candidates"), artifactsDir, tmpDir },
+    new ManualClock(),
   );
+  return {
+    store,
+    readSealed: async (artifactId, version) => {
+      const base = join(artifactsDir, artifactId, version);
+      let artifact: unknown;
+      try {
+        artifact = JSON.parse(await readFile(join(base, "artifact.json"), "utf8")) as unknown;
+      } catch {
+        return null;
+      }
+      const crops: Record<string, Uint8Array> = {};
+      try {
+        for (const name of await readdir(join(base, "crops"))) {
+          crops[name.replace(/\.png$/, "")] = new Uint8Array(
+            await readFile(join(base, "crops", name)),
+          );
+        }
+      } catch {
+        // no crops folder
+      }
+      const text = await readFile(join(artifactsDir, "index.jsonl"), "utf8").catch(() => "");
+      const index: IndexLine[] =
+        text.trim() === ""
+          ? []
+          : text
+              .trim()
+              .split("\n")
+              .map((l) => JSON.parse(l) as IndexLine);
+      return { artifact, crops, index };
+    },
+  };
 });
 
 logStoreContract("files", async () => {

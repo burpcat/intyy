@@ -31,9 +31,13 @@ documentStoreContract("fake", () => {
   });
 });
 
-candidateStoreContract("fake", () =>
-  Promise.resolve(new FakeCandidateStore({ files: CandidateFiles, decision: Decision })),
-);
+candidateStoreContract("fake", () => {
+  const store = new FakeCandidateStore({ files: CandidateFiles, decision: Decision }, new ManualClock());
+  return Promise.resolve({
+    store,
+    readSealed: (artifactId, version) => Promise.resolve(store.sealed(artifactId, version)),
+  });
+});
 
 logStoreContract("fake", () =>
   Promise.resolve(new FakeLogStore({ line: LogLine, record: LogRecord })),

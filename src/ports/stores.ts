@@ -108,6 +108,22 @@ export interface CandidateStore<F extends Record<string, unknown>, D> {
   decisions(id: DocId, signal?: AbortSignal): Promise<Outcome<D[], "invalid">>;
   /** Lists candidate IDs, sorted. */
   list(signal?: AbortSignal): Promise<DocId[]>;
+  /**
+   * Seals a candidate as one artifact version (section 9 §6.2, §6.4): writes `artifact.json`
+   * under `library/artifacts/<app>/<capability>/<version>/`, copies each `crops` entry's bytes
+   * to `crops/<target_id>.png` beside it, and appends the `sealed` index line. `<app>` and
+   * `<capability>` come from `id`'s own path, `<app>/<capability>/<candidate_id>`. Never
+   * changes the candidate's own files. `conflict`: that version is already sealed. The four
+   * sealing rules (section 6 §15) are the caller's job, not this storage primitive's.
+   */
+  seal(
+    id: DocId,
+    version: Rev,
+    staff: string,
+    artifact: unknown,
+    crops: Record<string, Uint8Array>,
+    signal?: AbortSignal,
+  ): Promise<Outcome<{ hash: string }, "conflict" | "write_failed" | "invalid">>;
 }
 
 /**
