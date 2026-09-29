@@ -73,9 +73,17 @@ export type RecorderOutput = {
   normalFixtures: readonly NormalFixture[];
 };
 
-/** Every review issue, blocking ones first (section 6 §14.15). */
+/** Among risk issues, a lowered flag shows before an undecided one (section 6 §14.9, "Lowered
+ * flags show first"). Everything else keeps its relative order (a stable sort). */
+const RISK_ISSUE_RANK: Record<string, number> = { risk_second_look: 0, risk_undecided: 1 };
+
+/** Every review issue, blocking ones first, lowered risk flags first among those (section 6
+ * §14.15, §14.9). */
 function sortIssues(issues: readonly RecorderIssue[]): RecorderIssue[] {
-  return [...issues].sort((a, b) => (a.level === b.level ? 0 : a.level === "blocking" ? -1 : 1));
+  return [...issues].sort((a, b) => {
+    if (a.level !== b.level) return a.level === "blocking" ? -1 : 1;
+    return (RISK_ISSUE_RANK[a.code] ?? 2) - (RISK_ISSUE_RANK[b.code] ?? 2);
+  });
 }
 
 /**

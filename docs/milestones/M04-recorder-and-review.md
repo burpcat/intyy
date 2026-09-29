@@ -63,7 +63,7 @@ The real `sign_in` run becomes a reviewed, sealed, versioned artifact: `kvfcu/si
 - [x] 6. Write the candidate store and the decision log.
 - [x] 7. Write the recorder, rule by rule, test first, on small saved logs in `tests/fixtures/logs/`.
 - [x] 8. Write the "false before" check: a checkpoint true before its action is caught.
-- [ ] 9. Write the golden test: a saved masked log plus decisions give the same artifact bytes.
+- [x] 9. Write the golden test: a saved masked log plus decisions give the same artifact bytes.
 - [ ] 10. Write the candidate commands and the guided review walk.
 - [ ] 11. Write sealing and the second look. Test: sealing fails without it; passes with another staff ID; a disagreement records `irreversible`.
 - [ ] 12. Write the artifact and capability commands.

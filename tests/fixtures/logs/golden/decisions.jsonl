@@ -1,0 +1,5 @@
+{"schema":"intyy.candidate_decision/1.0","what":"tag","subject":"run_2026-09-24_g01den0001#3","value":"flow_step","by":"op_017","at":"2026-09-24T14:00:00Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"tag","subject":"run_2026-09-24_g01den0001#6","value":"flow_step","by":"op_017","at":"2026-09-24T14:00:05Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"tag","subject":"run_2026-09-24_g01den0001#9","value":"flow_step","by":"op_017","at":"2026-09-24T14:00:10Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"edit","subject":"about.when_to_use","value":"Use to sign the operator in before any other capability runs.","by":"op_017","at":"2026-09-24T14:01:00Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"edit","subject":"about.limits","value":"Does not create a session for anyone but the operator.","by":"op_017","at":"2026-09-24T14:01:05Z"}

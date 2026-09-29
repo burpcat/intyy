@@ -65,6 +65,44 @@ describe("applyRiskDecisions", () => {
     expect(out[0]?.risk).toBe("irreversible");
     expect(issues).toEqual([]);
   });
+
+  test("a step with no risk decision at all is blocking, even when its risk was never lowered", () => {
+    // Section 6 §14.9: "Every flag still needs a human risk decision." The approval hint that
+    // drafted this idempotent risk is not a review decision.
+    const steps = [
+      { id: "type_username", intent: "x", action: { type: "click" as const, target: "username_box" }, precondition: "p", checkpoint: "c", outcomes: [], risk: "idempotent" as const, timeout_ms: 5000 },
+    ];
+    const issues: RecorderIssue[] = [];
+    const out = applyRiskDecisions(steps, [], new Map([["type_username", "idempotent"]]), new Map(), issues);
+    expect(out[0]?.risk).toBe("idempotent");
+    expect(issues).toMatchObject([
+      { level: "blocking", code: "risk_undecided", subject: "type_username" },
+    ]);
+  });
+
+  test("an undecided, lowered flag gets both issues, second look first", () => {
+    // No `risk` decision at all: the draft itself is already lowered, by the approval hint
+    // that `riskHintByStepId` names (`op_017`).
+    const step = {
+      id: "click_confirm",
+      intent: "x",
+      action: { type: "click" as const, target: "confirm_button" },
+      precondition: "p",
+      checkpoint: "c",
+      outcomes: [],
+      risk: "idempotent" as const,
+      timeout_ms: 15000,
+    };
+    const issues: RecorderIssue[] = [];
+    applyRiskDecisions(
+      [step],
+      [],
+      new Map([["click_confirm", "irreversible"]]),
+      new Map([["click_confirm", "op_017"]]),
+      issues,
+    );
+    expect(issues.map((i) => i.code)).toEqual(["risk_second_look", "risk_undecided"]);
+  });
 });
 
 describe("applySensitivityDecisions", () => {

@@ -26,6 +26,12 @@ function lastBySubject(
  * issue (section 9 §8.3, section 6 §14.9, §15 rule 4). A `risk_second_look` by the same staff
  * ID as the lowering decision does not count; a later `risk` decision from another reviewer
  * naturally overrides the lowering instead (last decision wins), which needs no second look.
+ *
+ * Every step still needs its own `risk` decision (section 6 §14.9: "Every flag still needs a
+ * human `risk` decision"; §14.15 lists "Undecided risk flags" as blocking): the operator's
+ * discovery-time approval hint is only the draft, never the review decision. A step with no
+ * `risk` decision at all gets a `risk_undecided` blocking issue too, on top of any
+ * `risk_second_look` one.
  */
 export function applyRiskDecisions(
   steps: readonly Step[],
@@ -56,6 +62,14 @@ export function applyRiskDecisions(
           message: `${s.id}'s risk was lowered from irreversible (the rules' class) to ${finalRisk}; a second look by another staff ID is needed.`,
         });
       }
+    }
+    if (decision === undefined) {
+      issues.push({
+        level: "blocking",
+        code: "risk_undecided",
+        subject: s.id,
+        message: `${s.id}'s risk (${finalRisk}) has not been confirmed by a risk decision yet.`,
+      });
     }
     return finalRisk === s.risk ? s : { ...s, risk: finalRisk };
   });

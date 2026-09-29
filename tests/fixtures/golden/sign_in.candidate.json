@@ -1,0 +1,303 @@
+{
+  "candidate": {
+    "about": {
+      "limits": "Does not create a session for anyone but the operator.",
+      "summary": "Sign in as the operator and reach the home page.",
+      "title": "Sign in",
+      "when_to_use": "Use to sign the operator in before any other capability runs."
+    },
+    "conditions": [
+      {
+        "check": "all_of",
+        "checks": [
+          {
+            "check": "location",
+            "pattern": "/login.do"
+          },
+          {
+            "check": "element_visible",
+            "target": "user_id_box"
+          }
+        ],
+        "description": "Before type user id.",
+        "id": "type_user_id_precondition"
+      },
+      {
+        "check": "field_value",
+        "description": "After type user id.",
+        "id": "type_user_id_checkpoint",
+        "match": "wildcard",
+        "target": "user_id_box",
+        "value": "*"
+      },
+      {
+        "check": "all_of",
+        "checks": [
+          {
+            "check": "location",
+            "pattern": "/login.do"
+          },
+          {
+            "check": "element_visible",
+            "target": "password_box"
+          }
+        ],
+        "description": "Before type password.",
+        "id": "type_password_precondition"
+      },
+      {
+        "check": "field_value",
+        "description": "After type password.",
+        "id": "type_password_checkpoint",
+        "match": "wildcard",
+        "target": "password_box",
+        "value": "*"
+      },
+      {
+        "check": "all_of",
+        "checks": [
+          {
+            "check": "location",
+            "pattern": "/login.do"
+          },
+          {
+            "ref": "type_user_id_checkpoint"
+          },
+          {
+            "ref": "type_password_checkpoint"
+          }
+        ],
+        "description": "Before click login.",
+        "id": "click_login_precondition"
+      },
+      {
+        "check": "text_visible",
+        "description": "After click login.",
+        "id": "click_login_checkpoint",
+        "match": "contains",
+        "text": "Welcome, teller"
+      }
+    ],
+    "contract": {
+      "effect": "read_only",
+      "inputs": [],
+      "outcomes": [],
+      "outputs": []
+    },
+    "identity": {
+      "app": "kvfcu",
+      "capability": "sign_in",
+      "version": null
+    },
+    "provenance": {
+      "actions": [
+        {
+          "became": "step:type_user_id",
+          "decided_by": "op_017",
+          "human_tag": "flow_step",
+          "llm_tag": "flow_step",
+          "run_id": "run_2026-09-24_g01den0001",
+          "seq": 3
+        },
+        {
+          "became": "step:type_password",
+          "decided_by": "op_017",
+          "human_tag": "flow_step",
+          "llm_tag": "flow_step",
+          "run_id": "run_2026-09-24_g01den0001",
+          "seq": 6
+        },
+        {
+          "became": "step:click_login",
+          "decided_by": "op_017",
+          "human_tag": "flow_step",
+          "llm_tag": "flow_step",
+          "run_id": "run_2026-09-24_g01den0001",
+          "seq": 9
+        }
+      ],
+      "decisions": [
+        {
+          "at": "2026-09-24T14:01:00Z",
+          "by": "op_017",
+          "subject": "about.when_to_use",
+          "value": "Use to sign the operator in before any other capability runs.",
+          "what": "edit"
+        },
+        {
+          "at": "2026-09-24T14:01:05Z",
+          "by": "op_017",
+          "subject": "about.limits",
+          "value": "Does not create a session for anyone but the operator.",
+          "what": "edit"
+        }
+      ],
+      "derived_from": null,
+      "runs": [
+        {
+          "goal": "Sign in as the operator and reach the home page.",
+          "kind": "discovery",
+          "model": "claude-sonnet-5",
+          "recorder_version": "0.1.0",
+          "run_id": "run_2026-09-24_g01den0001"
+        }
+      ],
+      "sealed": null
+    },
+    "runs_on": {
+      "app_versions": [
+        "8.4"
+      ],
+      "entry": "/",
+      "paths": [
+        "/",
+        "/login.do",
+        "/main.do"
+      ],
+      "session": null,
+      "surface": "web",
+      "viewport": {
+        "height": 800,
+        "scale": 1,
+        "width": 1280
+      }
+    },
+    "schema": "intyy.artifact/1.0",
+    "steps": [
+      {
+        "action": {
+          "target": "user_id_box",
+          "type": "type",
+          "value": "{secret.operator_username}"
+        },
+        "checkpoint": "type_user_id_checkpoint",
+        "id": "type_user_id",
+        "intent": "Type the operator's user ID.",
+        "outcomes": [],
+        "precondition": "type_user_id_precondition",
+        "risk": "idempotent",
+        "timeout_ms": 5000
+      },
+      {
+        "action": {
+          "target": "password_box",
+          "type": "type",
+          "value": "{secret.operator_password}"
+        },
+        "checkpoint": "type_password_checkpoint",
+        "id": "type_password",
+        "intent": "Type the operator's password.",
+        "outcomes": [],
+        "precondition": "type_password_precondition",
+        "risk": "idempotent",
+        "timeout_ms": 5000
+      },
+      {
+        "action": {
+          "target": "login_button",
+          "type": "click"
+        },
+        "checkpoint": "click_login_checkpoint",
+        "id": "click_login",
+        "intent": "Log in.",
+        "outcomes": [],
+        "precondition": "click_login_precondition",
+        "risk": "idempotent",
+        "timeout_ms": 10000
+      }
+    ],
+    "targets": [
+      {
+        "clues": {
+          "label": "User ID",
+          "path": "form > input[1]",
+          "region": {
+            "h": 0.05,
+            "w": 0.2,
+            "x": 0.1,
+            "y": 0.2
+          },
+          "role": "textbox"
+        },
+        "description": "The textbox \"User ID\".",
+        "id": "user_id_box"
+      },
+      {
+        "clues": {
+          "label": "Password",
+          "path": "form > input[2]",
+          "region": {
+            "h": 0.05,
+            "w": 0.2,
+            "x": 0.1,
+            "y": 0.3
+          },
+          "role": "textbox"
+        },
+        "description": "The textbox \"Password\".",
+        "id": "password_box"
+      },
+      {
+        "clues": {
+          "image": "crops/login_button.png",
+          "name": "Login",
+          "path": "form > button[1]",
+          "region": {
+            "h": 0.05,
+            "w": 0.1,
+            "x": 0.1,
+            "y": 0.4
+          },
+          "role": "button",
+          "text": "Login"
+        },
+        "description": "The button \"Login\".",
+        "id": "login_button"
+      }
+    ]
+  },
+  "issues": [
+    {
+      "code": "risk_undecided",
+      "level": "blocking",
+      "message": "type_user_id's risk (idempotent) has not been confirmed by a risk decision yet.",
+      "subject": "type_user_id"
+    },
+    {
+      "code": "risk_undecided",
+      "level": "blocking",
+      "message": "type_password's risk (idempotent) has not been confirmed by a risk decision yet.",
+      "subject": "type_password"
+    },
+    {
+      "code": "risk_undecided",
+      "level": "blocking",
+      "message": "click_login's risk (idempotent) has not been confirmed by a risk decision yet.",
+      "subject": "click_login"
+    },
+    {
+      "code": "null_version",
+      "level": "blocking",
+      "message": "no version is set yet",
+      "subject": "identity.version"
+    },
+    {
+      "code": "null_sealed",
+      "level": "blocking",
+      "message": "not sealed yet",
+      "subject": "provenance.sealed"
+    },
+    {
+      "code": "checkpoint_unknown_before",
+      "level": "warning",
+      "message": "type_user_id_checkpoint could not be checked against the screen before type_user_id runs.",
+      "subject": "type_user_id_checkpoint"
+    },
+    {
+      "code": "checkpoint_unknown_before",
+      "level": "warning",
+      "message": "type_password_checkpoint could not be checked against the screen before type_password runs.",
+      "subject": "type_password_checkpoint"
+    }
+  ]
+}

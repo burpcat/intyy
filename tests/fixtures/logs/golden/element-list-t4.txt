@@ -1,0 +1,2 @@
+e1 heading "Welcome, teller"
+e2 link "Transfers"

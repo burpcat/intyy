@@ -1,0 +1,3 @@
+- textbox "User ID"
+- textbox "Password"
+- button "Login"
