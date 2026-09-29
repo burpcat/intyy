@@ -1,7 +1,7 @@
 {
   "schema": "intyy.policy/1.0",
   "revision": 1,
-  "reason": "Skeleton for kvfcu: the two operator secrets on the sign-in page, and a deny on the test endpoints. The owner fills in the other paths after a manual look.",
+  "reason": "kvfcu sign-in: the operator secrets on the sign-in page, the last-login notice and its Continue button, and the main page. Test endpoints denied.",
   "scope": {
     "level": "app",
     "app": "kvfcu"
@@ -9,12 +9,19 @@
   "paths": {
     "allow": [
       "/",
-      "/login.do"
+      "/login.do",
+      "/lastLogin.do",
+      "/main.do"
     ],
     "deny": [
       "/__test__/*"
     ],
     "irreversible": []
+  },
+  "risk": {
+    "safe_words": [
+      "continue"
+    ]
   },
   "secrets": {
     "operator_username": {
