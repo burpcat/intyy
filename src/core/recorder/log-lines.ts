@@ -67,6 +67,14 @@ const ActionData = z
     target: z.string().nullable(),
     value: z.string().nullable(),
     format: z.string().nullable(),
+    /** The chosen option's words, for `select`. `null` for every other tool. Absent entirely on
+     * a line an older run logged before this field existed (docs/decisions.md, M04); the
+     * recorder then treats a `select` with no `option` as a blocking issue, never a guess. */
+    option: z.string().nullable().optional(),
+    /** The requested checked state, for `set_checked`. Same absent-on-old-logs rule as `option`. */
+    checked: z.boolean().nullable().optional(),
+    /** The pressed key, for `press`. Same absent-on-old-logs rule as `option`. */
+    key: z.string().nullable().optional(),
     result: z.enum(["ok", "failed"]),
     dispatched: z.union([z.boolean(), z.literal("unknown")]),
     transport: z.string().nullable(),
@@ -138,12 +146,39 @@ export const EscalationLine = BaseLine.extend({
 /** One `escalation` line. */
 export type EscalationLine = z.infer<typeof EscalationLine>;
 
+/** The rules' risk class (section 4 §7), never `null` here: `#decide` in
+ * `src/core/safety/gate/gate.ts` only omits `data.risk` for the early checks (lease, actor,
+ * page, value) that run before risk is classified at all. */
+export const RiskClass = z.enum(["idempotent", "reversible", "irreversible"]);
+
+/** One risk class. */
+export type RiskClass = z.infer<typeof RiskClass>;
+
+/** One `gate` line's `data` (section 4 §3.7, `gate.ts`'s `GateLine`). */
+const GateData = z
+  .object({
+    actor: z.string(),
+    action: z.string(),
+    decision: z.enum(["allowed", "blocked", "needs_approval", "observed"]),
+    risk: RiskClass.optional(),
+    label: z.string().optional(),
+    path: z.string().optional(),
+  })
+  .strict();
+
+/** One `gate` line. */
+export const GateLogLine = BaseLine.extend({ event: z.literal("gate"), data: GateData });
+
+/** One `gate` line. */
+export type GateLogLine = z.infer<typeof GateLogLine>;
+
 /** Every line kind the recorder reads. An event this module does not list is `other`. */
 export type ParsedLine =
   | ({ kind: "action" } & ActionLine)
   | ({ kind: "observation" } & ObservationLine)
   | ({ kind: "extract" } & ExtractLine)
   | ({ kind: "escalation" } & EscalationLine)
+  | ({ kind: "gate" } & GateLogLine)
   | { kind: "other" };
 
 /** Parses one already-JSON-parsed log line. Throws on a line that fails its own schema: a
@@ -160,6 +195,8 @@ export function parseLine(raw: unknown): ParsedLine {
       return { kind: "extract", ...ExtractLine.parse(raw) };
     case "escalation":
       return { kind: "escalation", ...EscalationLine.parse(raw) };
+    case "gate":
+      return { kind: "gate", ...GateLogLine.parse(raw) };
     default:
       return { kind: "other" };
   }

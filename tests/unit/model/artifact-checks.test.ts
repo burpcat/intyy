@@ -306,4 +306,15 @@ describe("checkArtifact: candidate mode vs strict mode", () => {
     expect(problems.length).toBeGreaterThan(0);
     expect(problems.every((p) => p.level === "error")).toBe(true);
   });
+
+  test("a read_only candidate with an irreversible draft step is blocking, not an error", () => {
+    // Why: an unsure step drafts as irreversible (section 4 §2.3); a human lowers it with a
+    // `risk` decision, so a fresh candidate can start here without being a hard failure.
+    const doc = clone();
+    (doc.contract as Record<string, unknown>).effect = "read_only";
+    const onSteps = (p: { code: string; path: string }) =>
+      p.code === "effect_recovery_mismatch" && p.path === "steps";
+    expect(checkArtifact(parse(doc), "candidate").find(onSteps)?.level).toBe("blocking");
+    expect(checkArtifact(parse(doc), "strict").find(onSteps)?.level).toBe("error");
+  });
 });

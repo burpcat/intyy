@@ -1,14 +1,7 @@
 // Recorder step 5 (section 6 §14.2, §14.5): preconditions and checkpoints, and the rules that
 // keep a condition's text stable across runs.
-//
-// Simplification (ponytail: input is the run's masked log lines only, not its saved snapshot
-// files): a `click`/`press`/`navigate` checkpoint is "the next step's screen condition" per
-// §14.5, without the extra "one new landmark" the full design adds by diffing two saved
-// snapshots. The last step's checkpoint, which §14.5 builds from `done.proof`, falls back to
-// the observed location after the action: the log never captures a fingerprint for a `done`
-// call's proof elements, only for elements a tool acted on. Upgrade path: read the run's saved
-// `a11y/*.yaml` snapshots too, and pass their text in alongside the log lines.
 import type { Condition, NestedCheck } from "../model/artifact/conditions.js";
+import type { ScreenElement, ScreenView } from "../targets/screen.js";
 
 /** A leaf or combined check, with no `id` or `description` (section 2 §14.5). */
 export type NestedLeaf = ReturnType<typeof NestedCheck.parse>;
@@ -66,6 +59,54 @@ export function elementStateCheck(
   return { check: "element_state", target, state };
 }
 
+/** `text_visible` (section 2 §14.3, §14.4). Its text is stabilized like any checkpoint value
+ * (section 6 §14.5). */
+export function textVisibleCheck(text: string, within?: string): NestedLeaf {
+  const out: NestedLeaf = { check: "text_visible", text: stabilize(text), match: "contains" };
+  return within === undefined ? out : { ...out, within };
+}
+
+/** One `role\u0000words` key for a landmark candidate: a heading or a plain text element with
+ * words (section 6 §14.5, "a heading or text"). `null` for anything else. */
+function landmarkKey(e: ScreenElement): string | null {
+  if (e.role !== "heading" && e.role !== "text") return null;
+  const words = e.text ?? e.name;
+  return words === undefined || words.trim() === "" ? null : `${e.role}\u0000${words}`;
+}
+
+/**
+ * Headings or text present in `after` and absent from `before` (section 6 §14.5, "found by
+ * comparing the two snapshots"), in `after`'s own order.
+ */
+export function newLandmarks(before: ScreenView, after: ScreenView): string[] {
+  const seen = new Set<string>();
+  for (const e of before.elements) {
+    const key = landmarkKey(e);
+    if (key !== null) seen.add(key);
+  }
+  const out: string[] = [];
+  for (const e of after.elements) {
+    const key = landmarkKey(e);
+    if (key === null || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key.slice(key.indexOf("\u0000") + 1));
+  }
+  return out;
+}
+
+/**
+ * The masked text on one turn's element-list line for `elementId` (section 6 §14.5, "last
+ * checkpoint from proof"). `elementListText` is that turn's screen text, in the same
+ * `e<n> role "name"` form the LLM saw (`buildScreen`, `src/core/discovery/observation.ts`).
+ * `null` when the element has no line, or the line names no words (section 6 §8.2's `(no name)`).
+ */
+export function findProofText(elementListText: string, elementId: string): string | null {
+  const lineRe = new RegExp(`^\\s*${elementId}\\s+(.*)$`, "m");
+  const line = lineRe.exec(elementListText)?.[1];
+  if (line === undefined) return null;
+  return /"([^"]*)"/.exec(line)?.[1] ?? null;
+}
+
 /** One check, or every check joined by `all_of` when there is more than one. */
 export function allOf(checks: readonly NestedLeaf[]): NestedLeaf {
   const first = checks[0];
@@ -82,6 +123,20 @@ export class ConditionRegistry {
   readonly #byShape = new Map<string, string>();
   readonly #byId = new Set<string>();
   readonly #conditions: Condition[] = [];
+
+  /** Starts with `existing` already interned, so a later `intern` call never clashes with, or
+   * duplicates, a condition another rule group already built (`record.ts` shares one registry
+   * across steps and outcomes this way). */
+  constructor(existing: readonly Condition[] = []) {
+    for (const c of existing) {
+      const check: Record<string, unknown> = { ...c };
+      delete check.id;
+      delete check.description;
+      this.#byId.add(c.id);
+      this.#byShape.set(JSON.stringify(check), c.id);
+      this.#conditions.push(c);
+    }
+  }
 
   /** Adds `check` under `idHint` (numbered on a clash), or reuses an identical check's ID. */
   intern(check: NestedLeaf, idHint: string, description: string): string {

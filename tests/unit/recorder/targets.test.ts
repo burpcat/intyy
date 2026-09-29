@@ -3,7 +3,13 @@
 import { describe, expect, test } from "vitest";
 import { collectActions } from "../../../src/core/recorder/collect.js";
 import { applyTags, keptActions } from "../../../src/core/recorder/tags.js";
-import { buildTargets, slugify, stripMaskTokens } from "../../../src/core/recorder/targets.js";
+import {
+  buildTargets,
+  pickId,
+  screenNameOf,
+  slugify,
+  stripMaskTokens,
+} from "../../../src/core/recorder/targets.js";
 import { loadLog } from "./helpers.js";
 
 function keptFrom(file: string, runId: string) {
@@ -21,11 +27,11 @@ describe("buildTargets", () => {
     expect(targetIdOf.get(kept[2] as (typeof kept)[number])).toBe("login_button");
   });
 
-  test("a non-unique control gets a `within` container target, and a clash on the ID is numbered", () => {
+  test("a non-unique control gets a `within` container target, and a clash on the ID adds the screen's name", () => {
     const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004");
     const { targets, crops } = buildTargets(kept);
     const buttons = targets.filter((t) => t.clues.role === "button");
-    expect(buttons.map((t) => t.id)).toEqual(["edit_button", "edit_button_2"]);
+    expect(buttons.map((t) => t.id)).toEqual(["edit_button", "edit_button_list"]);
     expect(buttons[0]?.within).toBe("member_a_row");
     expect(buttons[1]?.within).toBe("member_b_row");
     const containers = targets.filter((t) => t.clues.role === "row");
@@ -39,6 +45,25 @@ describe("stripMaskTokens", () => {
     expect(stripMaskTokens("{input.member_id} [name#1]")).toBe("{input.member_id}");
     expect(stripMaskTokens("[name#1]")).toBeNull();
     expect(stripMaskTokens("  ")).toBeNull();
+  });
+});
+
+describe("pickId", () => {
+  test("adds the screen's name on a clash, then falls back to numbering", () => {
+    expect(pickId("edit_button", new Set(), "list")).toBe("edit_button");
+    expect(pickId("edit_button", new Set(["edit_button"]), "list")).toBe("edit_button_list");
+    expect(
+      pickId("edit_button", new Set(["edit_button", "edit_button_list"]), "list"),
+    ).toBe("edit_button_2");
+    expect(pickId("edit_button", new Set(["edit_button"]))).toBe("edit_button_2");
+  });
+});
+
+describe("screenNameOf", () => {
+  test("the last path segment, without its extension", () => {
+    expect(screenNameOf("/login.do")).toBe("login");
+    expect(screenNameOf("/members/list")).toBe("list");
+    expect(screenNameOf("/")).toBe("");
   });
 });
 

@@ -45,7 +45,10 @@ export function checkRecovery(
   if (effect === "read_only") {
     if (recovery !== undefined) report(EFFECT_RECOVERY, "recovery", "a read_only capability has no recovery block");
     if (artifact.steps.some((s) => s.risk === "irreversible")) {
-      report(EFFECT_RECOVERY, "steps", "a read_only capability has no irreversible step");
+      // Why blockable: an unsure step drafts as `irreversible` (section 4 §2.3), so a fresh
+      // read_only candidate can legitimately start here. A human lowers it with a `risk`
+      // decision, which then needs its own second look (section 6 §14.9, §14.15).
+      report(EFFECT_RECOVERY, "steps", "a read_only capability has no irreversible step", true);
     }
     return;
   }

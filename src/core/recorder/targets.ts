@@ -137,10 +137,23 @@ function targetIdFor(c: ActionControl): string {
   return base === "" ? suffix : `${base}_${suffix}`;
 }
 
-/** Builds a target's ID, first choice then clash numbers (section 6 §14.4: "add the screen's
- * name"; simplified here to a stable, first-seen-first order number, noted in the task report). */
-export function pickId(wanted: string, used: ReadonlySet<string>): string {
+/** The last path segment of a location, without its extension, as a short snake word: `/login.do`
+ * → `login` (section 6 §14.4, "add the screen's name"). `""` for a root path with no such word. */
+export function screenNameOf(location: string): string {
+  const pathPart = location.split("?")[0] ?? location;
+  const segments = pathPart.split("/").filter((s) => s !== "");
+  const last = segments[segments.length - 1];
+  return last === undefined ? "" : slugify(last.replace(/\.[a-z0-9]+$/i, ""));
+}
+
+/** Builds an ID, first choice, then the screen's name added, then clash numbers (section 6
+ * §14.4: "add the screen's name"). `screenName` is `""` when the caller has none to add. */
+export function pickId(wanted: string, used: ReadonlySet<string>, screenName = ""): string {
   if (!used.has(wanted)) return wanted;
+  if (screenName !== "") {
+    const withScreen = `${wanted}_${screenName}`;
+    if (!used.has(withScreen)) return withScreen;
+  }
   for (let n = 2; ; n++) {
     const candidate = `${wanted}_${String(n)}`;
     if (!used.has(candidate)) return candidate;
@@ -159,7 +172,7 @@ export function buildTargets(actions: readonly TaggedAction[]): TargetsResult {
   const crops = new Map<string, string>();
   const targetIdOf = new Map<TaggedAction, string | null>();
 
-  const containerId = (raw: string): string => {
+  const containerId = (raw: string, screenName: string): string => {
     const parsed = parseWithin(raw);
     const key = `within\u0000${raw}`;
     const existing = byKey.get(key);
@@ -167,7 +180,7 @@ export function buildTargets(actions: readonly TaggedAction[]): TargetsResult {
     const role = parsed?.role ?? "container";
     const name = parsed?.name ?? raw;
     const wanted = `${wordBase(name)}_${ROLE_SUFFIX[role] ?? role}`;
-    const id = pickId(wanted, usedIds);
+    const id = pickId(wanted, usedIds, screenName);
     usedIds.add(id);
     byKey.set(key, id);
     targets.push({ id, description: `The ${role} "${name}".`, clues: { role, name } });
@@ -186,11 +199,12 @@ export function buildTargets(actions: readonly TaggedAction[]): TargetsResult {
       targetIdOf.set(a, existing);
       continue;
     }
-    const id = pickId(targetIdFor(c), usedIds);
+    const screenName = screenNameOf(a.beforeLocation);
+    const id = pickId(targetIdFor(c), usedIds, screenName);
     usedIds.add(id);
     byKey.set(key, id);
     const target: Target = { id, description: describe(c), clues: cluesOf(c, id) };
-    if (c.uniqueness > 1 && c.withinRaw !== null) target.within = containerId(c.withinRaw);
+    if (c.uniqueness > 1 && c.withinRaw !== null) target.within = containerId(c.withinRaw, screenName);
     targets.push(target);
     if (c.crop !== null) crops.set(id, c.crop);
     targetIdOf.set(a, id);

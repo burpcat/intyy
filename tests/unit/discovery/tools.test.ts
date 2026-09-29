@@ -153,6 +153,19 @@ describe("screen tools", () => {
       "corrects must name an earlier turn than 5.",
     );
   });
+
+  test("select, set_checked, and press carry their own value, for the recorder (docs/decisions.md, M04)", () => {
+    const picked = checkCall(ctx(), "select", { element: "e1", option: "Savings", ...why });
+    expect(picked.ok && picked.value.tool === "select" ? picked.value.option : null).toBe(
+      "Savings",
+    );
+    const checked = checkCall(ctx(), "set_checked", { element: "e1", checked: true, ...why });
+    expect(checked.ok && checked.value.tool === "set_checked" ? checked.value.checked : null).toBe(
+      true,
+    );
+    const pressed = checkCall(ctx(), "press", { key: "Enter", ...why });
+    expect(pressed.ok && pressed.value.tool === "press" ? pressed.value.key : null).toBe("Enter");
+  });
 });
 
 describe("type values (section 6 §9.2)", () => {

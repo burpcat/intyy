@@ -7,6 +7,7 @@ import { CandidateDecision } from "../src/core/model/candidate-decision.js";
 import { Cassette } from "../src/core/model/cassette.js";
 import { Config } from "../src/core/model/config.js";
 import { LockFile } from "../src/core/model/lock.js";
+import { HandlerDraft } from "../src/core/model/handler-draft.js";
 import { ClosedFile, DecisionFile, Intervention } from "../src/core/model/mailbox.js";
 import { Patch } from "../src/core/model/patch.js";
 import { Policy } from "../src/core/model/policy.js";
@@ -20,6 +21,7 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.artifact-1.0": Artifact,
   "intyy.patch-1.0": Patch,
   "intyy.candidate_decision-1.0": CandidateDecision,
+  "intyy.handler_draft-1.0": HandlerDraft,
   "intyy.config-1.0": Config,
   "intyy.staff-1.0": StaffFile,
   "intyy.policy-1.0": Policy,

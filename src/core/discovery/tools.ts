@@ -123,6 +123,12 @@ export type ScreenCall = {
   /** What the LLM asked to type, as it wrote it. Example: `{input.member_id}`. */
   typed?: string;
   format?: string;
+  /** The chosen option's words, for `select` (section 6 §14 gap fix, docs/decisions.md). */
+  option?: string;
+  /** The requested checked state, for `set_checked`. */
+  checked?: boolean;
+  /** The pressed key, for `press`. */
+  key?: string;
   meta: ActionMeta;
 };
 
@@ -323,7 +329,7 @@ function screen(
   tool: ScreenCall["tool"],
   c: { element?: string } & Parameters<typeof metaOf>[1],
   action: (target: ElementRef | null) => Checked1<GateAction>,
-  extra: { typed?: string; format?: string } = {},
+  extra: { typed?: string; format?: string; option?: string; checked?: boolean; key?: string } = {},
 ): Checked1<Checked> {
   const m = metaOf(ctx, c);
   if (!m.ok) return m;
@@ -381,23 +387,37 @@ export function checkCall(ctx: CallContext, name: string, input: unknown): Check
       if (MASK.test(c.value.option))
         return bad("pick an option by its words; a mask token is not a value.");
       const option = c.value.option;
-      return screen(ctx, "select", c.value, (t) =>
-        good({ type: "select", target: need(t), option }),
+      return screen(
+        ctx,
+        "select",
+        c.value,
+        (t) => good({ type: "select", target: need(t), option }),
+        { option },
       );
     }
     case "set_checked": {
       const c = parsed(T.set_checked, name, input);
       if (!c.ok) return c;
       const checked = c.value.checked;
-      return screen(ctx, "set_checked", c.value, (t) =>
-        good({ type: "set_checked", target: need(t), checked }),
+      return screen(
+        ctx,
+        "set_checked",
+        c.value,
+        (t) => good({ type: "set_checked", target: need(t), checked }),
+        { checked },
       );
     }
     case "press": {
       const c = parsed(T.press, name, input);
       if (!c.ok) return c;
       const key = c.value.key;
-      return screen(ctx, "press", c.value, () => good({ type: "press", key, target: null }));
+      return screen(
+        ctx,
+        "press",
+        c.value,
+        () => good({ type: "press", key, target: null }),
+        { key },
+      );
     }
     case "navigate": {
       const c = parsed(T.navigate, name, input);

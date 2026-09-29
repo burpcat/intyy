@@ -4,7 +4,8 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { RunSpec } from "../../../src/core/model/runspec.js";
 import { ScriptedPlanner } from "../../../src/fakes/scripted-planner.js";
-import { names, run, SIGN_IN, SIGN_IN_STEPS, SITE, type Ran } from "./run-kit.js";
+import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import { names, ORIGIN, run, SIGN_IN, SIGN_IN_STEPS, SITE, type Ran } from "./run-kit.js";
 
 const done: Ran[] = [];
 afterEach(async () => {
@@ -75,6 +76,44 @@ describe("a scripted sign-in (section 6 §10.1)", () => {
       fingerprint: { role: "textbox", label: "Username", field_kind: "text", uniqueness: 2 },
     });
   });
+
+  test(
+    "the action line carries select's option, set_checked's flag, and press's key " +
+      "(docs/decisions.md, M04, the recorder gap fix)",
+    async () => {
+      const site: FakeSite = {
+        origin: ORIGIN,
+        screens: {
+          "/": {
+            title: "Prefs",
+            elements: [
+              {
+                id: "opt",
+                role: "checkbox",
+                roleGroup: "check",
+                name: "Subscribe",
+                field: { kind: "check", checked: false },
+                box: { x: 16, y: 20, width: 160, height: 24 },
+              },
+            ],
+          },
+        },
+      };
+      const spec = RunSpec.parse({ ...SIGN_IN, goal: "Toggle the subscribe preference." });
+      const toggleWhy = { reason: "Tick it.", expected: "It is checked.", tag: "flow_step" };
+      const r = await go({
+        site,
+        spec,
+        steps: [
+          { name: "set_checked", input: { element: "e1", checked: true, ...toggleWhy } },
+          { name: "done", input: { summary: "Toggled.", proof: ["e1"] } },
+        ],
+      });
+      expect(r.result).toMatchObject({ status: "success", code: null });
+      const action = r.events.find((e) => e.event === "action") as { data: Record<string, unknown> };
+      expect(action.data).toMatchObject({ type: "set_checked", checked: true, option: null, key: null });
+    },
+  );
 });
 
 describe("facts in the log", () => {

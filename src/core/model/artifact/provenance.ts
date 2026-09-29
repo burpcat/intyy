@@ -9,6 +9,9 @@ import { SnakeId } from "./shared.js";
 /** A source run's kind (section 2 §17.2). `replay` and `certify` are patch files only. */
 export const RunKind = z.enum(["discovery", "negative_discovery", "replay", "certify"]);
 
+/** One source run's kind. */
+export type RunKind = z.infer<typeof RunKind>;
+
 /** One `provenance.runs` entry (section 2 §17.2). `goal` stores input names, not values. */
 export const ProvenanceRun = z
   .object({
@@ -65,6 +68,9 @@ export const DecisionWhat = z.enum([
   "patch",
   "risk_second_look",
 ]);
+
+/** What one decision covers. */
+export type DecisionWhat = z.infer<typeof DecisionWhat>;
 
 /**
  * One `provenance.decisions` entry (section 2 §17.4): a human decision, kept forever. Nothing

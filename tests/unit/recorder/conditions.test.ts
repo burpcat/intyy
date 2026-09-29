@@ -6,9 +6,13 @@ import {
   allOf,
   elementVisibleCheck,
   fieldValueCheck,
+  findProofText,
   locationCheck,
+  newLandmarks,
   stabilize,
+  textVisibleCheck,
 } from "../../../src/core/recorder/conditions.js";
+import { fromA11ySnapshot } from "../../../src/core/targets/a11y-snapshot.js";
 
 describe("stabilize", () => {
   test("a mask token, an output reference, and a date or time all become *", () => {
@@ -39,6 +43,42 @@ describe("fieldValueCheck", () => {
       value: "Ref * noted",
       match: "exact",
     });
+  });
+});
+
+describe("textVisibleCheck", () => {
+  test("stabilizes its text and matches by contains", () => {
+    expect(textVisibleCheck("Account {output.account_number} created")).toEqual({
+      check: "text_visible",
+      text: "Account * created",
+      match: "contains",
+    });
+    expect(textVisibleCheck("created", "confirmation_message")).toMatchObject({
+      within: "confirmation_message",
+    });
+  });
+});
+
+describe("newLandmarks", () => {
+  test("a heading present after and absent before is a new landmark", () => {
+    const before = fromA11ySnapshot('- textbox "Username"\n- textbox "Password"', "/login");
+    const after = fromA11ySnapshot('- heading "Welcome, teller"\n- link "Transfers"', "/home");
+    expect(newLandmarks(before, after)).toEqual(["Welcome, teller"]);
+  });
+
+  test("a heading present on both screens is not new", () => {
+    const before = fromA11ySnapshot('- heading "Members"', "/members");
+    const after = fromA11ySnapshot('- heading "Members"\n- text: 1 result', "/members");
+    expect(newLandmarks(before, after)).toEqual(["1 result"]);
+  });
+});
+
+describe("findProofText", () => {
+  test("finds the quoted words on the proof element's own line", () => {
+    const list = 'e1 heading "Welcome, teller" {\n  e2 link "Transfers"\n}';
+    expect(findProofText(list, "e1")).toBe("Welcome, teller");
+    expect(findProofText(list, "e2")).toBe("Transfers");
+    expect(findProofText(list, "e9")).toBeNull();
   });
 });
 

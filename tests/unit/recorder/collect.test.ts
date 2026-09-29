@@ -11,13 +11,14 @@ describe("collectActions", () => {
     expect(actions).toHaveLength(3);
     expect(actions.map((a) => a.tool)).toEqual(["type", "type", "click"]);
     expect(actions[0]).toMatchObject({
-      seq: 2,
+      seq: 3,
       turn: 1,
       target: "e2",
       value: "{secret.operator_username}",
       beforeLocation: "/login.do",
       afterLocation: "/login.do",
       tag: "flow_step",
+      gateRisk: "idempotent",
     });
     const click = actions[2];
     expect(click).toMatchObject({
@@ -25,6 +26,7 @@ describe("collectActions", () => {
       beforeLocation: "/login.do",
       afterLocation: "/main.do",
       riskHint: null,
+      gateRisk: "idempotent",
     });
     expect(click?.fingerprint?.name).toBe("Login");
   });

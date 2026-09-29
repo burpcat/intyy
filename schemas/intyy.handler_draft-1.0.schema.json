@@ -1,0 +1,837 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.handler_draft/1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "app": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "recorder",
+            "takeover",
+            "reviewer"
+          ]
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_\\d{4}-\\d{2}-\\d{2}_[0-9a-hjkmnp-tv-z]{10}$"
+        },
+        "seq": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "tenant": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "app_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "run_id",
+        "seq",
+        "tenant",
+        "app_version"
+      ],
+      "additionalProperties": false
+    },
+    "suggested_scope": {
+      "type": "string",
+      "const": "tenant"
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "within": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "clues": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "region": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "w": {
+                    "type": "number"
+                  },
+                  "h": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "additionalProperties": false
+              },
+              "image": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "clues"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "element_visible"
+              },
+              "target": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "target"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "element_state"
+              },
+              "target": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "enabled",
+                  "disabled",
+                  "checked",
+                  "unchecked",
+                  "selected"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "target",
+              "state"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "text_visible"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "match": {
+                "type": "string",
+                "enum": [
+                  "exact",
+                  "contains",
+                  "wildcard"
+                ]
+              },
+              "within": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "case_sensitive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "text",
+              "match"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "field_value"
+              },
+              "target": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "match": {
+                "type": "string",
+                "enum": [
+                  "exact",
+                  "contains",
+                  "wildcard"
+                ]
+              },
+              "format": {
+                "type": "string",
+                "minLength": 1
+              },
+              "case_sensitive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "target",
+              "value",
+              "match"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "count"
+              },
+              "within": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "item": {
+                "type": "string",
+                "enum": [
+                  "row",
+                  "list_item",
+                  "option"
+                ]
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "equals",
+                  "at_least",
+                  "at_most"
+                ]
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "within",
+              "item",
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "location"
+              },
+              "pattern": {
+                "type": "string",
+                "pattern": "^\\/\\S*$"
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "pattern"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "all_of"
+              },
+              "checks": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "checks"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "any_of"
+              },
+              "checks": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "checks"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "not"
+              },
+              "of": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "check",
+              "of"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "check": {
+                "type": "string",
+                "const": "ref"
+              },
+              "ref": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              }
+            },
+            "required": [
+              "id",
+              "description",
+              "ref"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "handler": {},
+    "risk_hints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "idempotent",
+              "reversible",
+              "irreversible"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "rules",
+              "gate"
+            ]
+          }
+        },
+        "required": [
+          "subject",
+          "class",
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "fixtures": {
+      "type": "object",
+      "properties": {
+        "fire": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "no_fire": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        }
+      },
+      "required": [
+        "fire",
+        "no_fire"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "app",
+    "source",
+    "suggested_scope",
+    "targets",
+    "conditions",
+    "handler",
+    "risk_hints",
+    "fixtures"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "element_visible"
+            },
+            "target": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          },
+          "required": [
+            "check",
+            "target"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "element_state"
+            },
+            "target": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "enabled",
+                "disabled",
+                "checked",
+                "unchecked",
+                "selected"
+              ]
+            }
+          },
+          "required": [
+            "check",
+            "target",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "text_visible"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "match": {
+              "type": "string",
+              "enum": [
+                "exact",
+                "contains",
+                "wildcard"
+              ]
+            },
+            "within": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "case_sensitive": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "check",
+            "text",
+            "match"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "field_value"
+            },
+            "target": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "match": {
+              "type": "string",
+              "enum": [
+                "exact",
+                "contains",
+                "wildcard"
+              ]
+            },
+            "format": {
+              "type": "string",
+              "minLength": 1
+            },
+            "case_sensitive": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "check",
+            "target",
+            "value",
+            "match"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "count"
+            },
+            "within": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "item": {
+              "type": "string",
+              "enum": [
+                "row",
+                "list_item",
+                "option"
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "equals",
+                "at_least",
+                "at_most"
+              ]
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "check",
+            "within",
+            "item",
+            "op",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "location"
+            },
+            "pattern": {
+              "type": "string",
+              "pattern": "^\\/\\S*$"
+            }
+          },
+          "required": [
+            "check",
+            "pattern"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "all_of"
+            },
+            "checks": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema0"
+              }
+            }
+          },
+          "required": [
+            "check",
+            "checks"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "any_of"
+            },
+            "checks": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema0"
+              }
+            }
+          },
+          "required": [
+            "check",
+            "checks"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "not"
+            },
+            "of": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "required": [
+            "check",
+            "of"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "check": {
+              "type": "string",
+              "const": "ref"
+            },
+            "ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}
