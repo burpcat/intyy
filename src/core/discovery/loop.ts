@@ -383,11 +383,19 @@ async function oneTurn(
       return { status: "business_outcome", code: d.spec.expected_outcome?.code ?? null };
     case "stuck":
       return stuck(d, s, d.redactor.text(c.reason), shot);
-    case "wait":
+    case "wait": {
+      // Why: a wait on a screen that never changes is a repeat too (section 6 §6.2). A blank page
+      // would otherwise take waits until max_minutes.
+      const key = JSON.stringify(["wait", view.location, view.list]);
+      s.repeats = key === s.repeatKey ? s.repeats + 1 : 1;
+      s.repeatKey = key;
+      if (s.repeats >= d.limits.max_repeat)
+        return stuck(d, s, masked`Waited ${s.repeats} times with no change on screen.`, shot);
       await d.clock.after(c.seconds * 1000, d.signal);
       s.last = "ok";
       s.history.push(masked`t${s.turn} wait ${c.seconds}s`);
       return null;
+    }
     case "read":
       return doRead(d, s, view, c);
     default:

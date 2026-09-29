@@ -145,6 +145,15 @@ describe("how a run ends (section 6 §10.4)", () => {
     ]);
   });
 
+  test("three waits with no screen change ask the operator", async () => {
+    const wait = { name: "wait", input: { reason: "Loading.", seconds: 3 } };
+    const r = await go({ steps: [wait, wait, wait, ...SIGN_IN_STEPS] });
+    expect(r.result.code).toBe("ended_by_operator");
+    expect(r.operator.requests).toMatchObject([
+      { kind: "takeover", trouble: { detail: "Waited 3 times with no change on screen." } },
+    ]);
+  });
+
   test("a stuck call asks the operator", async () => {
     const r = await go({ steps: [{ name: "stuck", input: { reason: "No sign-in form." } }] });
     expect(r.operator.requests[0]).toMatchObject({
