@@ -135,10 +135,9 @@ export class OperatorSupervisor implements Supervisor {
     | { kind: "timed_out" }
     | { kind: "run_ended" }
   > {
-    const opened = await this.port.open(req, signal);
-    // Why: with no request on disk, no human can answer. Ending is the safe side.
-    if (!opened.ok) return { kind: "run_ended" };
-    const h: Handle = opened.value;
+    // Why the timer starts before open(): open() writes a file a test or an operator can observe
+    // on disk before this async function resumes. Starting the deadline first means the clock
+    // always has a waiter registered by the time anyone can see the request (no wall-clock race).
     const stop = new AbortController();
     const onRun = (): void => {
       stop.abort();
@@ -148,6 +147,14 @@ export class OperatorSupervisor implements Supervisor {
       () => "timeout" as const,
       () => "stopped" as const,
     );
+    const opened = await this.port.open(req, signal);
+    // Why: with no request on disk, no human can answer. Ending is the safe side.
+    if (!opened.ok) {
+      stop.abort();
+      signal?.removeEventListener("abort", onRun);
+      return { kind: "run_ended" };
+    }
+    const h: Handle = opened.value;
     const answer = this.port.next(h, stop.signal);
     const first = await Promise.race([answer, timer]);
     stop.abort();
