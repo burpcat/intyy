@@ -366,6 +366,28 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
         let artifact = orExit(await ctx.wiring.candidates.getFile(id, "candidate.json"), id);
         let issuesFile = orExit(await ctx.wiring.candidates.getFile(id, "issues.json"), id);
         const runs = orExit(await ctx.wiring.candidates.getFile(id, "runs.json"), id);
+
+        // Section 2 §10: "A human confirms paths at review." Always asked once, since a wrong
+        // path never raises its own issue; blank keeps the drafted list.
+        const pathsRaw = await ctx.io.stdin.question(
+          `Confirm runs_on.paths ${JSON.stringify(artifact.runs_on.paths)} ` +
+            "(blank keeps them, or paste a replacement JSON array): ",
+        );
+        if (pathsRaw.trim() !== "") {
+          const decision: CandidateDecision = {
+            schema: "intyy.candidate_decision/1.0",
+            what: "edit",
+            subject: "runs_on.paths",
+            value: pathsRaw.trim(),
+            by: staff,
+            at: ctx.wiring.clock.now().toISOString(),
+          };
+          orExit(await ctx.wiring.candidates.appendDecision(id, decision), id);
+          const output = orExit(await regenerateCandidate(candidateDeps(ctx), id, runs), id);
+          artifact = output.candidate;
+          issuesFile = { schema: "intyy.candidate_issues/1.0", issues: [...output.issues] };
+        }
+
         for (;;) {
           const next = issuesFile.issues.find((i) => i.level === "blocking");
           if (next === undefined) break;

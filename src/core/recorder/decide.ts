@@ -1,11 +1,12 @@
 // Applies every review decision to the recorder's draft, deterministically (section 2 §6.4:
 // the last decision on a subject wins). `record.ts` calls these in section 6 §15's order:
 // risk, sensitivity, outcome_name, waiver/recovery, then edit last of all.
-import { Artifact } from "../model/artifact.js";
+import { Artifact, Condition, NestedCheck } from "../model/artifact.js";
 import type { Contract, ContractInput, ContractOutcome, ContractOutput } from "../model/artifact/contract.js";
 import type { Recovery } from "../model/artifact/recovery.js";
 import type { RiskKind, Step } from "../model/artifact/steps.js";
 import type { CandidateDecision, CandidateDecisionWhat } from "../model/candidate-decision.js";
+import { checkArtifact } from "../model/artifact-checks.js";
 import type { RecorderIssue } from "./issues.js";
 
 /** The last decision per subject, for one `what` (section 2 §6.4). Decision order is the
@@ -181,8 +182,21 @@ export function applyRecoveryDecisions(
 /** Fields an `edit` decision may change on `about` (section 6 §15). */
 const ABOUT_FIELDS = new Set(["title", "summary", "when_to_use", "limits"]);
 
-/** One dotted-path `edit` (section 6 §15): `about.<field>`, or `<kind>.<id>.<field>` for
- * `steps`, `targets`, and `conditions`. Anything else is not (yet) supported. */
+/** A JSON array of strings, or `null` on bad JSON or a non-string entry. */
+function parseJsonStringArray(value: string): string[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  return Array.isArray(parsed) && parsed.every((p): p is string => typeof p === "string") ? parsed : null;
+}
+
+/** One dotted-path `edit` (section 6 §15): `about.<field>`, `runs_on.paths` (section 2 §10: "a
+ * human confirms paths at review"), `conditions.<id>` (a whole condition body), or
+ * `<kind>.<id>.<field>` for `steps`, `targets`, and `conditions`. Anything else is not (yet)
+ * supported. */
 function applyOneEdit(
   candidate: Artifact,
   subject: string,
@@ -196,6 +210,40 @@ function applyOneEdit(
   };
   if (parts.length === 2 && parts[0] === "about" && ABOUT_FIELDS.has(parts[1] ?? "")) {
     return { ...candidate, about: { ...candidate.about, [parts[1] ?? ""]: value } };
+  }
+  if (parts.length === 2 && parts[0] === "runs_on" && parts[1] === "paths") {
+    // The outer `applyChecked` (Artifact.safeParse) runs each entry through the same
+    // `PathPattern` schema `runs_on.paths` already uses, so a bad pattern still ends up as this
+    // subject's `invalid_edit`, never a throw.
+    const paths = parseJsonStringArray(value);
+    if (paths === null) return bad(`${subject}: value must be a JSON array of path patterns.`);
+    return { ...candidate, runs_on: { ...candidate.runs_on, paths } };
+  }
+  if (parts.length === 2 && parts[0] === "conditions") {
+    const id = parts[1] ?? "";
+    const idx = candidate.conditions.findIndex((c) => c.id === id);
+    const existing = candidate.conditions[idx];
+    if (existing === undefined) return bad(`no condition named ${id}.`);
+    let bodyJson: unknown;
+    try {
+      bodyJson = JSON.parse(value);
+    } catch {
+      return bad(`${subject}: value is not valid JSON.`);
+    }
+    const body = NestedCheck.safeParse(bodyJson);
+    if (!body.success) return bad(`${subject}: value is not a valid condition body.`);
+    const merged = Condition.safeParse({ ...body.data, id: existing.id, description: existing.description });
+    if (!merged.success) return bad(`${subject}: value is not a valid condition body.`);
+    const newConditions = [...candidate.conditions];
+    newConditions[idx] = merged.data;
+    const after: Artifact = { ...candidate, conditions: newConditions };
+    // The usual candidate checks (section 2 §19): a replaced check can point at a target or
+    // another condition that does not exist. `Artifact.safeParse` alone would miss that; only
+    // an `error`-level problem counts, the same filter `loadArtifact` uses in candidate mode, so
+    // this never trips on the review-only gaps every fresh candidate still has.
+    const problem = checkArtifact(after, "candidate").find((p) => p.level === "error");
+    if (problem !== undefined) return bad(`${subject}: ${problem.message}.`);
+    return after;
   }
   if (parts.length === 3 && (parts[0] === "steps" || parts[0] === "targets" || parts[0] === "conditions")) {
     const kind = parts[0];

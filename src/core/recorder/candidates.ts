@@ -271,6 +271,16 @@ export function resolveSubject(
   if (parts.length === 2 && parts[0] === "about") {
     return ABOUT_FIELDS.has(parts[1] ?? "") ? subject : null;
   }
+  // Section 2 §10: "A human confirms paths at review." One fixed subject, no ID to map.
+  if (parts.length === 2 && parts[0] === "runs_on" && parts[1] === "paths") {
+    return subject;
+  }
+  // A whole condition body, section 6 §15 ("edit covers ... conditions"): `conditions.<id>`,
+  // with no third part, unlike the `.id`/`.description` field edits below.
+  if (parts.length === 2 && parts[0] === "conditions") {
+    const mapped = originalId(decisions, "conditions", parts[1] ?? "");
+    return knownIds("conditions", artifact, decisions).has(mapped) ? `conditions.${mapped}` : null;
+  }
   if (parts.length === 3 && (parts[0] === "steps" || parts[0] === "targets" || parts[0] === "conditions")) {
     const kind = parts[0];
     const mapped = originalId(decisions, kind, parts[1] ?? "");

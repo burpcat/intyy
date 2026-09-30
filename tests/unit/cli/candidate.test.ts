@@ -270,6 +270,44 @@ describe("candidate review", () => {
     expect(got.code).toBe(EXIT.usage);
     expect(got.stderr).toContain("intyy candidate decide");
   });
+
+  /** Section 2 §10: "A human confirms paths at review." The walk asks for `runs_on.paths`
+   * before its first blocking issue; every later prompt this run needs is left unscripted, so
+   * it answers blank (helpers.ts's `question()` default) and keeps each drafted value. */
+  test("review asks to confirm runs_on.paths first, and a pasted list edits it", async () => {
+    const r = await root();
+    const id = await newCandidate(r);
+    const got = await call(["candidate", "review", id], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands },
+      stdinTty: true,
+      answers: [JSON.stringify(["/", "/login.do", "/main.do", "/extra"])],
+    });
+    expect(got.code).toBe(EXIT.ok);
+    const shown = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
+    const data = JSON.parse(shown.stdout) as { artifact: { runs_on: { paths: string[] } } };
+    expect(data.artifact.runs_on.paths).toEqual(["/", "/login.do", "/main.do", "/extra"]);
+  });
+
+  test("review keeps runs_on.paths when the confirmation answer is blank", async () => {
+    const r = await root();
+    const id = await newCandidate(r);
+    const before = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
+    const beforePaths = (JSON.parse(before.stdout) as { artifact: { runs_on: { paths: string[] } } }).artifact
+      .runs_on.paths;
+    const got = await call(["candidate", "review", id], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands },
+      stdinTty: true,
+      answers: [""],
+    });
+    expect(got.code).toBe(EXIT.ok);
+    const shown = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
+    const data = JSON.parse(shown.stdout) as { artifact: { runs_on: { paths: string[] } } };
+    expect(data.artifact.runs_on.paths).toEqual(beforePaths);
+  });
 });
 
 /** The spec `library/specs/kvfcu/find_member.json` needs: a negative run on SITE that reports

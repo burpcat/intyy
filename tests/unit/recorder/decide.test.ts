@@ -184,4 +184,86 @@ describe("applyEditDecisions", () => {
     expect(out).toEqual(artifact);
     expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit" }]);
   });
+
+  test("runs_on.paths replaces the whole list", () => {
+    const artifact = baseArtifact();
+    const decisions = [decision({ what: "edit", subject: "runs_on.paths", value: JSON.stringify(["/login", "/home"]) })];
+    const issues: RecorderIssue[] = [];
+    const out = applyEditDecisions(artifact, decisions, issues);
+    expect(issues).toEqual([]);
+    expect(out.runs_on.paths).toEqual(["/login", "/home"]);
+  });
+
+  test("runs_on.paths with bad JSON is a blocking invalid_edit, and the candidate is unchanged", () => {
+    const artifact = baseArtifact();
+    const decisions = [decision({ what: "edit", subject: "runs_on.paths", value: "not json" })];
+    const issues: RecorderIssue[] = [];
+    const out = applyEditDecisions(artifact, decisions, issues);
+    expect(out).toEqual(artifact);
+    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "runs_on.paths" }]);
+  });
+
+  test("runs_on.paths with a pattern that fails the path-pattern parse is a blocking invalid_edit", () => {
+    const artifact = baseArtifact();
+    const decisions = [decision({ what: "edit", subject: "runs_on.paths", value: JSON.stringify(["home"]) })];
+    const issues: RecorderIssue[] = [];
+    const out = applyEditDecisions(artifact, decisions, issues);
+    expect(out).toEqual(artifact);
+    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "runs_on.paths" }]);
+  });
+
+  test("conditions.<id> replaces a condition's check, keeping its id and description", () => {
+    const artifact = baseArtifact();
+    const decisions = [
+      decision({
+        what: "edit",
+        subject: "conditions.home_page_shown",
+        value: JSON.stringify({ check: "location", pattern: "/home" }),
+      }),
+    ];
+    const issues: RecorderIssue[] = [];
+    const out = applyEditDecisions(artifact, decisions, issues);
+    expect(issues).toEqual([]);
+    const edited = out.conditions.find((c) => c.id === "home_page_shown");
+    expect(edited).toMatchObject({
+      check: "location",
+      pattern: "/home",
+      description: artifact.conditions.find((c) => c.id === "home_page_shown")?.description,
+    });
+  });
+
+  test("conditions.<id> with bad JSON is a blocking invalid_edit", () => {
+    const artifact = baseArtifact();
+    const decisions = [decision({ what: "edit", subject: "conditions.home_page_shown", value: "not json" })];
+    const issues: RecorderIssue[] = [];
+    const out = applyEditDecisions(artifact, decisions, issues);
+    expect(out).toEqual(artifact);
+    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "conditions.home_page_shown" }]);
+  });
+
+  test("conditions.<id> pointing at a target that does not exist is a blocking invalid_edit", () => {
+    const artifact = baseArtifact();
+    const decisions = [
+      decision({
+        what: "edit",
+        subject: "conditions.home_page_shown",
+        value: JSON.stringify({ check: "element_visible", target: "no_such_target" }),
+      }),
+    ];
+    const issues: RecorderIssue[] = [];
+    const out = applyEditDecisions(artifact, decisions, issues);
+    expect(out).toEqual(artifact);
+    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "conditions.home_page_shown" }]);
+  });
+
+  test("conditions.<id> for an unknown condition is a blocking invalid_edit", () => {
+    const artifact = baseArtifact();
+    const decisions = [
+      decision({ what: "edit", subject: "conditions.no_such_condition", value: JSON.stringify({ check: "location", pattern: "/home" }) }),
+    ];
+    const issues: RecorderIssue[] = [];
+    const out = applyEditDecisions(artifact, decisions, issues);
+    expect(out).toEqual(artifact);
+    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "conditions.no_such_condition" }]);
+  });
 });
