@@ -85,7 +85,11 @@ function buildProgram(io: Io, deps: RunDeps, setCtx: (c: Ctx) => void, ctxOf: ()
   const program = new Command()
     .name("intyy")
     .description("Gives AI agents hands in bank back-office apps that have no API.")
-    .version(readVersion())
+    // Why `-V` only, not the usual `-V, --version`: design section 9 §7.3 lists no `--version`
+    // global flag, and `candidate seal` needs that long flag for its own semver value
+    // (section 9 §8.2). Commander's eager version check would otherwise intercept it anywhere
+    // in the command line, before the `seal` subcommand ever sees its own option.
+    .version(readVersion(), "-V")
     .option("--root <dir>", "data root (default: the nearest intyy.json)")
     .option("--tenant <id>", "which bank (default: default_tenant in intyy.json)")
     .option("--staff <id>", "who runs the command (default: INTYY_STAFF)")

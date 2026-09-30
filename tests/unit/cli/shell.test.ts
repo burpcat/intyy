@@ -202,8 +202,10 @@ describe("output rules", () => {
     expect(r.stderr).toContain("internal error: boom");
   });
 
-  test("--version prints the version and exits 0", async () => {
-    const r = await call(["--version"], { cwd: tempRoot() });
+  test("-V prints the version and exits 0", async () => {
+    // Why `-V`, not `--version`: `candidate seal` needs that long flag for its own semver
+    // value (docs/decisions.md, M04); design section 9 §7.3 lists no `--version` global flag.
+    const r = await call(["-V"], { cwd: tempRoot() });
     expect(r.code).toBe(0);
     expect(r.stdout).toMatch(/^\d+\.\d+\.\d+\n$/);
   });

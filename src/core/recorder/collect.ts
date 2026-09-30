@@ -145,6 +145,19 @@ export function collectA11yFiles(rawLines: readonly unknown[]): ReadonlyMap<numb
   return out;
 }
 
+/** Every file one run's `observation` lines saved, by turn: the a11y, DOM, and screenshot
+ * captures alike (section 3 §7.4). A `normal` fixture's folder copies these at sealing (section
+ * 5 §13.1). */
+export function collectObservationFiles(rawLines: readonly unknown[]): ReadonlyMap<number, readonly string[]> {
+  const out = new Map<number, readonly string[]>();
+  for (const raw of rawLines) {
+    const line = parseLine(raw);
+    if (line.kind !== "observation") continue;
+    out.set(turnOf(line.step), line.data.files);
+  }
+  return out;
+}
+
 /** The `done` (positive run) or `report_outcome` (negative run) call's proof element IDs and
  * turn, or `null` when the run never called it (section 6 §14.5, "last checkpoint from proof";
  * section 6 §14.8, the outcome condition "like the last checkpoint"). */

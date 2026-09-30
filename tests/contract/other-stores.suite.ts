@@ -112,6 +112,23 @@ export function candidateStoreContract(
         });
       },
     );
+
+    test("listSealedVersions and getSealedArtifact read back what seal wrote", async () => {
+      const { store } = await make();
+      const artifact = { identity: { app: "kvfcu", capability: "sign_in", version: "1.0.0" } };
+      await store.seal("kvfcu/sign_in/c1", "1.0.0", "op_017", artifact, {});
+
+      expect(await store.listSealedVersions("kvfcu/sign_in")).toEqual(["1.0.0"]);
+      expect(await store.listSealedVersions("kvfcu/other")).toEqual([]);
+      expect(await store.getSealedArtifact("kvfcu/sign_in", "1.0.0")).toEqual({
+        ok: true,
+        value: artifact,
+      });
+      expect(await store.getSealedArtifact("kvfcu/sign_in", "2.0.0")).toMatchObject({
+        ok: false,
+        failure: "not_found",
+      });
+    });
   });
 }
 

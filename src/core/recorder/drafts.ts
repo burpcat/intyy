@@ -144,18 +144,30 @@ export function buildDrafts(
 }
 
 /** One `normal` fixture: an expected screen the main flow used (section 6 §14.12, section 5
- * §13.4). Simplified to one per distinct kept-step location (see the file header). */
-export type NormalFixture = { id: string; location: string };
+ * §13.4). Simplified to one per distinct kept-step location (see the file header). `files` are
+ * that turn's own saved capture paths inside the run folder (section 3 §7.4), for sealing to
+ * copy into the fixture folder (section 5 §13.1). */
+export type NormalFixture = { id: string; location: string; turn: number; files: readonly string[] };
 
-/** The `normal` fixtures every kept step's own screen needs (section 6 §14.12), deduplicated. */
-export function buildNormalFixtures(keptLocations: readonly string[]): NormalFixture[] {
+/** The `normal` fixtures every kept step's own screen needs (section 6 §14.12), deduplicated by
+ * location. `observationFiles` is `collectObservationFiles`'s result: each turn's own saved
+ * capture paths. */
+export function buildNormalFixtures(
+  kept: readonly { turn: number; location: string }[],
+  observationFiles: ReadonlyMap<number, readonly string[]>,
+): NormalFixture[] {
   const seen = new Set<string>();
   const out: NormalFixture[] = [];
-  for (const location of keptLocations) {
+  for (const { turn, location } of kept) {
     if (seen.has(location)) continue;
     seen.add(location);
     const name = screenNameOf(location);
-    out.push({ id: `normal_${name === "" ? slugify(location) || "root" : name}`, location });
+    out.push({
+      id: `normal_${name === "" ? slugify(location) || "root" : name}`,
+      location,
+      turn,
+      files: observationFiles.get(turn) ?? [],
+    });
   }
   return out;
 }

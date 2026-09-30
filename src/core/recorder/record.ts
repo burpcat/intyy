@@ -12,7 +12,7 @@ import {
   buildProvenanceDecisions,
   buildProvenanceRun,
 } from "./about.js";
-import { collectActions } from "./collect.js";
+import { collectActions, collectObservationFiles } from "./collect.js";
 import { ConditionRegistry } from "./conditions.js";
 import {
   applyEditDecisions,
@@ -144,7 +144,10 @@ export function record(input: RecorderInput): RecorderOutput {
   const recovery = applyRecoveryDecisions(buildRecovery(commitPoint, effect), decisions, issues);
 
   const drafted = buildDrafts(positiveTagged, positive.spec.app, context.tenant, context.appVersion, snapshots);
-  const normalFixtures = buildNormalFixtures(positiveKept.map((a) => a.beforeLocation));
+  const normalFixtures = buildNormalFixtures(
+    positiveKept.map((a) => ({ turn: a.turn, location: a.beforeLocation })),
+    collectObservationFiles(positive.lines),
+  );
 
   const pathsResult = buildPaths(
     positive.spec.entry,

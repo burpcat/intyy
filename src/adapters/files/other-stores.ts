@@ -190,6 +190,31 @@ export class FileCandidateStore<F extends Record<string, unknown>, D> implements
     return ok({ hash });
   }
 
+  /** Lists every version sealed for one artifact. */
+  async listSealedVersions(artifactId: string): Promise<string[]> {
+    const index = await this.#artifactIndex();
+    if (!index.ok) return [];
+    return index.value.filter((l) => l.event === "sealed" && l.id === artifactId).map((l) => l.rev);
+  }
+
+  /** Reads back one sealed artifact version, hash-checked against its index line. */
+  async getSealedArtifact(
+    artifactId: string,
+    version: Rev,
+  ): Promise<Outcome<unknown, "not_found" | "invalid">> {
+    assertSafeRelPath(artifactId);
+    assertSafeRelPath(version);
+    const index = await this.#artifactIndex();
+    if (!index.ok) return index;
+    const line = findLine(index.value, "sealed", artifactId, version);
+    if (!line) return fail("not_found", `${artifactId} ${version} is not sealed`);
+    const read = await readJson(join(this.#artifactsDir, artifactId, version, "artifact.json"));
+    if (read.kind === "missing") return fail("not_found", `${line.path} is missing`);
+    if (read.kind === "bad") return fail("invalid", read.detail);
+    if (sealHash(read.value) !== line.hash) return fail("invalid", `${line.path} changed after sealing`);
+    return ok(read.value);
+  }
+
   /** The artifacts store's `sealed` index lines. */
   async #artifactIndex(): Promise<Outcome<IndexLine[], "invalid">> {
     const read = await readJsonLines(join(this.#artifactsDir, "index.jsonl"));

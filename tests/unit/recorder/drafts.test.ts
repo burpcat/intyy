@@ -73,11 +73,33 @@ describe("buildDrafts", () => {
 });
 
 describe("buildNormalFixtures", () => {
-  test("one fixture per distinct kept-step location", () => {
-    const fixtures = buildNormalFixtures(["/login.do", "/login.do", "/main.do"]);
-    expect(fixtures).toEqual([
-      { id: "normal_login", location: "/login.do" },
-      { id: "normal_main", location: "/main.do" },
+  test("one fixture per distinct kept-step location, with that turn's own saved files", () => {
+    const observationFiles = new Map([
+      [1, ["a11y/00001_observation.yaml"]],
+      [2, ["a11y/00004_observation.yaml"]],
+      [3, ["a11y/00007_observation.yaml", "screens/00007_observation.png"]],
     ]);
+    const fixtures = buildNormalFixtures(
+      [
+        { turn: 1, location: "/login.do" },
+        { turn: 2, location: "/login.do" },
+        { turn: 3, location: "/main.do" },
+      ],
+      observationFiles,
+    );
+    expect(fixtures).toEqual([
+      { id: "normal_login", location: "/login.do", turn: 1, files: ["a11y/00001_observation.yaml"] },
+      {
+        id: "normal_main",
+        location: "/main.do",
+        turn: 3,
+        files: ["a11y/00007_observation.yaml", "screens/00007_observation.png"],
+      },
+    ]);
+  });
+
+  test("a turn with no saved files gets an empty list, never a guess", () => {
+    const fixtures = buildNormalFixtures([{ turn: 5, location: "/done" }], new Map());
+    expect(fixtures).toEqual([{ id: "normal_done", location: "/done", turn: 5, files: [] }]);
   });
 });

@@ -4,12 +4,16 @@
 // This file owns argument parsing, role checks, prompting, and printing only; the product
 // logic (rebuilding a candidate, resolving a decision's subject) lives in
 // `src/core/recorder/candidates.ts`, which every failure here reports as an `Outcome`.
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Command } from "commander";
 import { AppId } from "../../core/model/common.js";
 import type { Artifact } from "../../core/model/artifact.js";
+import type { ArtifactCheckContext } from "../../core/model/artifact-checks.js";
 import { CandidateDecision, CandidateDecisionWhat } from "../../core/model/candidate-decision.js";
 import type { CandidateIssue } from "../../core/model/candidate-issues.js";
 import { CandidateId, RunId } from "../../core/model/ids.js";
+import type { HandlerDraft } from "../../core/model/handler-draft.js";
 import { CapabilityName } from "../../core/model/runspec.js";
 import {
   attachNegativeRun,
@@ -19,11 +23,13 @@ import {
   type CandidateDeps,
 } from "../../core/recorder/candidates.js";
 import type { RecorderOutput } from "../../core/recorder/record.js";
+import { secondLook, sealCandidate, type SealedFixture } from "../../core/recorder/seal.js";
 import { requireRole, type Ctx } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
 import { answer, progress, type Answer } from "../output.js";
 import { act, type Register } from "../program.js";
 import { orExit } from "./documents.js";
+import { effectivePolicy } from "./policy.js";
 import { specLookup } from "./spec.js";
 
 /** A candidate's store ID, split into its parts: `<app>/<capability>/<candidate_id>`. */
@@ -72,6 +78,58 @@ function whatArg(raw: string | undefined): CandidateDecisionWhat {
   return parsed.data;
 }
 
+/** A `--version` value, checked as a semver like `1.0.0`. */
+function versionArg(opts: Record<string, unknown>): string {
+  const v = opts.version;
+  if (typeof v !== "string" || !/^\d+\.\d+\.\d+$/.test(v)) {
+    throw new CliExit(EXIT.usage, "--version takes a semver like 1.0.0");
+  }
+  return v;
+}
+
+/**
+ * Writes the drafted handlers and `normal` fixtures a seal returns, under the library paths
+ * section 9 §6.2 names (owner decision, docs/decisions.md, M04: written at seal). A fixture's
+ * `a11y.yaml`, `dom.html`, and `screen.png` are the run's own saved bytes for that turn, copied
+ * byte for byte (section 5 §13.1); a file the run never saved (such as a withheld screenshot)
+ * is left out and named in `meta.json`'s `missing`, never invented.
+ */
+function writeDraftsAndFixtures(
+  ctx: Ctx,
+  app: string,
+  drafts: readonly HandlerDraft[],
+  fixtures: readonly SealedFixture[],
+): void {
+  for (const d of drafts) {
+    const dir = join(ctx.root, ctx.config.library, "drafts", "handlers", app, d.id);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "draft.json"), `${JSON.stringify(d, null, 2)}\n`);
+  }
+  for (const { fixture, bytes, missing } of fixtures) {
+    const dir = join(ctx.root, ctx.config.library, "fixtures", app, fixture.id);
+    mkdirSync(dir, { recursive: true });
+    for (const [name, content] of Object.entries(bytes)) writeFileSync(join(dir, name), content);
+    const meta = {
+      schema: "intyy.fixture/1.0",
+      id: fixture.id,
+      app,
+      location: fixture.location,
+      kind: "normal",
+      missing,
+    };
+    writeFileSync(join(dir, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
+  }
+}
+
+/** The merged global+app policy's checks a strict artifact load needs (section 2 §19.6). */
+async function sealCheckContext(ctx: Ctx, app: string): Promise<ArtifactCheckContext> {
+  const policy = await effectivePolicy(ctx, app);
+  return {
+    pathAllowed: (pattern) => policy.effective.paths.allow.includes(pattern),
+    secretDeclared: (name) => name in policy.effective.secrets,
+  };
+}
+
 /** The ports `src/core/recorder/candidates.ts` needs, from this command's context. */
 export function candidateDeps(ctx: Ctx): CandidateDeps {
   return {
@@ -79,6 +137,7 @@ export function candidateDeps(ctx: Ctx): CandidateDeps {
     evidence: ctx.wiring.evidence,
     settings: ctx.wiring.settings,
     ids: ctx.wiring.ids,
+    clock: ctx.wiring.clock,
     specs: specLookup(ctx),
   };
 }
@@ -331,6 +390,56 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
           progress(ctx.io, `warning: ${w.message}`);
         }
         return candidateAnswer(id, issuesFile.issues);
+      }),
+    );
+
+  candidate
+    .command("second-look")
+    .argument("<id>", "app/capability/candidate_id")
+    .argument("<subject>", "the step whose lowered risk to review")
+    .option("--agree", "confirm the lowering")
+    .option("--disagree", "raise the step back to irreversible")
+    .description(
+      "another reviewer's answer to a lowered risk flag (reviewer, never its own decider); " +
+        "a piped standard input becomes its note",
+    )
+    .action(
+      act(ctxOf, async (ctx, args, opts) => {
+        const id = docId(parseCandidateArg(args[0]));
+        const subject = args[1] ?? "";
+        const staff = requireRole(ctx, ctx.tenant, "reviewer");
+        const agree = opts.agree === true;
+        const disagree = opts.disagree === true;
+        if (agree === disagree) {
+          throw new CliExit(EXIT.usage, "second-look: pass exactly one of --agree or --disagree");
+        }
+        const note = ctx.io.stdin.isTTY === true ? "" : (await ctx.io.stdin.readAll()).trim();
+        const output = orExit(
+          await secondLook(candidateDeps(ctx), id, subject, staff, agree, note === "" ? undefined : note),
+          id,
+        );
+        return candidateAnswer(id, output.issues);
+      }),
+    );
+
+  candidate
+    .command("seal")
+    .argument("<id>", "app/capability/candidate_id")
+    .requiredOption("--version <semver>", "the version to seal, like 1.0.0")
+    .description("seal a candidate as one artifact version (reviewer); prints the next command")
+    .action(
+      act(ctxOf, async (ctx, args, opts) => {
+        const ref = parseCandidateArg(args[0]);
+        const id = docId(ref);
+        const staff = requireRole(ctx, ctx.tenant, "reviewer");
+        const version = versionArg(opts);
+        const context = await sealCheckContext(ctx, ref.app);
+        const result = orExit(await sealCandidate(candidateDeps(ctx), id, version, staff, context), id);
+        writeDraftsAndFixtures(ctx, ref.app, result.drafts, result.normalFixtures);
+        return answer(
+          { key: result.key, hash: result.hash },
+          `${result.key} sealed by ${staff}.\nhash ${result.hash}\nNext: intyy certify ${result.key}`,
+        );
       }),
     );
 };

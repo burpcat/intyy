@@ -291,6 +291,20 @@ export class FakeCandidateStore<F extends Record<string, unknown>, D> implements
     return Promise.resolve(ok({ hash }));
   }
 
+  /** Lists every version sealed for one artifact. */
+  listSealedVersions(artifactId: string): Promise<string[]> {
+    return Promise.resolve(
+      this.#artifactIndex.filter((l) => l.event === "sealed" && l.id === artifactId).map((l) => l.rev),
+    );
+  }
+
+  /** Reads back one sealed artifact version. */
+  getSealedArtifact(artifactId: string, version: Rev): Promise<Outcome<unknown, "not_found" | "invalid">> {
+    const found = this.#sealed.get(`${artifactId}@${version}`);
+    if (!found) return Promise.resolve(fail("not_found", `${artifactId} ${version} is not sealed`));
+    return Promise.resolve(ok(roundTrip(found.artifact)));
+  }
+
   /** Test hook: reads back what `seal` wrote for one artifact version, or `null`. */
   sealed(
     artifactId: string,

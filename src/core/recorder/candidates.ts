@@ -6,7 +6,7 @@
 // `src/cli/commands/candidate.ts` is the only caller: it owns argument parsing, role checks,
 // prompting, and printing. Every failure here is an `Outcome`, never a thrown `CliExit`.
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
-import type { Ids } from "../../ports/clock.js";
+import type { Clock, Ids } from "../../ports/clock.js";
 import type { CandidateStore, DocumentStore, EvidenceStore } from "../../ports/stores.js";
 import type { Artifact } from "../model/artifact.js";
 import type { CandidateDecision, CandidateDecisionWhat } from "../model/candidate-decision.js";
@@ -43,6 +43,7 @@ export type CandidateDeps = {
   evidence: EvidenceStore;
   settings: DocumentStore<Settings>;
   ids: Ids;
+  clock: Clock;
   specs: SpecLookup;
 };
 

@@ -10,7 +10,7 @@ import { EXIT } from "../../../src/cli/exit-codes.js";
 import { wire as realWire } from "../../../src/cli/wiring.js";
 import { FileEvidenceStore } from "../../../src/adapters/files/other-stores.js";
 import { policyKind, settingsKind } from "../../../src/core/model/kinds.js";
-import type { Policy } from "../../../src/core/model/policy.js";
+import { AppPolicy, type Policy } from "../../../src/core/model/policy.js";
 import type { Settings } from "../../../src/core/model/settings.js";
 import type { Masked } from "../../../src/ports/masked.js";
 import { SteppingClock } from "../../../src/fakes/clock.js";
@@ -50,8 +50,15 @@ function loadLines(name: string): Record<string, unknown>[] {
 
 /** Writes a finished, positive `sign_in` run folder into `root`, reusing the recorder golden
  * fixture's log (tests/fixtures/logs/golden/), plus the a11y and `llm/` files a real run would
- * also leave behind, so `candidate new` reads back real snapshot content, not just the log. */
-async function seedRun(root: string, tenant: string, runId: string): Promise<void> {
+ * also leave behind, so `candidate new` reads back real snapshot content, not just the log.
+ * `irreversibleClick`: the rules class `click_login`'s own gate line as `irreversible` instead
+ * of `idempotent`, so a reviewer lowering it needs a second look (section 8 §10.2). */
+async function seedRun(
+  root: string,
+  tenant: string,
+  runId: string,
+  opts: { irreversibleClick?: boolean } = {},
+): Promise<void> {
   const evidence = new FileEvidenceStore({
     root: `${root}/state/evidence`,
     tmpDir: `${root}/state/var/tmp`,
@@ -68,6 +75,9 @@ async function seedRun(root: string, tenant: string, runId: string): Promise<voi
       (line.data as Record<string, unknown>).files = [file];
       await folder.writeFile(file, maskedCast(readFileSync(`${LOG_DIR}a11y/t${String(turn)}.yaml`, "utf8")));
     }
+    if (opts.irreversibleClick === true && line.event === "gate" && line.step === "t3") {
+      (line.data as Record<string, unknown>).risk = "irreversible";
+    }
     await folder.appendEvent(maskedCast(line));
   }
 
@@ -76,6 +86,8 @@ async function seedRun(root: string, tenant: string, runId: string): Promise<voi
   const elementList = readFileSync(`${LOG_DIR}element-list-t4.txt`, "utf8");
   const request = { messages: [{ role: "user", content: [{ type: "text", text: elementList }] }] };
   await folder.writeFile("llm/00011_planner_request.json", maskedCast(JSON.stringify(request)));
+  // The golden fixture's `click_login` action fingerprints a crop at this path (section 2 §13.2).
+  await folder.writeFile("crops/00009_e4.png", maskedCast(Uint8Array.from([137, 80, 78, 71])));
 
   await folder.writeRunJson(
     maskedCast({
@@ -118,11 +130,11 @@ function writeSignInSpec(root: string): void {
 
 /** A root with approved settings (so `recorderContext` finds the app's version), a spec, and a
  * finished positive run. */
-async function root(): Promise<string> {
+async function root(opts: { irreversibleClick?: boolean } = {}): Promise<string> {
   const r = tempRoot();
   cpSync(join("library", "settings"), join(r, "library", "settings"), { recursive: true });
   writeSignInSpec(r);
-  await seedRun(r, "keystone", RUN_ID);
+  await seedRun(r, "keystone", RUN_ID, opts);
   return r;
 }
 
@@ -285,27 +297,57 @@ function writeFindMemberSpec(root: string): void {
   );
 }
 
-/** A root, plus approved policy and settings document stores matching SITE (docs/decisions.md,
- * M04: the CLI's `--candidate` gating tests need a real `discover` run, not just its refusals). */
-async function discoverRoot(): Promise<{ root: string; policy: FakeDocumentStore<Policy>; settings: FakeDocumentStore<Settings> }> {
-  const root = tempRoot();
+/** Seals and approves `docs` into a fresh in-memory policy store. */
+async function sealedPolicyStore(docs: readonly Policy[]): Promise<FakeDocumentStore<Policy>> {
   const clock = new SteppingClock("2026-09-28T14:00:00.000Z");
   const policy = new FakeDocumentStore<Policy>(policyKind, clock);
-  const settings = new FakeDocumentStore<Settings>(settingsKind, clock);
   // Why strip `approved`: GLOBAL_LAYER is read from the real, already-approved sealed file
   // (tests/unit/discovery/run-kit.ts); a candidate may carry no approval yet.
-  for (const raw of [GLOBAL_LAYER, APP_LAYER, TENANT_LAYER]) {
+  for (const raw of docs) {
     const doc = { ...raw, approved: undefined } as Policy;
     await policy.putCandidate(policyKind.idOf?.(doc) ?? "", doc);
     const sealed = await policy.seal(policyKind.idOf?.(doc) ?? "", "op_017");
     if (!sealed.ok) throw new Error("policy seal failed in test setup");
     await policy.approve(policyKind.idOf?.(doc) ?? "", sealed.value.rev, "op_022");
   }
+  return policy;
+}
+
+/** A root, plus approved policy and settings document stores matching SITE (docs/decisions.md,
+ * M04: the CLI's `--candidate` gating tests need a real `discover` run, not just its refusals). */
+async function discoverRoot(): Promise<{ root: string; policy: FakeDocumentStore<Policy>; settings: FakeDocumentStore<Settings> }> {
+  const root = tempRoot();
+  const policy = await sealedPolicyStore([GLOBAL_LAYER, APP_LAYER, TENANT_LAYER]);
+  const clock = new SteppingClock("2026-09-28T14:00:01.000Z");
+  const settings = new FakeDocumentStore<Settings>(settingsKind, clock);
   await settings.putCandidate("keystone", SETTINGS);
   const sealedSettings = await settings.seal("keystone", "op_017");
   if (!sealedSettings.ok) throw new Error("settings seal failed in test setup");
   await settings.approve("keystone", sealedSettings.value.rev, "op_022");
   return { root, policy, settings };
+}
+
+/** A kvfcu app layer matching the golden `sign_in` fixture's own visited paths and secrets, for
+ * `candidate seal`'s CLI-level tests (unlike `APP_LAYER`, which matches SITE instead). */
+const SEAL_APP_LAYER = AppPolicy.parse({
+  schema: "intyy.policy/1.0",
+  scope: { level: "app", app: "kvfcu" },
+  revision: 1,
+  reason: "Seal test app layer.",
+  paths: { allow: ["/", "/login.do", "/main.do"], deny: ["/__test__/*"], irreversible: [], case_sensitive: true },
+  secrets: {
+    operator_username: { kind: "username", paths: ["/login.do"] },
+    operator_password: { kind: "password", paths: ["/login.do"] },
+  },
+});
+
+/** Runs `intyy candidate ...` with a fake policy store; everything else is the real `wire()`. */
+function sealCli(r: string, staff: string, argv: string[], policy: FakeDocumentStore<Policy>): Promise<Call> {
+  return call(argv, {
+    cwd: r,
+    env: { INTYY_STAFF: staff },
+    deps: { commands, wire: (root, config, env) => ({ ...realWire(root, config, env), policy }) },
+  });
 }
 
 /** Runs `intyy discover <argv...>` with a fake browser, marker, planner, and operator, over a
@@ -403,5 +445,60 @@ describe("discover records a candidate", () => {
     );
     expect(got.code).toBe(EXIT.usage);
     expect(got.stderr).toContain("--candidate");
+  });
+});
+
+/** Resolves every review decision the golden candidate needs, deciding `click_login`'s risk as
+ * `clickRisk` (a lowering, to exercise the second look, or its own rules' class to skip it). */
+async function resolveBasics(r: string, id: string, clickRisk: string): Promise<void> {
+  for (const seq of [3, 6, 9]) {
+    await cli(r, "op_017", ["candidate", "decide", id, "tag", `${RUN_ID}#${String(seq)}`, "flow_step"]);
+  }
+  await cli(r, "op_017", ["candidate", "decide", id, "edit", "about.when_to_use", "Sign the operator in first."]);
+  await cli(r, "op_017", ["candidate", "decide", id, "edit", "about.limits", "Operator only."]);
+  await cli(r, "op_017", ["candidate", "decide", id, "risk", "type_user_id", "idempotent"]);
+  await cli(r, "op_017", ["candidate", "decide", id, "risk", "type_password", "idempotent"]);
+  await cli(r, "op_017", ["candidate", "decide", id, "risk", "click_login", clickRisk]);
+}
+
+describe("candidate second-look and seal, through the CLI", () => {
+  test("second-look needs exactly one of --agree or --disagree", async () => {
+    const r = await root({ irreversibleClick: true });
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "reversible");
+    const neither = await cli(r, "op_022", ["candidate", "second-look", id, "click_login"]);
+    expect(neither.code).toBe(EXIT.usage);
+    const both = await cli(r, "op_022", ["candidate", "second-look", id, "click_login", "--agree", "--disagree"]);
+    expect(both.code).toBe(EXIT.usage);
+  });
+
+  test("second-look needs the reviewer role", async () => {
+    const r = await root({ irreversibleClick: true });
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "reversible");
+    // op_031 (tests/unit/cli/helpers.ts STAFF) is only an approver, never a reviewer.
+    const got = await cli(r, "op_031", ["candidate", "second-look", id, "click_login", "--agree"]);
+    expect(got.code).toBe(EXIT.refused);
+  });
+
+  test("seal fails without a second look, then succeeds once another staff ID agrees", async () => {
+    const r = await root({ irreversibleClick: true });
+    const policy = await sealedPolicyStore([GLOBAL_LAYER, SEAL_APP_LAYER, TENANT_LAYER]);
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "reversible");
+
+    const before = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy);
+    expect(before.code).toBe(EXIT.invalid);
+
+    const sameStaff = await cli(r, "op_017", ["candidate", "second-look", id, "click_login", "--agree"]);
+    expect(sameStaff.code).toBe(EXIT.refused);
+
+    const agreed = await cli(r, "op_022", ["candidate", "second-look", id, "click_login", "--agree"]);
+    expect(agreed.code).toBe(EXIT.ok);
+
+    const sealed = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0", "--json"], policy);
+    expect(sealed.code).toBe(EXIT.ok);
+    const data = JSON.parse(sealed.stdout) as { key: string };
+    expect(data.key).toBe("kvfcu/sign_in@1.0.0");
   });
 });

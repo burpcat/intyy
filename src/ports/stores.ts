@@ -124,6 +124,15 @@ export interface CandidateStore<F extends Record<string, unknown>, D> {
     crops: Record<string, Uint8Array>,
     signal?: AbortSignal,
   ): Promise<Outcome<{ hash: string }, "conflict" | "write_failed" | "invalid">>;
+  /** Lists every version sealed for one artifact (`<app>/<capability>`), unsorted. Sealing
+   * needs the previous version's contract, to propose the next one (section 2 §5.2). */
+  listSealedVersions(artifactId: string, signal?: AbortSignal): Promise<string[]>;
+  /** Reads back one already-sealed artifact version, hash-checked against its index line. */
+  getSealedArtifact(
+    artifactId: string,
+    version: Rev,
+    signal?: AbortSignal,
+  ): Promise<Outcome<unknown, "not_found" | "invalid">>;
 }
 
 /**
