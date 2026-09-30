@@ -4,6 +4,7 @@
 // on disk, and an uncertain commit. M05 task 8.
 import { describe, expect, test } from "vitest";
 import { runReplay } from "../../../src/core/replay/executor.js";
+import { FakeOperator } from "../../../src/fakes/operator.js";
 import {
   ACCOUNT_NUMBER,
   MEMBER_MISSING,
@@ -113,9 +114,50 @@ describe("runReplay: rejected requests never open the surface", () => {
   });
 });
 
+describe("runReplay: a known screen with no progress, on a location-only precondition (docs/decisions.md, M06)", () => {
+  test("a missing target on a bare-location precondition climbs to a takeover, not a hard failure", async () => {
+    // `type_member_id`'s precondition, `home_shown`, is a bare `location` check (open_sub.json):
+    // M06's rule says that never counts as "a known screen" at rung 1 step 5, so retries used
+    // up here climb instead of failing (section 5 §8.4 step 5; docs/decisions.md, M06). Rungs 2
+    // and 3 are off, so the climb goes straight to rung 4; with nothing scripted, the fake
+    // operator's own fallback ends the run (section 9 §5.9).
+    const operator = new FakeOperator([]);
+    const h = await buildHarness(fixtureSite({ homeMissingBox: true }), { operator: () => operator });
+    const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }));
+
+    const { result } = await runReplay(input, h.deps);
+
+    expect(result.status).toBe("failed");
+    if (result.status !== "failed") throw new Error(`expected failed, got ${result.status}`);
+    expect(result.failure.code).toBe("ended_by_operator");
+    expect(result.failure.ladder).toEqual({ rung: 4, verdict: "needs_human", ref: "takeover" });
+    // The commit point (click_confirm) was never reached: not_sent (state reached).
+    expect(result.effect).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });
+
+    // The takeover request itself, with the M06 fields (section 7 §13.1): the supervised
+    // mode's own start confirmation is the first mailbox interaction (docs/decisions.md, M05);
+    // the takeover this test is about is the second.
+    expect(operator.requests).toHaveLength(2);
+    expect(operator.requests[1]).toMatchObject({
+      kind: "takeover",
+      reason: "stuck",
+      step: { id: "type_member_id" },
+      trouble: { phase: "target" },
+      commit: { state: "not_sent", notice: null },
+      operator_note: null,
+      decisions: ["end_run"],
+    });
+    const ladder = (operator.requests[1] as unknown as { ladder: unknown[] }).ladder;
+    expect(ladder.length).toBeGreaterThan(0);
+  });
+});
+
 describe("runReplay: a hard failure", () => {
-  test("a missing target ends failed, with readable capture files", async () => {
-    const h = await buildHarness(fixtureSite({ homeMissingBox: true }));
+  test("a missing target on a non-location precondition still ends target_not_found, with readable capture files", async () => {
+    // `click_search`'s own precondition, `member_id_entered`, is a `field_value` check: M06's
+    // location-only carve-out does not apply, so retries used up here still end the underlying
+    // failure, not a climb (section 5 §8.4 step 5; docs/decisions.md, M06).
+    const h = await buildHarness(fixtureSite({ homeMissingSearchButton: true }));
     const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }));
 
     const { runId, result } = await runReplay(input, h.deps);

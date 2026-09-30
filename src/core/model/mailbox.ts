@@ -23,15 +23,36 @@ export const Intervention = z
     capability: z.string().min(1),
     // Why `start_confirmation`: docs/decisions.md, M05. Section 7 §4 step 6, replay's own
     // supervised-mode pause: the run waits at this same mailbox before its first task step.
-    kind: z.enum(["approval", "takeover", "start_confirmation"]),
+    // Why `reconciliation_decision`/`retry_decision`: docs/decisions.md, M06. The ladder's rung
+    // 4 (section 5 §8.9) and the commit path's after-the-fact decisions (section 7 §13.2).
+    kind: z.enum([
+      "approval",
+      "takeover",
+      "start_confirmation",
+      "reconciliation_decision",
+      "retry_decision",
+    ]),
     // Why `no_authorization`: docs/decisions.md, M05. A supervised replay commit with no valid
     // authorization opens this same mailbox, answered `approved` or `declined` (section 3 §5.7).
     // Why `supervised_mode`: the one reason a `start_confirmation` ever opens (section 3 §5.7).
-    reason: z.enum(["discovery_irreversible", "stuck", "no_authorization", "supervised_mode"]),
+    // Why `needs_human_handler`/`reconciliation_unclear`/`retry_needs_approval`: docs/decisions.md,
+    // M06 (section 3 §5.7's kinds-and-reasons table).
+    reason: z.enum([
+      "discovery_irreversible",
+      "stuck",
+      "no_authorization",
+      "supervised_mode",
+      "needs_human_handler",
+      "reconciliation_unclear",
+      "retry_needs_approval",
+    ]),
     step: z.object({ id: z.string().min(1), intent: z.string().nullable() }).strict(),
     trouble: z.object({ phase: z.string(), detail: z.string() }).strict().nullable(),
     ladder: z.array(z.unknown()),
-    commit: z.object({ state: z.string() }).strict(),
+    // `notice` is the fixed text every takeover carries while the commit is in flight
+    // (section 5 §8.2: "Do not submit again"); `null` otherwise (docs/decisions.md, M06).
+    // Optional: a request with no notice at all (every M03/M05 kind) still fits.
+    commit: z.object({ state: z.string(), notice: z.string().nullable().optional() }).strict(),
     operator_note: z.string().nullable(),
     approval: z
       .object({

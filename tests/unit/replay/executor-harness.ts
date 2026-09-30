@@ -189,8 +189,14 @@ export const ACCOUNT_NUMBER = "SH1234567";
 /** What one fixture site variant looks like. Every screen stays at the same three paths;
  * only the elements on them change, per test. */
 export type SiteOpts = {
-  /** Home is missing its Member ID box: `type_member_id`'s target never resolves (case 5). */
+  /** Home is missing its Member ID box: `type_member_id`'s target never resolves. Its own
+   * precondition, `home_shown`, is a bare `location` check, so M06's rule makes this climb
+   * rather than fail (docs/decisions.md, M06). */
   homeMissingBox?: boolean;
+  /** Home is missing its Search button: `click_search`'s target never resolves. Its own
+   * precondition, `member_id_entered`, is a `field_value` check, not location-only, so it still
+   * ends `target_not_found` after retries (docs/decisions.md, M06's own carve-out). */
+  homeMissingSearchButton?: boolean;
   /** "found" shows Confirm on `/result`; "not_found" shows the declared-outcome text instead. */
   result?: "found" | "not_found";
   /** Confirm's click goes to `/done` normally; "stuck" makes it do nothing (case 9). */
@@ -213,14 +219,16 @@ export function fixtureSite(opts: SiteOpts = {}): FakeSite {
       field: { kind: "text", value: "" },
     });
   }
-  homeElements.push({
-    id: "search_button",
-    role: "button",
-    roleGroup: "button_like",
-    name: "Search",
-    text: "Search",
-    onClick: { go: "/result" },
-  });
+  if (opts.homeMissingSearchButton !== true) {
+    homeElements.push({
+      id: "search_button",
+      role: "button",
+      roleGroup: "button_like",
+      name: "Search",
+      text: "Search",
+      onClick: { go: "/result" },
+    });
+  }
 
   const resultElements: FakeElement[] =
     result === "found"

@@ -45,10 +45,14 @@ export class FakeOperator implements OperatorPort {
 
   /** Past the end of the script: every kind still ends the run, except a `start_confirmation`
    * (section 7 §4 step 6, M05), which a test that scripts nothing for it still wants to run, not
-   * decline unscripted. A test that wants a declined or timed-out confirmation scripts it. */
+   * decline unscripted. A test that wants a declined or timed-out confirmation scripts it.
+   * `retry_decision` and `reconciliation_decision` (docs/decisions.md, M06) take their own safe
+   * word, since `end_run` is not one of their allowed decisions. */
   #fallback(h: Handle): FakeAnswer {
     const req = this.requests[Number(h)];
     if (req?.kind === "start_confirmation") return { staff: "op_017", decision: "approved" };
+    if (req?.kind === "retry_decision") return { staff: "op_017", decision: "no_retry" };
+    if (req?.kind === "reconciliation_decision") return { staff: "op_017", decision: "not_found" };
     return { staff: "op_017", decision: "end_run" };
   }
 }

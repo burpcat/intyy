@@ -23,7 +23,9 @@
       "enum": [
         "approval",
         "takeover",
-        "start_confirmation"
+        "start_confirmation",
+        "reconciliation_decision",
+        "retry_decision"
       ]
     },
     "reason": {
@@ -32,7 +34,10 @@
         "discovery_irreversible",
         "stuck",
         "no_authorization",
-        "supervised_mode"
+        "supervised_mode",
+        "needs_human_handler",
+        "reconciliation_unclear",
+        "retry_needs_approval"
       ]
     },
     "step": {
@@ -87,6 +92,12 @@
       "properties": {
         "state": {
           "type": "string"
+        },
+        "notice": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

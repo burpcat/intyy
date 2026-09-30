@@ -96,6 +96,10 @@ export type ReplayDeps = {
   artifacts: ArtifactStore;
   requestIndex: RequestIndexDeps;
   operator: (run: { runId: string; tenant: string }) => OperatorPort;
+  /** A takeover that ends while the commit is uncertain runs this first (docs/decisions.md,
+   * M06); a run with none ends `uncertain` as before. Task 5's own hook: what it checks, and
+   * what it answers, are its call to make. This is only the seam. */
+  reconciliationCheck?: (signal?: AbortSignal) => Promise<void>;
   signal?: AbortSignal;
 };
 
@@ -735,6 +739,105 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     let rewindsUsed = 0;
     let lastGoodPath = pathAndQuery(artifact.runs_on.entry);
     const recoveries: RecoveryLine[] = [];
+    /** Every rung so far, this run (section 7 §13.1, "the ladder lines so far"): a takeover
+     * request's own `ladder` field. */
+    const ladderTrail: unknown[] = [];
+
+    /** Ends the run after a takeover concludes (section 9 §5.11: "`declined` and `ended_run`
+     * end the run as `failed`, code `ended_by_operator`"). `kind` is the supervisor's own
+     * answer: `ended_run`, `timed_out`, or `run_ended`. */
+    const endAfterTakeover = async (
+      stepId: string,
+      kind: "ended_run" | "timed_out" | "run_ended",
+    ): Promise<ReplayOutcome> => {
+      await captureOnFailure(`${stepId}_takeover_ended`);
+      const code = kind === "timed_out" ? "escalation_timeout" : "ended_by_operator";
+      const message = kind === "timed_out" ? "the takeover request timed out" : "the operator ended the run";
+      const endedAt = deps.clock.now().toISOString();
+      const result = failedResult(
+        runId,
+        capabilityBlock,
+        stepId,
+        { code, phase: "escalation", message },
+        await currentLocation(eyes),
+        effect === null ? true : safeToRetryOf(effect),
+        captureFiles,
+        startedAt,
+        endedAt,
+        effect,
+      );
+      if (result.status === "failed") {
+        result.failure.ladder = { rung: 4, verdict: "needs_human", ref: "takeover" };
+        result.recoveries = recoveries;
+      }
+      return endRun("failed", code, result, stepId);
+    };
+
+    /**
+     * Opens a rung 4 takeover with the ladder's full context (section 5 §8.9, section 7 §13.1):
+     * the step, the trouble, every rung so far, the commit state (with the fixed in-flight
+     * notice, section 5 §8.2), and any handler `operator_note`. M06 answer: claiming a takeover
+     * is M07, so the only decision is `end_run` (docs/decisions.md). "A takeover ended while the
+     * commit is in flight first runs the reconciliation check" (docs/decisions.md, M06): the
+     * check itself is task 5's own work; `deps.reconciliationCheck` is the hook it fills in.
+     */
+    const attemptTakeover = async (
+      stepId: string,
+      reason: "stuck" | "needs_human_handler",
+      trouble: { phase: string; detail: string } | null,
+      operatorNote: string | null,
+      screenshot: string | null,
+    ): Promise<ReplayOutcome> => {
+      const opening = deps.clock.now().toISOString();
+      await log.append({ event: "escalation", step: stepId, by: "engine", data: { kind: "takeover", reason, state: "open" } });
+      await deps.evidence.appendIndex(
+        input.tenant,
+        r.value({ run_id: fact(runId), at: fact(opening), status: "escalated", code: null, kind: "replay", capability: capabilityStr }),
+        deps.signal,
+      );
+      const supervisor = new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
+        runId,
+        tenant: input.tenant,
+        capability: capabilityStr,
+        // Why the fallback of 30: section 7 §13.3's own default, "takeover, to claim."
+        deadlineMinutes: input.policy.effective.escalation.takeover_minutes ?? 30,
+      });
+      const commitState = effect?.commit ?? "none";
+      const inFlight = commitState === "uncertain";
+      const got = await supervisor.takeover(
+        {
+          reason,
+          step: { id: stepId, intent: null },
+          trouble,
+          ladder: ladderTrail,
+          commit: {
+            state: commitState,
+            notice: inFlight ? "The commit action was already sent. Do not submit again." : null,
+          },
+          operatorNote,
+          screenshot,
+        },
+        deps.signal,
+      );
+      await log.append({
+        event: "escalation",
+        step: stepId,
+        by: got.kind === "ended_run" ? "human" : "engine",
+        data: {
+          kind: "takeover",
+          reason,
+          state: got.kind === "timed_out" ? "timed_out" : got.kind === "run_ended" ? "run_ended" : "resolved",
+          decision: got.kind === "ended_run" ? "end_run" : null,
+          ...("staff" in got ? { staff_id: got.staff } : {}),
+        },
+      });
+      if (inFlight) {
+        // TODO (task 5): use the check's own finding to decide `found_by_check`/
+        // `absent_by_check`, instead of always ending `uncertain` below.
+        await deps.reconciliationCheck?.(deps.signal);
+      }
+      return endAfterTakeover(stepId, got.kind);
+    };
 
     /** One `runLadder` call for `step`'s trouble, and the counters that go with it. `stepIndex`
      * is the failed step's own index in `artifact.steps` (section 5 §8.6's search range). */
@@ -792,6 +895,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         },
       );
       ladderEntriesUsed += 1;
+      ladderTrail.push(ladderResult.log);
 
       if (ladderResult.kind === "business_outcome") {
         const declared = artifact.contract.outcomes.find((o) => o.code === ladderResult.code);
@@ -837,9 +941,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       }
 
       if (ladderResult.kind === "climb" || ladderResult.kind === "needs_human") {
-        // Rung 4 is a stub in M06 (docs/decisions.md): fall back to the pre-M06 behavior.
-        await captureOnFailure(`${step.id}_failed`);
-        return { kind: "end", outcome: await failEnd(step.id, failure, await currentLocation(eyes), true) };
+        const reason = ladderResult.kind === "needs_human" ? "needs_human_handler" : "stuck";
+        const note = ladderResult.kind === "needs_human" ? ladderResult.operatorNote : null;
+        return { kind: "end", outcome: await attemptTakeover(step.id, reason, { phase: failure.phase, detail: failure.message }, note, startFiles.find((f) => f.endsWith(".png")) ?? null) };
       }
 
       // ladderResult.kind === "recovered"
@@ -1018,6 +1122,25 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           effect,
         });
         return await endRun("business_outcome", code, result, step.id);
+      }
+      if (effect.commit === "uncertain") {
+        // A `needs_human` handler on the post-commit screen (like `supervisor_required`, section
+        // 5 §14): a takeover, reason `needs_human_handler`, commit `uncertain` (the fixed
+        // in-flight notice). Otherwise, reconciliation decides (task 5's own hook for now;
+        // section 5 §8.11, "uncertain: reconciliation decides").
+        const post = await eyes.observe(deps.signal);
+        const matched = post.ok ? matchDetectors(frozen.handlers, fromObservation(post.value), packCtx) : [];
+        const needsHuman = frozen.handlers.find(
+          (h): h is Extract<typeof h, { class: "needs_human" }> => matched.includes(h.id) && h.class === "needs_human",
+        );
+        if (needsHuman !== undefined) {
+          const startFiles = await captureLadderStart(`${step.id}_takeover`);
+          return await attemptTakeover(step.id, "needs_human_handler", null, needsHuman.operator_note, startFiles.find((f) => f.endsWith(".png")) ?? null);
+        }
+        // TODO (task 5): the reconciliation check itself; only the hook runs here.
+        await deps.reconciliationCheck?.(deps.signal);
+        await captureOnFailure(`${step.id}_failed`);
+        return await failEnd(step.id, { code: "action_failed", phase: "action", message: `commit step ${step.id} ended uncertain` }, await currentLocation(eyes), safeToRetryOf(effect));
       }
       if (effect.commit !== "confirmed") {
         await captureOnFailure(`${step.id}_failed`);

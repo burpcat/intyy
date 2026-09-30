@@ -9,6 +9,12 @@ import { APPROVAL_DECISIONS, Intervention } from "../model/mailbox.js";
 import { fact, type Redactor } from "../safety/redaction/redactor.js";
 import type { Answer, ApprovalAsk, RiskHint, Supervisor } from "./loop.js";
 
+/** Every kind of intervention this supervisor may open (docs/decisions.md, M06). */
+type RequestKind = Intervention["kind"];
+
+/** Every reason an intervention may carry (docs/decisions.md, M06). */
+type RequestReason = Intervention["reason"];
+
 /** Which run the requests belong to, and how long a human has to answer. */
 export type SupervisorFacts = {
   runId: string;
@@ -135,16 +141,120 @@ export class OperatorSupervisor implements Supervisor {
     return got.decision === "approved" ? { kind: "approved", staff: got.staff } : { kind: "declined" };
   }
 
-  /** Builds and checks one request (section 7 §13.1). Every text passes the redactor. */
+  /**
+   * Opens a rung 4 takeover, with the ladder's full context (section 5 §8.9, section 7 §13.1):
+   * the step, the trouble, every rung so far, the commit state, and any handler
+   * `operator_note`. M06 answer: claiming a takeover is M07, so the only decision is `end_run`
+   * (docs/decisions.md).
+   */
+  async takeover(
+    ask: {
+      reason: "stuck" | "needs_human_handler";
+      step: { id: string; intent: string | null };
+      trouble: { phase: string; detail: string } | null;
+      ladder: readonly unknown[];
+      commit: { state: string; notice: string | null };
+      operatorNote: string | null;
+      screenshot: string | null;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ kind: "ended_run"; staff: string } | { kind: "timed_out" } | { kind: "run_ended" }> {
+    const req = this.#request({
+      kind: "takeover",
+      reason: ask.reason,
+      step: ask.step,
+      trouble: ask.trouble,
+      approval: null,
+      screenshot: ask.screenshot,
+      decisions: ["end_run"],
+      on_handback: "Claiming a takeover is not built yet (M07). The only answer is end_run.",
+      ladder: ask.ladder,
+      commit: ask.commit,
+      operatorNote: ask.operatorNote,
+    });
+    const got = await this.#ask(req, signal);
+    return got.kind === "decided" ? { kind: "ended_run", staff: got.staff } : got;
+  }
+
+  /**
+   * Asks whether to retry the commit, after `absent_by_check` (section 7 §13.2, §13.4;
+   * docs/decisions.md, M06): `retry` opens a new child run with a new run ID; `no_retry` ends
+   * this one.
+   */
+  async retryDecision(
+    ask: { step: string; screenshot: string | null },
+    signal?: AbortSignal,
+  ): Promise<
+    | { kind: "retry"; staff: string }
+    | { kind: "no_retry"; staff: string }
+    | { kind: "timed_out" }
+    | { kind: "run_ended" }
+  > {
+    const req = this.#request({
+      kind: "retry_decision",
+      reason: "retry_needs_approval",
+      step: { id: ask.step, intent: null },
+      trouble: null,
+      approval: null,
+      screenshot: ask.screenshot,
+      decisions: ["retry", "no_retry"],
+      on_handback: null,
+    });
+    const got = await this.#ask(req, signal);
+    if (got.kind !== "decided") return got;
+    return got.decision === "retry"
+      ? { kind: "retry", staff: got.staff }
+      : { kind: "no_retry", staff: got.staff };
+  }
+
+  /**
+   * Asks a human to find the truth when the plain-code reconciliation check cannot
+   * (section 7 §13.2, §13.4; docs/decisions.md, M06): no browser needed, the human checks the
+   * app directly. Only plain code or a human may answer this; a model never claims a refusal
+   * (section 5 §2.3).
+   */
+  async reconciliationDecision(
+    ask: { step: string },
+    signal?: AbortSignal,
+  ): Promise<
+    | { kind: "found"; staff: string }
+    | { kind: "not_found"; staff: string }
+    | { kind: "timed_out" }
+    | { kind: "run_ended" }
+  > {
+    const req = this.#request({
+      kind: "reconciliation_decision",
+      reason: "reconciliation_unclear",
+      step: { id: ask.step, intent: null },
+      trouble: null,
+      approval: null,
+      screenshot: null,
+      decisions: ["found", "not_found"],
+      on_handback: null,
+    });
+    const got = await this.#ask(req, signal);
+    if (got.kind !== "decided") return got;
+    return got.decision === "found"
+      ? { kind: "found", staff: got.staff }
+      : { kind: "not_found", staff: got.staff };
+  }
+
+  /** Builds and checks one request (section 7 §13.1). Every text passes the redactor.
+   * `ladder`, `commit`, and `operatorNote` default to "nothing to show" for the discovery and
+   * start-confirmation kinds, which carry none; the ladder's rung 4 (docs/decisions.md, M06)
+   * passes its own. */
   #request(p: {
-    kind: "approval" | "takeover" | "start_confirmation";
-    reason: "discovery_irreversible" | "stuck" | "no_authorization" | "supervised_mode";
+    kind: RequestKind;
+    reason: RequestReason;
     step: { id: string; intent: string | null };
     trouble: { phase: string; detail: string } | null;
     approval: { words: string | null; risk: "irreversible"; authorization: string } | null;
     screenshot: string | null;
     decisions: string[];
     on_handback: string | null;
+    ladder?: readonly unknown[];
+    commit?: { state: string; notice: string | null };
+    operatorNote?: string | null;
   }): Masked<Request> {
     const now = this.clock.now();
     const deadline = this.#deadline();
@@ -157,9 +267,9 @@ export class OperatorSupervisor implements Supervisor {
       reason: p.reason,
       step: p.step,
       trouble: p.trouble,
-      ladder: [],
-      commit: { state: "none" },
-      operator_note: null,
+      ladder: p.ladder ?? [],
+      commit: p.commit ?? { state: "none", notice: null },
+      operator_note: p.operatorNote ?? null,
       approval: p.approval,
       screenshot: p.screenshot,
       decisions: p.decisions,
