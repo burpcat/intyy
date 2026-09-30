@@ -7,16 +7,21 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { EnvSecrets } from "../../src/adapters/env-secrets/secrets.js";
 import { FileDocumentStore } from "../../src/adapters/files/document-store.js";
 import { FileLockSlots, systemLockEnv } from "../../src/adapters/files/locks.js";
-import { FileEvidenceStore } from "../../src/adapters/files/other-stores.js";
+import { FileCandidateStore, FileEvidenceStore } from "../../src/adapters/files/other-stores.js";
 import { PlaywrightMarker } from "../../src/adapters/playwright/marker.js";
 import { playwrightFactory } from "../../src/adapters/playwright/session.js";
 import { SystemClock } from "../../src/adapters/system/clock.js";
 import { SystemIds } from "../../src/adapters/system/ids.js";
 import { loadDotEnv } from "../../src/cli/env.js";
 import { LockManager } from "../../src/core/locks/manager.js";
+import { Artifact } from "../../src/core/model/artifact.js";
+import { CandidateDecision } from "../../src/core/model/candidate-decision.js";
+import { CandidateIssues } from "../../src/core/model/candidate-issues.js";
+import { CandidateRuns } from "../../src/core/model/candidate-runs.js";
 import { Cassette } from "../../src/core/model/cassette.js";
 import { Config } from "../../src/core/model/config.js";
 import { policyKind, settingsKind } from "../../src/core/model/kinds.js";
+import type { CandidateFiles } from "../../src/core/recorder/candidates.js";
 import type { AppPolicy, GlobalPolicy, TenantPolicy } from "../../src/core/model/policy.js";
 import { RunSpec } from "../../src/core/model/runspec.js";
 import { runDiscovery, type DiscoveryResult } from "../../src/core/orchestrator/discovery.js";
@@ -101,6 +106,16 @@ async function replay(cassette: Cassette): Promise<DiscoveryResult> {
       marker,
       planner: new CassettePlanner(cassette),
       operator: () => new FakeOperator(),
+      // Why empty: `sign_in`'s spec links no session capability (M05 task 11); nothing here
+      // ever resolves an artifact.
+      artifacts: new FileCandidateStore<CandidateFiles, ReturnType<typeof CandidateDecision.parse>>(
+        {
+          files: { "runs.json": CandidateRuns, "candidate.json": Artifact, "issues.json": CandidateIssues },
+          decision: CandidateDecision,
+        },
+        { dir: join(root, "artifacts"), artifactsDir: join(root, "artifacts"), tmpDir: join(root, "tmp") },
+        clock,
+      ),
     },
   );
 }

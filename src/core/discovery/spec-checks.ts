@@ -14,6 +14,9 @@ export type SpecFacts = {
   labels: Readonly<Record<string, readonly string[]>>;
   /** The app's environment from the bank settings, or null when the app is not in them. */
   environment: "test" | "production" | null;
+  /** `correlation.notes` from the merged effective policy (section 6 §16). A spec asking for
+   * `notes` when the bank has it off is rejected here, not left for discovery to find later. */
+  correlationNotesAllowed: boolean;
 };
 
 /** Every problem and warning, one line each. Problems reject the spec; warnings do not. */
@@ -157,11 +160,13 @@ function goalChecks(spec: RunSpec, r: SpecReport): void {
 }
 
 /** Checks the fields that depend on the kind and the expected effect. */
-function kindChecks(spec: RunSpec, r: SpecReport): void {
+function kindChecks(spec: RunSpec, facts: SpecFacts, r: SpecReport): void {
   if (spec.expected_effect === "commits" && spec.correlation === undefined)
     r.problems.push("correlation: a commits run needs notes or none (section 6 §16)");
   if (spec.expected_effect === "read_only" && spec.correlation !== undefined)
     r.problems.push("correlation: only a commits run takes correlation");
+  if (spec.correlation === "notes" && !facts.correlationNotesAllowed)
+    r.problems.push("correlation: notes needs correlation.notes on in the merged policy");
   if (spec.kind === "negative_discovery") {
     if (spec.expected_outcome === undefined)
       r.problems.push("expected_outcome: a negative run needs a code and a description");
@@ -190,6 +195,6 @@ export function checkSpec(spec: RunSpec, facts: SpecFacts): SpecReport {
     r.problems.push(`prompt: ${spec.prompt} is not a prompt version intyy has`);
   inputChecks(spec, facts, r);
   goalChecks(spec, r);
-  kindChecks(spec, r);
+  kindChecks(spec, facts, r);
   return r;
 }

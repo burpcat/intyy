@@ -9,21 +9,33 @@ import type { Planner } from "../../ports/models.js";
 import type { Secrets } from "../../ports/secrets.js";
 import type { EvidenceStore, RunFolder } from "../../ports/stores.js";
 import type { LeaseToken, SurfaceFactory, Viewport } from "../../ports/surface.js";
+import type { ArtifactStore } from "../catalog/artifacts.js";
 import { runLoop, type LoopEnd } from "../discovery/loop.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
 import { PROMPTS } from "../discovery/prompts/index.js";
 import { checkSpec } from "../discovery/spec-checks.js";
 import { taskView } from "../discovery/task-view.js";
 import type { HeldInput } from "../discovery/tools.js";
+import type { Artifact } from "../model/artifact.js";
 import { fullLimits, type RunSpec } from "../model/runspec.js";
 import type { Settings } from "../model/settings.js";
+import { runPrelude, type PreludeContext } from "../replay/prelude.js";
 import { openGate } from "../safety/gate/gate.js";
 import { buildAllowlist } from "../safety/policy/allowlist.js";
 import type { MergeResult } from "../safety/policy/merge.js";
 import { fact, Redactor, redactionRules } from "../safety/redaction/redactor.js";
 import { startCheck, type SecretSources } from "../safety/secrets/injector.js";
-import { patternNames } from "./prechecks.js";
+import { catalogResolve, patternNames } from "./prechecks.js";
 import { RunLog } from "./run-log.js";
+
+/** Splits `app/capability@major`. The schema already enforces this shape (only bugs throw). */
+function splitMajorLink(link: string): { app: string; capability: string; major: number } {
+  const m = /^([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_]*)@([1-9]\d*)$/.exec(link);
+  if (m?.[1] === undefined || m[2] === undefined || m[3] === undefined) {
+    throw new Error(`splitMajorLink: ${link} does not fit app/capability@major`);
+  }
+  return { app: m[1], capability: m[2], major: Number(m[3]) };
+}
 
 /** The browser window size for discovery. Fixed, so boxes and crops stay comparable. */
 export const DISCOVERY_VIEWPORT: Viewport = { width: 1280, height: 800 };
@@ -57,6 +69,8 @@ export type DiscoveryDeps = {
   planner: Planner;
   /** The operator port for this run. The mailbox lives in the run folder (section 9 §10.5). */
   operator: (run: { runId: string; tenant: string }) => OperatorPort;
+  /** Sealed artifacts, to resolve a spec's linked session capability (section 6 §5.5). */
+  artifacts: ArtifactStore;
   signal?: AbortSignal;
 };
 
@@ -80,7 +94,13 @@ async function prechecks(
   input: DiscoveryInput,
   deps: DiscoveryDeps,
   sources: SecretSources,
-): Promise<{ checks: Check[]; code: string | null; status: "rejected" | "failed" | null }> {
+): Promise<{
+  checks: Check[];
+  code: string | null;
+  status: "rejected" | "failed" | null;
+  /** The resolved session artifact, once every check up to it passes (section 6 §5.5). */
+  sessionArtifact: Artifact | null;
+}> {
   const { spec, policy } = input;
   const app = input.settings.doc.apps[spec.app];
   const checks: Check[] = [];
@@ -98,12 +118,9 @@ async function prechecks(
     canaries: input.canaries,
     labels: policy.effective.redaction.labels,
     environment: app?.environment ?? null,
+    correlationNotesAllowed: policy.effective.correlation.notes,
   });
-  const scope: string[] = [];
-  // Why: M05 builds the sign-in prelude. Until then only a session capability itself runs.
-  if (spec.session !== null) scope.push("session: a linked session capability runs from M05");
-  if (spec.entry !== "/") scope.push("entry: only / until M05 builds the prelude");
-  const specOk = add("spec", [...report.problems, ...scope]);
+  const specOk = add("spec", report.problems);
 
   const denied: string[] = [];
   for (const m of policy.missing) denied.push(`policy layer ${m} has no approved revision`);
@@ -118,12 +135,28 @@ async function prechecks(
     denied.push(`capability_denied: a deny rule names ${spec.app}/${spec.capability}`);
   const policyOk = add("policy", denied);
 
-  if (!specOk) return { checks, code: "invalid_request", status: "rejected" };
-  if (!policyOk) return { checks, code: "policy_denied", status: "rejected" };
+  if (!specOk) return { checks, code: "invalid_request", status: "rejected", sessionArtifact: null };
+  if (!policyOk) return { checks, code: "policy_denied", status: "rejected", sessionArtifact: null };
+
+  // Section 6 §5.5: the session link must resolve for this tenant's app version, the same way
+  // check 5 does for replay (docs/decisions.md, M05).
+  let sessionArtifact: Artifact | null = null;
+  if (spec.session !== null) {
+    const link = splitMajorLink(spec.session);
+    const found =
+      app === undefined
+        ? undefined
+        : await catalogResolve(deps.artifacts)(link.app, link.capability, link.major, app.app_version);
+    if (!add("session", found === undefined ? [`the session capability ${spec.session} has no sealed version for this app`] : [])) {
+      return { checks, code: "no_version_for_context", status: "rejected", sessionArtifact: null };
+    }
+    sessionArtifact = found ?? null;
+  }
+
   const got = await startCheck(Object.keys(sources.declared), sources, deps.signal);
   if (!add("secrets", got.ok ? [] : [got.detail ?? "a secret has no value"]))
-    return { checks, code: "secret_unavailable", status: "failed" };
-  return { checks, code: null, status: null };
+    return { checks, code: "secret_unavailable", status: "failed", sessionArtifact: null };
+  return { checks, code: null, status: null, sessionArtifact };
 }
 
 /** The frozen facts for a discovery `run_start` line (section 3 §6.5, discovery form). */
@@ -351,36 +384,75 @@ export async function runDiscovery(
     by: "engine",
     data: { state: "open", location: "/" },
   });
+  // Why here: the window opens closed by default (docs/decisions.md, M05); `engine` may act
+  // only from this call until `endPrelude()`, below.
+  gate.beginPrelude();
 
   const inputs = new Map<string, HeldInput>(
     spec.inputs.map((i) => [i.name, { value: i.example, type: i.type, label: i.sensitivity }]),
   );
-  let loop: LoopEnd;
+  let loop: LoopEnd | null = null;
+  let preludeCode: string | null = null;
   try {
-    loop = await runLoop({
-      eyes,
-      gate,
-      marker: deps.marker,
-      planner: deps.planner,
-      supervisor: new OperatorSupervisor(
-        deps.operator({ runId, tenant: input.tenant }),
-        deps.clock,
-        r,
-        {
-          runId,
-          tenant: input.tenant,
-          capability,
-          // Why a fallback of 5: a missing bound counts as its strictest value (M01 decision).
-          deadlineMinutes: policy.effective.escalation.approval_minutes ?? 5,
-        },
-      ),
-      redactor: r,
-      clock: deps.clock,
-      log,
-      folder,
-      prompt,
-      spec,
-      limits: fullLimits(spec),
+    // The prelude (section 6 section 5.5, section 7 section 10), if the spec links a session
+    // capability. Its steps log as `session:<step_id>` and run as actor `engine`, allowed only
+    // until `endPrelude()` (docs/decisions.md, M05). The LLM loop starts at `spec.entry`; it
+    // never sees the prelude's own screens as its own turns.
+    if (pre.sessionArtifact !== null) {
+      const preludeCtx: PreludeContext = {
+        eyes,
+        gate,
+        targets: new Map(pre.sessionArtifact.targets.map((t) => [t.id, t])),
+        conditions: new Map(pre.sessionArtifact.conditions.map((c) => [c.id, c])),
+        outputs: new Map(),
+        contractOutcomes: pre.sessionArtifact.contract.outcomes,
+        refs: undefined,
+        redactor: r,
+        lease,
+        clock: deps.clock,
+        ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+      };
+      const preluded = await runPrelude(pre.sessionArtifact, preludeCtx);
+      if (preluded.kind === "failed") preludeCode = preluded.failure.code;
+      // Why "internal_error": never expected. `sign_in`-style sessions are read_only and
+      // declare no outcomes, so a prelude "outcome" here is a bug in the sealed session itself.
+      else if (preluded.kind === "outcome") preludeCode = "internal_error";
+    }
+    if (preludeCode === null) {
+      const navToEntry = await gate.act(
+        { actor: "engine", lease, action: { type: "navigate", to: spec.entry }, step: "entry" },
+        deps.signal,
+      );
+      if (!navToEntry.ok || navToEntry.value.decision !== "allowed" || navToEntry.value.act?.dispatched === false) {
+        preludeCode = "app_unreachable";
+      }
+    }
+    if (preludeCode === null) {
+      gate.endPrelude();
+      loop = await runLoop({
+        eyes,
+        gate,
+        marker: deps.marker,
+        planner: deps.planner,
+        supervisor: new OperatorSupervisor(
+          deps.operator({ runId, tenant: input.tenant }),
+          deps.clock,
+          r,
+          {
+            runId,
+            tenant: input.tenant,
+            capability,
+            // Why a fallback of 5: a missing bound counts as its strictest value (M01 decision).
+            deadlineMinutes: policy.effective.escalation.approval_minutes ?? 5,
+          },
+        ),
+        redactor: r,
+        clock: deps.clock,
+        log,
+        folder,
+        prompt,
+        spec,
+        limits: fullLimits(spec),
       system: prompt.system(taskView(spec, r, Object.keys(policy.effective.secrets))),
       inputs,
       runId,
@@ -401,12 +473,19 @@ export async function runDiscovery(
           deps.signal,
         );
       },
-      ...(deps.signal === undefined ? {} : { signal: deps.signal }),
-    });
+        ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+      });
+    }
   } finally {
     await gate.close();
   }
   await log.append({ event: "session", step: null, by: "engine", data: { state: "closed" } });
+  if (preludeCode !== null || loop === null) {
+    const code = preludeCode ?? "internal_error";
+    await log.append({ event: "run_end", step: null, by: "engine", data: { status: "failed", code } }, true);
+    await finish(folder, deps, r, input, { startedAt, status: "failed", code, loop: null });
+    return { runId, status: "failed", code, problems: [] };
+  }
   const counts = {
     turns: loop.turns,
     actions: loop.actions,

@@ -117,6 +117,7 @@ export const registerDiscover: Register = (program: Command, ctxOf) => {
               marker,
               planner: ctx.wiring.discovery.planner(apiKey),
               operator: ctx.wiring.discovery.operator,
+              artifacts: ctx.wiring.candidates,
               signal: stop.signal,
             },
           );

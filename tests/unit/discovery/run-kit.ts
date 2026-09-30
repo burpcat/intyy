@@ -3,10 +3,15 @@
 // Values are made up. Seed member 100240 is the canary and never appears.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FileEvidenceStore } from "../../../src/adapters/files/other-stores.js";
+import { FileCandidateStore, FileEvidenceStore } from "../../../src/adapters/files/other-stores.js";
 import { runDiscovery, type DiscoveryResult } from "../../../src/core/orchestrator/discovery.js";
+import { Artifact } from "../../../src/core/model/artifact.js";
+import { CandidateDecision } from "../../../src/core/model/candidate-decision.js";
+import { CandidateIssues } from "../../../src/core/model/candidate-issues.js";
+import { CandidateRuns } from "../../../src/core/model/candidate-runs.js";
 import { AppPolicy, GlobalPolicy, TenantPolicy } from "../../../src/core/model/policy.js";
 import { RunSpec } from "../../../src/core/model/runspec.js";
+import type { CandidateFiles } from "../../../src/core/recorder/candidates.js";
 import { Settings } from "../../../src/core/model/settings.js";
 import { mergePolicy, type MergeResult } from "../../../src/core/safety/policy/merge.js";
 import { SteppingClock } from "../../../src/fakes/clock.js";
@@ -239,6 +244,9 @@ export async function run(opts: {
   answers?: FakeAnswer[];
   secrets?: Record<string, string>;
   site?: FakeSite;
+  /** A sealed session artifact, resolvable at `kvfcu/sign_in@1` (section 6 §5.5, M05 task 11).
+   * Left out, the store stays empty, so a spec's `session` link never resolves. */
+  sealedSession?: Artifact;
 }): Promise<Ran> {
   const { root, remove } = await tempRoot("intyy-disc-");
   const evidence = new FileEvidenceStore({
@@ -249,6 +257,27 @@ export async function run(opts: {
   const operator = new FakeOperator(opts.answers ?? []);
   const clock = new SteppingClock("2026-09-28T14:00:00.000Z");
   const ids = new SeededIds(clock);
+  // Why: `runDiscovery` resolves a spec's `session` link, if any, through the artifact store
+  // (section 6 §5.5, M05 task 11). None of `run-kit.ts`'s own specs link one, so an empty store
+  // in the same temp root is enough, unless a test seals one through `opts.sealedSession`.
+  const artifacts = new FileCandidateStore<CandidateFiles, ReturnType<typeof CandidateDecision.parse>>(
+    {
+      files: { "runs.json": CandidateRuns, "candidate.json": Artifact, "issues.json": CandidateIssues },
+      decision: CandidateDecision,
+    },
+    { dir: join(root, "artifacts"), artifactsDir: join(root, "artifacts"), tmpDir: join(root, "tmp") },
+    clock,
+  );
+  if (opts.sealedSession !== undefined) {
+    const sealed = await artifacts.seal(
+      "kvfcu/sign_in/cand_2026-09-28_1000000000",
+      "1.0.0",
+      "op_017",
+      opts.sealedSession,
+      {},
+    );
+    if (!sealed.ok) throw new Error(`run-kit: could not seal the test session artifact: ${sealed.detail ?? ""}`);
+  }
   const result = await runDiscovery(
     {
       runId: ids.runId(),
@@ -275,6 +304,7 @@ export async function run(opts: {
       marker: new FakeMarker(),
       planner,
       operator: () => operator,
+      artifacts,
     },
   );
   const ev = await evidence.events("keystone", result.runId);

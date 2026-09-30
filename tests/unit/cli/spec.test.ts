@@ -47,6 +47,43 @@ describe("spec commands", () => {
     expect(checked.stdout).toBe("spec kvfcu/sign_in is valid.\n");
   });
 
+  // M05 task 11: `--session` and `--negative` write the two fields a fresh skeleton cannot
+  // guess (section 6 §5.5); a dotted variant name, like `open_share_subaccount.missing`, is
+  // the same capability's alternate scenario file (docs/decisions.md, M05).
+  test("new --session and --negative write a linked, negative_discovery skeleton", async () => {
+    const r = root();
+    const made = await call(r, "op_017", [
+      "spec",
+      "new",
+      "kvfcu/open_share_subaccount.missing",
+      "--session",
+      "kvfcu/sign_in@1",
+      "--negative",
+    ]);
+    expect(made.code).toBe(0);
+    const path = join(r, "library", "specs", "kvfcu", "open_share_subaccount.missing.json");
+    const doc = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    expect(doc).toMatchObject({
+      kind: "negative_discovery",
+      capability: "open_share_subaccount",
+      session: "kvfcu/sign_in@1",
+      goal: "",
+    });
+  });
+
+  test("new writes an empty goal on a plain skeleton too", async () => {
+    const r = root();
+    await call(r, "op_017", ["spec", "new", "kvfcu/sign_in"]);
+    const doc = JSON.parse(readFileSync(file(r), "utf8")) as Record<string, unknown>;
+    expect(doc).toMatchObject({ goal: "", session: null, kind: "discovery" });
+  });
+
+  test("new refuses a --session value that is not app/capability@major", async () => {
+    const r = root();
+    const bad = await call(r, "op_017", ["spec", "new", "kvfcu/sign_in", "--session", "not-a-link"]);
+    expect(bad.code).toBe(EXIT.usage);
+  });
+
   test("new needs the operator role", async () => {
     expect((await call(root(), "op_031", ["spec", "new", "kvfcu/sign_in"])).code).toBe(
       EXIT.refused,

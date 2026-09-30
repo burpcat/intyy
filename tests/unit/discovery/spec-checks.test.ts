@@ -49,6 +49,7 @@ const FACTS: SpecFacts = {
   canaries: ["999999"],
   labels: { money: ["balance", "amount"] },
   environment: "test",
+  correlationNotesAllowed: true,
 };
 
 /** Parses a spec and runs the checks. */
@@ -202,6 +203,19 @@ describe("goal, correlation, and negative runs", () => {
     );
     expect(check((d) => (d.expected_effect = "read_only")).problems).toContain(
       "correlation: only a commits run takes correlation",
+    );
+  });
+
+  // M05 task 11, section 6 §16: `correlation: notes` needs the bank's `correlation.notes`
+  // policy switch on.
+  test("correlation: notes needs correlation.notes on in the merged policy", () => {
+    const off = check(() => undefined, { ...FACTS, correlationNotesAllowed: false });
+    expect(off.problems).toContain(
+      "correlation: notes needs correlation.notes on in the merged policy",
+    );
+    const on = check();
+    expect(on.problems).not.toContain(
+      "correlation: notes needs correlation.notes on in the merged policy",
     );
   });
 

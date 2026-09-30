@@ -78,6 +78,10 @@ export function collectActions(runId: string, rawLines: readonly unknown[]): Col
 
   for (const raw of rawLines) {
     const line = parseLine(raw);
+    // Why: only the loop's own turns are `t<n>` (docs/decisions.md, M05). The prelude logs its
+    // steps as `session:<step_id>` (section 7 §10), and the engine's own navigate to the spec's
+    // `entry` logs as step `entry`; neither is one of the loop's turns.
+    if (line.kind !== "other" && line.step !== null && !/^t\d+$/.test(line.step)) continue;
     if (line.kind === "observation") {
       const turn = turnOf(line.step);
       locationByTurn.set(turn, line.data.location);

@@ -146,6 +146,16 @@ export interface Gate {
    * The caller acts per actor (section 4 §6.8): a discovery LLM is told, and the run goes on.
    */
   blockedLoads(): BlockedLoad[];
+  /**
+   * Opens discovery's prelude window: actor `engine` is allowed from here until `endPrelude()`
+   * (section 6, section 7 section 10; docs/decisions.md, M05). Closed by default — `engine` is
+   * blocked until this is called. Callable once, and only before any non-`engine` actor has
+   * acted; calling it late or twice is a bug (only bugs throw). Meaningless in replay.
+   */
+  beginPrelude(): void;
+  /** Closes the prelude window for good (docs/decisions.md, M05). A no-op in replay, where
+   * `engine` is a step throughout. */
+  endPrelude(): void;
   /** Closes the session. */
   close(): Promise<void>;
 }
@@ -191,6 +201,15 @@ function compile(patterns: readonly string[]): PathMatcher[] {
 class ActionGate implements Gate {
   #commitSent = false;
   #inFlight = false;
+  /** Discovery's prelude window for actor `engine` (section 6, section 7 section 10). Closed
+   * by default: `beginPrelude()`/`endPrelude()` open and close it once. Meaningless in replay,
+   * where `engine` is already allowed throughout. */
+  #preludeActive = false;
+  /** Whether `beginPrelude()` has already run once. */
+  #preludeBegun = false;
+  /** Whether any actor but `engine` has already gone through `act()`. `beginPrelude()` refuses
+   * once this is true (docs/decisions.md, M05). */
+  #nonEngineActed = false;
   /** Who acted last. A download or file chooser that follows is logged under this actor. */
   #lastActor: Actor = "engine";
   /** Page and frame loads the guard blocked, not yet collected by the caller. */
@@ -264,6 +283,17 @@ class ActionGate implements Gate {
     return this.#blocked.splice(0);
   }
 
+  beginPrelude(): void {
+    if (this.#preludeBegun) throw new Error("beginPrelude: already called once");
+    if (this.#nonEngineActed) throw new Error("beginPrelude: a non-engine actor already acted");
+    this.#preludeBegun = true;
+    this.#preludeActive = true;
+  }
+
+  endPrelude(): void {
+    this.#preludeActive = false;
+  }
+
   settled(): void {
     this.#inFlight = false;
   }
@@ -297,6 +327,9 @@ class ActionGate implements Gate {
   async act(p: Proposal, signal?: AbortSignal): Promise<Outcome<GateResult, GateFailure>> {
     const { policy, run } = this.deps;
     const a = p.action;
+    // Why here, before any check: `beginPrelude()` must never open once another actor has had
+    // its turn, whatever this proposal's own outcome is (docs/decisions.md, M05).
+    if (p.actor !== "engine") this.#nonEngineActed = true;
     const block = (
       rule: RuleId,
       risk: RiskClass | null = null,
@@ -309,8 +342,13 @@ class ActionGate implements Gate {
       if (holder === null || holder !== p.lease) return block("lease.not_holder");
     }
 
-    // Check 2: the action type, for this actor and this run.
-    if (!ACTORS_BY_RUN[run.kind].includes(p.actor)) return block("allowlist.action");
+    // Check 2: the action type, for this actor and this run. `engine` in discovery is the
+    // prelude only, and only until `endPrelude()` (docs/decisions.md, M05).
+    const actorAllowed =
+      run.kind === "discovery" && p.actor === "engine"
+        ? this.#preludeActive
+        : ACTORS_BY_RUN[run.kind].includes(p.actor);
+    if (!actorAllowed) return block("allowlist.action");
     const typeRule = checkActionType(p.actor, a.type, policy.actions.types);
     if (typeRule !== null) return block(typeRule);
     if (a.type === "press") {

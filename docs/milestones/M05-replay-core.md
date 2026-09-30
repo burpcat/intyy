@@ -83,7 +83,7 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 - [x] 8. Write the executor and the prelude. Run the full path on the snapshot surface.
 - [x] 9. Write the `replay` and `run` commands, the start confirmation, Ctrl-C, and `--reveal-outputs`.
 - [x] 10. Write the sweep for crashed replays.
-- [ ] 11. Make `discover` start with the prelude. Write the five spec skeletons.
+- [x] 11. Make `discover` start with the prelude. Write the five spec skeletons.
 - [ ] 12. Stop. Ask the owner to run the discoveries in the order below.
 - [ ] 13. Write the demo files. Write the live demo test and the member canary test.
 

@@ -32,7 +32,9 @@ describe("a scripted sign-in (section 6 §10.1)", () => {
     expect(ev.filter((e) => e === "observation")).toHaveLength(4);
     expect(ev.filter((e) => e === "llm_decision")).toHaveLength(4);
     expect(ev.filter((e) => e === "action")).toHaveLength(3);
-    expect(ev.filter((e) => e === "gate")).toHaveLength(3);
+    // Why 4, not 3: the engine's own navigate to `spec.entry`, step "entry", passes the gate
+    // too, before the LLM loop's own three turns (section 7 §10; docs/decisions.md, M05).
+    expect(ev.filter((e) => e === "gate")).toHaveLength(4);
     expect(ev.at(-1)).toBe("run_end");
     expect(r.events.at(-1)).toMatchObject({ data: { status: "success", code: null } });
     // Why: seq numbers count up with no gap, in file order (section 3 §6.1).
@@ -210,15 +212,18 @@ describe("how a run ends (section 6 §10.4)", () => {
     expect((r.planner as ScriptedPlanner).seen).toHaveLength(0);
   });
 
-  test("a spec that needs M05's prelude is rejected with three log lines", async () => {
+  // M05 task 11: the M03 guard against a `session` link or a non-"/" entry is gone (section 6
+  // §5.5); a spec may link one, but only a session that resolves for this tenant's app version.
+  test("a spec whose session link does not resolve is rejected no_version_for_context", async () => {
     const spec = RunSpec.parse({
       ...SIGN_IN,
       capability: "transfer",
       session: "kvfcu/sign_in@1",
       entry: "/home",
     });
+    // Why: run-kit's own artifact store starts empty, so this link never resolves.
     const r = await go({ spec });
-    expect(r.result).toMatchObject({ status: "rejected", code: "invalid_request" });
+    expect(r.result).toMatchObject({ status: "rejected", code: "no_version_for_context" });
     expect(names(r.events)).toEqual(["run_start", "precheck", "run_end"]);
   });
 });

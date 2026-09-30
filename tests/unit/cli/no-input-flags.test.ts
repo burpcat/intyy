@@ -33,6 +33,9 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   // M05 task 10: `run sweep --force-unlock`'s value is a lock identifier, `kind:key`, like
   // `run:<run_id>`; the reason it gives comes from standard input, never this flag.
   "--force-unlock": "a lock identifier, kind:key, like run:<run_id>; not member data",
+  // M05 task 11: `spec new --session` names the linked session capability, a link of intyy's
+  // own making (`app/capability@major`), never member data.
+  "--session": "a session capability link, like kvfcu/sign_in@1; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

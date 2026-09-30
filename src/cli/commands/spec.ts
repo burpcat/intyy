@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname, join } from "node:path";
 import type { Command } from "commander";
 import { AppId } from "../../core/model/common.js";
+import { MajorCapabilityLink } from "../../core/model/artifact/shared.js";
 import { CapabilityName, RunSpec } from "../../core/model/runspec.js";
 import { issueText } from "../../core/model/sealing.js";
 import { checkSpec, type SpecReport } from "../../core/discovery/spec-checks.js";
@@ -19,20 +20,31 @@ import { load, runEditor } from "./documents.js";
 import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
 
-/** A spec name on the command line: `<app>/<name>`. Example: `kvfcu/sign_in`. */
-export type SpecName = { app: string; name: string };
+/**
+ * A spec name on the command line: `<app>/<name>`. Example: `kvfcu/sign_in`. `name` may add a
+ * dotted variant suffix, like `open_share_subaccount.missing`: the same capability's alternate
+ * scenario file (docs/decisions.md, M05). `capability` is `name` with that suffix stripped, the
+ * value the spec's own `capability` field takes.
+ */
+export type SpecName = { app: string; name: string; capability: string };
 
-/** Parses `<app>/<name>`. */
+/** Parses `<app>/<name>`, `name` alone or `name.variant`. */
 export function parseSpecName(arg: string | undefined): SpecName {
   const [app, name, extra] = (arg ?? "").split("/");
+  const capability = name?.split(".")[0];
   if (
     extra !== undefined ||
+    name === undefined ||
     !AppId.safeParse(app).success ||
-    !CapabilityName.safeParse(name).success
+    !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/.test(name) ||
+    !CapabilityName.safeParse(capability).success
   ) {
-    throw new CliExit(EXIT.usage, `spec ${arg ?? ""}: write <app>/<name>, like kvfcu/sign_in`);
+    throw new CliExit(
+      EXIT.usage,
+      `spec ${arg ?? ""}: write <app>/<name>, like kvfcu/sign_in or kvfcu/open_share_subaccount.missing`,
+    );
   }
-  return { app: app ?? "", name: name ?? "" };
+  return { app: app ?? "", name, capability: capability ?? "" };
 }
 
 /** Where a spec file lives (section 6 §6). */
@@ -55,6 +67,7 @@ export async function reportFor(ctx: Ctx, spec: RunSpec): Promise<SpecReport> {
     canaries: ctx.config.canary_members,
     labels: policy.effective.redaction.labels,
     environment: app?.environment ?? null,
+    correlationNotesAllowed: policy.effective.correlation.notes,
   });
   if (spec.caller.tenant !== ctx.tenant)
     r.problems.push(`caller: tenant ${spec.caller.tenant} is not this tenant, ${ctx.tenant}`);
@@ -63,20 +76,27 @@ export async function reportFor(ctx: Ctx, spec: RunSpec): Promise<SpecReport> {
 
 /**
  * The skeleton `spec new` writes. Its goal is empty, so it fails `check` until the operator
- * writes one. The operator also fills in the inputs and outputs.
+ * writes one. The operator also fills in the inputs, outputs, and (for a negative spec)
+ * `expected_outcome`. `session` and `negative` are the two fields a fresh skeleton cannot guess
+ * (docs/decisions.md, M05): the rest stay the operator's to fill in through `spec edit`.
  */
-function skeleton(ctx: Ctx, s: SpecName, staff: string): Record<string, unknown> {
+function skeleton(
+  ctx: Ctx,
+  s: SpecName,
+  staff: string,
+  opts: { session: string | null; negative: boolean },
+): Record<string, unknown> {
   return {
     schema: "intyy.runspec/1.0",
-    kind: "discovery",
+    kind: opts.negative ? "negative_discovery" : "discovery",
     caller: { tenant: ctx.tenant, agent_id: staff },
     app: s.app,
-    capability: s.name,
+    capability: s.capability,
     goal: "",
     inputs: [],
     outputs: [],
     expected_effect: "read_only",
-    session: null,
+    session: opts.session,
     entry: "/",
     model: "claude-sonnet-5",
     prompt: "discovery@1.0",
@@ -102,7 +122,7 @@ export function readSpec(ctx: Ctx, s: SpecName): RunSpec {
 export function specLookup(ctx: Ctx): SpecLookup {
   return (app, name) => {
     try {
-      return Promise.resolve(ok(readSpec(ctx, { app, name })));
+      return Promise.resolve(ok(readSpec(ctx, { app, name, capability: name })));
     } catch (e) {
       if (e instanceof CliExit) return Promise.resolve(fail(e.code === EXIT.invalid ? "invalid" : "not_found", e.message));
       throw e;
@@ -117,18 +137,26 @@ export const registerSpec: Register = (program: Command, ctxOf) => {
   spec
     .command("new")
     .argument("<app/name>", "the app and proposed capability, like kvfcu/sign_in")
+    .option("--session <link>", "the session capability this run needs first, like kvfcu/sign_in@1")
+    .option("--negative", "a negative_discovery spec, attached later to an existing candidate")
     .description("write a spec skeleton (operator)")
     .action(
-      act(ctxOf, (ctx, args) => {
+      act(ctxOf, (ctx, args, opts) => {
         const s = parseSpecName(args[0]);
         const staff = requireRole(ctx, ctx.tenant, "operator");
         const path = specPath(ctx, s);
         if (existsSync(path))
           throw new CliExit(EXIT.refused, `spec ${s.app}/${s.name} already exists`);
+        let session: string | null = null;
+        if (typeof opts.session === "string") {
+          if (!MajorCapabilityLink.safeParse(opts.session).success) {
+            throw new CliExit(EXIT.usage, `--session ${opts.session}: write a link like kvfcu/sign_in@1`);
+          }
+          session = opts.session;
+        }
         mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, `${JSON.stringify(skeleton(ctx, s, staff), null, 2)}\n`, {
-          flag: "wx",
-        });
+        const doc = skeleton(ctx, s, staff, { session, negative: opts.negative === true });
+        writeFileSync(path, `${JSON.stringify(doc, null, 2)}\n`, { flag: "wx" });
         return Promise.resolve(
           answer(
             { spec: `${s.app}/${s.name}`, path },

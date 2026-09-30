@@ -469,3 +469,34 @@ describe("check order and rules", () => {
     });
   });
 });
+
+// M05 task 11: the discovery prelude window (section 6 §5.5, section 7 §10;
+// docs/decisions.md, M05: "engine is allowed only until a one-way endPrelude()").
+describe("the discovery prelude window (section 6 §5.5, section 7 §10)", () => {
+  const NAV = { type: "navigate", to: "/" } as const;
+
+  test("engine is blocked before beginPrelude, allowed inside it, and blocked again after", async () => {
+    const g = await open();
+    expect(await decide(g, propose("engine", NAV))).toBe("blocked allowlist.action");
+    g.gate.beginPrelude();
+    expect(await decide(g, propose("engine", NAV))).toBe("allowed risk.allowed");
+    g.gate.endPrelude();
+    expect(await decide(g, propose("engine", NAV))).toBe("blocked allowlist.action");
+  });
+
+  test("beginPrelude called twice throws (only a bug calls it twice)", async () => {
+    const g = await open();
+    g.gate.beginPrelude();
+    expect(() => {
+      g.gate.beginPrelude();
+    }).toThrow();
+  });
+
+  test("beginPrelude after any non-engine actor has acted throws (only a bug opens it late)", async () => {
+    const g = await open();
+    await g.gate.act(propose("llm", NAV));
+    expect(() => {
+      g.gate.beginPrelude();
+    }).toThrow();
+  });
+});
