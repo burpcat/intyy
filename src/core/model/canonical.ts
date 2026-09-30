@@ -1,6 +1,10 @@
 // Canonical JSON and SHA-256 hashes: the same content always gives the same hash.
 // Follows design section 4 §4.5 (canonical JSON), §5.5, and section 9 §6.4.
 import { createHash } from "node:crypto";
+import { z } from "zod";
+
+/** A `sha256:` hex digest, lower case (section 9 §6.4, section 3 §7.3 file hashes). */
+export const Sha256Hash = z.string().regex(/^sha256:[0-9a-f]{64}$/, "sha256:<64 hex characters>");
 
 /** Canonical JSON: keys sorted at every level, no spaces (section 4 §4.5). */
 export function canonicalJson(value: unknown): string {

@@ -12,6 +12,22 @@ export const AppId = z.string().regex(/^[a-z][a-z0-9_-]*$/, "an app ID is lower 
 /** A staff ID. Example: `op_017`. */
 export const StaffId = z.string().regex(/^[a-z][a-z0-9_]*$/, "a staff ID is lower case");
 
+/** `app/capability`, no version. Used where a version is resolved elsewhere: `run.json`'s
+ * `capability` field and a result's `capability.name` (section 3 §7.3, §5.1). */
+export const AppCapabilityName = z
+  .string()
+  .regex(/^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*$/, "app/capability");
+
+/**
+ * One input or output value on the wire (section 3 §5.3): `money`, `decimal`, and `date` are
+ * strings; `integer` is a number; `boolean` is a boolean. Shared by a request's `inputs` and a
+ * result's `outputs`.
+ */
+export const ContractValue = z.union([z.string(), z.number(), z.boolean()]);
+
+/** One input or output value. */
+export type ContractValue = z.infer<typeof ContractValue>;
+
 /** An environment variable name. Example: `ANTHROPIC_API_KEY`. */
 export const EnvName = z.string().regex(/^[A-Z][A-Z0-9_]*$/, "an environment variable name");
 

@@ -13,6 +13,8 @@ import { HandlerDraft } from "../src/core/model/handler-draft.js";
 import { ClosedFile, DecisionFile, Intervention } from "../src/core/model/mailbox.js";
 import { Patch } from "../src/core/model/patch.js";
 import { Policy } from "../src/core/model/policy.js";
+import { Request } from "../src/core/model/request.js";
+import { Result } from "../src/core/model/result.js";
 import { RunJson } from "../src/core/model/run.js";
 import { RunSpec } from "../src/core/model/runspec.js";
 import { Settings } from "../src/core/model/settings.js";
@@ -39,4 +41,6 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.decision-1.0": DecisionFile,
   "intyy.closed-1.0": ClosedFile,
   "intyy.cassette-1.0": Cassette,
+  "intyy.request-1.0": Request,
+  "intyy.result-1.0": Result,
 };

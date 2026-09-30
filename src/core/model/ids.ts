@@ -30,3 +30,6 @@ export const RunId = z.string().regex(/^run_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]
 
 /** A valid candidate ID: `cand_` plus the run ID shape (docs/decisions.md, M04). */
 export const CandidateId = z.string().regex(/^cand_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]{10}$/);
+
+/** A valid batch ID: `batch_` plus the run ID shape (docs/decisions.md, M01). */
+export const BatchId = z.string().regex(/^batch_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]{10}$/);
