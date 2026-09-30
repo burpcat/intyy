@@ -119,13 +119,21 @@ export type GateDeps = {
   log: (line: GateLine) => void;
   /** Declared secrets, their bindings, and the secret port (section 4 §8). */
   secrets: SecretSources;
+  /**
+   * The write-ahead rule (section 3 §6.6, docs/decisions.md M05): awaited just before an
+   * irreversible action's dispatch, to write `commit_intent` durably. A failed write means the
+   * action is never sent: `#go` returns its failure without calling the hands. Undefined for
+   * runs with no commit to guard, like discovery.
+   */
+  beforeDispatch?: (p: Proposal) => Promise<Outcome<void, "evidence_write_failed">>;
 };
 
 /** A page or frame load the network guard blocked, and who acted last before it (section 4 §6.8). */
 export type BlockedLoad = { actor: Actor; path: Masked<string>; rule: RuleId };
 
-/** Failures `gate.act` may return. `secret_unavailable`: the value vanished after the start check. */
-export type GateFailure = "stale_element" | "page_gone" | "secret_unavailable";
+/** Failures `gate.act` may return. `secret_unavailable`: the value vanished after the start check.
+ * `evidence_write_failed`: `commit_intent` could not be forced to disk (section 3 §6.6). */
+export type GateFailure = "stale_element" | "page_gone" | "secret_unavailable" | "evidence_write_failed";
 
 /** The gate's face to the rest of intyy. */
 export interface Gate {
@@ -493,6 +501,12 @@ class ActionGate implements Gate {
     signal?: AbortSignal,
   ): Promise<Outcome<GateResult, GateFailure>> {
     this.#lastActor = p.actor;
+    // Write-ahead (section 3 §6.6): write commit_intent, forced to disk, before the one
+    // irreversible action ever reaches the hands. A failed write sends nothing.
+    if (result.risk === "irreversible" && this.deps.beforeDispatch !== undefined) {
+      const before = await this.deps.beforeDispatch(p);
+      if (!before.ok) return before;
+    }
     const acted =
       a.type === "type" && a.value.kind === "secret"
         ? await this.#typeSecret(a, a.value.name, p.lease, p.step, signal)

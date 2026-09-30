@@ -79,7 +79,7 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 - [x] 4. Write settle, condition waits, and the outcome race.
 - [x] 5. Write clue voting. Test that a renamed button fails, ties are ambiguous, and the evidence floor holds.
 - [x] 6. Write acting, the dispatch check, dialogs, and pop-ups.
-- [ ] 7. Write the commit path: live re-check, durable `commit_intent`, the effect block.
+- [x] 7. Write the commit path: live re-check, durable `commit_intent`, the effect block.
 - [ ] 8. Write the executor and the prelude. Run the full path on the snapshot surface.
 - [ ] 9. Write the `replay` and `run` commands, the start confirmation, Ctrl-C, and `--reveal-outputs`.
 - [ ] 10. Write the sweep for crashed replays.

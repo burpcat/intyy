@@ -29,7 +29,8 @@
       "type": "string",
       "enum": [
         "discovery_irreversible",
-        "stuck"
+        "stuck",
+        "no_authorization"
       ]
     },
     "step": {

@@ -22,7 +22,9 @@ export const Intervention = z
     tenant: TenantId,
     capability: z.string().min(1),
     kind: z.enum(["approval", "takeover"]),
-    reason: z.enum(["discovery_irreversible", "stuck"]),
+    // Why `no_authorization`: docs/decisions.md, M05. A supervised replay commit with no valid
+    // authorization opens this same mailbox, answered `approved` or `declined` (section 3 §5.7).
+    reason: z.enum(["discovery_irreversible", "stuck", "no_authorization"]),
     step: z.object({ id: z.string().min(1), intent: z.string().nullable() }).strict(),
     trouble: z.object({ phase: z.string(), detail: z.string() }).strict().nullable(),
     ladder: z.array(z.unknown()),

@@ -43,7 +43,7 @@ export class OperatorSupervisor implements Supervisor {
     const req = this.#request({
       kind: "approval",
       reason: "discovery_irreversible",
-      turn: ask.turn,
+      step: { id: `t${String(ask.turn)}`, intent: null },
       trouble: null,
       approval: { words: ask.label, risk: "irreversible", authorization: "none" },
       screenshot: ask.screenshot,
@@ -64,7 +64,7 @@ export class OperatorSupervisor implements Supervisor {
     const req = this.#request({
       kind: "takeover",
       reason: "stuck",
-      turn: ask.turn,
+      step: { id: `t${String(ask.turn)}`, intent: null },
       trouble: { phase: "discovery", detail: ask.reason },
       approval: null,
       screenshot: ask.screenshot,
@@ -75,11 +75,43 @@ export class OperatorSupervisor implements Supervisor {
     return got.kind === "decided" ? { kind: "end_run", staff: got.staff } : got;
   }
 
+  /**
+   * Asks a replay commit approval: `approved` or `declined` (docs/decisions.md, M05). Reuses the
+   * same mailbox request and deadline as discovery's `approve` (section 7 §13.1, §13.4), with the
+   * two-word decision set section 4 §7.8's "no authorization" pause needs, not the four discovery
+   * answers.
+   */
+  async commitApproval(
+    ask: { step: string; intent: string; screenshot: string | null },
+    signal?: AbortSignal,
+  ): Promise<
+    | { kind: "approved"; staff: string }
+    | { kind: "declined" }
+    | { kind: "timed_out" }
+    | { kind: "run_ended" }
+  > {
+    const req = this.#request({
+      kind: "approval",
+      reason: "no_authorization",
+      step: { id: ask.step, intent: ask.intent },
+      trouble: null,
+      approval: { words: null, risk: "irreversible", authorization: "none" },
+      screenshot: ask.screenshot,
+      decisions: ["approved", "declined"],
+      on_handback: null,
+    });
+    const got = await this.#ask(req, signal);
+    if (got.kind !== "decided") return got;
+    // Why not "unknown decision word": a hand-written decision.json might hold anything else.
+    // Not acting is the safe side (section 4 §2.3, docs/decisions.md M03).
+    return got.decision === "approved" ? { kind: "approved", staff: got.staff } : { kind: "declined" };
+  }
+
   /** Builds and checks one request (section 7 §13.1). Every text passes the redactor. */
   #request(p: {
     kind: "approval" | "takeover";
-    reason: "discovery_irreversible" | "stuck";
-    turn: number;
+    reason: "discovery_irreversible" | "stuck" | "no_authorization";
+    step: { id: string; intent: string | null };
     trouble: { phase: string; detail: string } | null;
     approval: { words: string | null; risk: "irreversible"; authorization: string } | null;
     screenshot: string | null;
@@ -95,7 +127,7 @@ export class OperatorSupervisor implements Supervisor {
       capability: this.facts.capability,
       kind: p.kind,
       reason: p.reason,
-      step: { id: `t${String(p.turn)}`, intent: null },
+      step: p.step,
       trouble: p.trouble,
       ladder: [],
       commit: { state: "none" },

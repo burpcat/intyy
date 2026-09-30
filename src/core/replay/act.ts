@@ -13,7 +13,14 @@ import { readOutput } from "../discovery/read.js";
 import type { ContractOutput } from "../model/artifact/contract.js";
 import type { StepAction } from "../model/artifact/steps.js";
 import type { Target } from "../model/artifact/targets.js";
-import type { Gate, GateAction, GateFailure, GateResult, Proposal } from "../safety/gate/gate.js";
+import type {
+  Gate,
+  GateAction,
+  GateFailure,
+  GateResult,
+  Proposal,
+} from "../safety/gate/gate.js";
+import type { RiskKind } from "../model/artifact/steps.js";
 import type { Redactor } from "../safety/redaction/redactor.js";
 import { resolveRefs } from "../targets/text.js";
 import { findTarget, type TargetVoteFacts } from "./find-target.js";
@@ -51,6 +58,9 @@ export type ActContext = {
   stepId: string;
   commitPoint?: boolean;
   approval?: { by: string };
+  /** The recorded risk and words a human confirmed at review, for the gate's live re-check
+   * (section 4 §7.8 check 4). Task 7 (the commit path) sets this for the commit step. */
+  confirmed?: { risk: RiskKind; words: readonly string[] };
   signal?: AbortSignal;
 };
 
@@ -71,6 +81,7 @@ function propose(ctx: ActContext, action: GateAction): Promise<Outcome<GateResul
     step: ctx.stepId,
     ...(ctx.commitPoint === true ? { commitPoint: true } : {}),
     ...(ctx.approval === undefined ? {} : { approval: ctx.approval }),
+    ...(ctx.confirmed === undefined ? {} : { confirmed: ctx.confirmed }),
   };
   return ctx.gate.act(p, ctx.signal);
 }
