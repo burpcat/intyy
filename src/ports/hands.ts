@@ -11,7 +11,13 @@ import type { ElementRef, Eyes, LeaseToken, SessionConfig, SurfaceFactory } from
  */
 export type ResolvedAction =
   | { type: "navigate"; url: string }
-  | { type: "click"; target: ElementRef }
+  | {
+      type: "click";
+      target: ElementRef;
+      /** Caps the browser's readiness wait (visible, stable, enabled, not covered): 5 s
+       * normally, 2 s on the commit step (section 7 §7.1). Undefined keeps the old default. */
+      readinessTimeoutMs?: number;
+    }
   | { type: "type"; target: ElementRef; text: string | Secret }
   | { type: "select"; target: ElementRef; option: string }
   | { type: "set_checked"; target: ElementRef; checked: boolean }

@@ -43,7 +43,7 @@ export type TypeValue =
 /** An action someone proposes. `navigate` takes a path or a full address. `read` is the eyes' job. */
 export type GateAction =
   | { type: "navigate"; to: string }
-  | { type: "click"; target: ElementRef }
+  | { type: "click"; target: ElementRef; readinessTimeoutMs?: number }
   | { type: "type"; target: ElementRef; value: TypeValue }
   | { type: "select"; target: ElementRef; option: string }
   | { type: "set_checked"; target: ElementRef; checked: boolean }

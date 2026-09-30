@@ -30,7 +30,11 @@ const PAGES: Record<string, string> = {
     <canvas width="200" height="100" aria-label="Chart"></canvas>
     <p><label><input type="checkbox"> Joint</label></p>
     <p><label for="kind">Kind</label> <select id="kind"><option>Savings</option><option>Checking</option></select></p>
-    <button type="button" onclick="document.body.insertAdjacentHTML('afterbegin', '<p>Note added</p>')">Add note</button>`,
+    <button type="button" onclick="document.body.insertAdjacentHTML('afterbegin', '<p>Note added</p>')">Add note</button>
+    <div style="position:relative">
+      <button type="button" style="position:relative;z-index:0">Covered</button>
+      <div style="position:absolute;inset:0;z-index:1;background:transparent"></div>
+    </div>`,
   ),
   "/frame": page("Frame", `<button type="button">Help</button>`),
   // Why: section 7 §5.1, a real static image and a real fetched resource, for the

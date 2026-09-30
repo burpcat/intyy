@@ -73,9 +73,13 @@ export class PlaywrightHands implements Hands {
         await Promise.race([step, this.s.nextDialog()]);
       };
       switch (a.type) {
-        case "click":
-          await orDialog(t.locator.click(opts));
+        case "click": {
+          // Why: section 7 §7.1, the readiness wait is capped shorter than a full step's
+          // timeout. `a.readinessTimeoutMs` is undefined for a caller that does not set it.
+          const clickOpts = { timeout: a.readinessTimeoutMs ?? STEP_TIMEOUT_MS };
+          await orDialog(t.locator.click(clickOpts));
           return done;
+        }
         case "type": {
           const secret = a.text instanceof Secret;
           // Why: section 4 §8.5, the value is fetched at typing time and dropped right after.

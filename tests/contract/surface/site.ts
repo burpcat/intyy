@@ -157,6 +157,17 @@ export function fixtureSite(origin: string): FakeSite {
             frame: 0,
             box: box(248),
           },
+          {
+            // Why: section 7 §7.2, "a pop-up covered Confirm": a click's readiness check fails
+            // before any input event, so it stays `dispatched: false`.
+            id: "covered",
+            role: "button",
+            roleGroup: "button_like",
+            name: "Covered",
+            text: "Covered",
+            box: box(504),
+            covered: true,
+          },
         ],
       },
       "/members": {

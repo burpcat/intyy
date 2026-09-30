@@ -390,6 +390,18 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
         expect(back.popups).toBe(0);
       });
 
+      test("a covered click's readiness check fails first: it stays dispatched: false", async () => {
+        // Why: section 7 §7.2, "a pop-up covered Confirm". A short readiness timeout keeps this
+        // fast on the live backend, whose click really waits out the cap before giving up.
+        const g = await start();
+        const r = await act(
+          g,
+          { type: "click", target: find(g.o, "Covered").ref, readinessTimeoutMs: 200 },
+          true,
+        );
+        expect(r).toMatchObject({ decision: "allowed", act: { dispatched: false } });
+      });
+
       test("the guard blocks a link off the allowlist, even after a human yes", async () => {
         const g = await start();
         const events = g.eyes.events()[Symbol.asyncIterator]();

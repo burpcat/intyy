@@ -59,6 +59,9 @@ export type FakeElement = {
   box?: Box | null;
   frame?: number;
   onClick?: FakeEffect;
+  /** A click's readiness check fails, as if another window or box were on top (section 7 §7.2,
+   * "a pop-up covered Confirm"). Unlike `enabled: false`, the element stays enabled. */
+  covered?: true;
 };
 
 /** One request the fake reports as this screen loads (section 7 §5.1, `resource: static | data`). */
@@ -350,6 +353,7 @@ class FakeHands implements Hands {
     const el = page?.screen.elements.find((e) => e.id === id);
     if (page === null || el === undefined) return fail("stale_element");
     if (el.enabled === false) return ok({ dispatched: false });
+    if (a.type === "click" && el.covered === true) return ok({ dispatched: false });
     const field = page.fields.get(id);
 
     switch (a.type) {
