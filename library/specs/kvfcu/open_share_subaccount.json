@@ -7,12 +7,46 @@
   },
   "app": "kvfcu",
   "capability": "open_share_subaccount",
-  "goal": "",
-  "inputs": [],
-  "outputs": [],
-  "expected_effect": "read_only",
+  "goal": "Open a share sub-account for member {input.member_id} with an opening deposit of {input.deposit}. Return the new account number.",
+  "inputs": [
+    {
+      "name": "member_id",
+      "type": "string",
+      "description": "The member number of the account holder",
+      "sensitivity": "pii",
+      "example": "100114",
+      "constraints": {
+        "length": {
+          "min": 6,
+          "max": 6
+        },
+        "format": "digits"
+      }
+    },
+    {
+      "name": "deposit",
+      "type": "money",
+      "description": "The opening deposit for the new sub-account",
+      "sensitivity": "financial",
+      "example": "25.00",
+      "constraints": {
+        "range": {
+          "min": "0.01"
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "name": "account_number",
+      "type": "string",
+      "description": "The account number of the new share sub-account"
+    }
+  ],
+  "expected_effect": "commits",
+  "correlation": "none",
   "session": "kvfcu/sign_in@1",
-  "entry": "/",
+  "entry": "/main.do",
   "model": "claude-sonnet-5",
   "prompt": "discovery@1.0"
 }

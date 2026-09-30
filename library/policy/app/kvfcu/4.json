@@ -1,0 +1,54 @@
+{
+  "schema": "intyy.policy/1.0",
+  "revision": 4,
+  "reason": "Adds the open-sub-account pages the owner read in the browser's network log. Loading the confirm page creates the account.",
+  "scope": {
+    "level": "app",
+    "app": "kvfcu"
+  },
+  "paths": {
+    "allow": [
+      "/",
+      "/login.do",
+      "/lastLogin.do",
+      "/main.do",
+      "/banner.do",
+      "/menu.do",
+      "/memberSearch.do",
+      "/memberSearchResult.do",
+      "/memberDetail.do?memNo=*",
+      "/openAccount.do?memNo=*",
+      "/openAccountReview.do",
+      "/openAccountConfirm.do"
+    ],
+    "deny": [
+      "/__test__/*"
+    ],
+    "irreversible": [
+      "/openAccountConfirm.do"
+    ]
+  },
+  "risk": {
+    "safe_words": [
+      "continue"
+    ]
+  },
+  "secrets": {
+    "operator_username": {
+      "kind": "username",
+      "paths": [
+        "/login.do"
+      ]
+    },
+    "operator_password": {
+      "kind": "password",
+      "paths": [
+        "/login.do"
+      ]
+    }
+  },
+  "approved": {
+    "by": "op_031",
+    "at": "2026-09-30T23:19:23.763Z"
+  }
+}
