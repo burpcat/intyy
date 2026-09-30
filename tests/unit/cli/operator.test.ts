@@ -2,6 +2,7 @@
 // is listed and shown, a decision is written once, and a bad word or role is refused.
 // Design section 9 §10.4, §10.5; section 4 §7.7. M03 task 8.
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
 import { MailboxOperator } from "../../../src/adapters/mailbox/mailbox.js";
@@ -22,6 +23,23 @@ async function root(): Promise<string> {
     cpSync(join("library", d), join(r, "library", d), { recursive: true });
   const evidence = join(r, "state", "evidence");
   mkdirSync(join(evidence, "keystone", "runs", RUN), { recursive: true });
+  // Why a lock file: the crash sweep (M05 task 10) now runs before every command. A "live" run
+  // in this fixture must hold its run lock, the same way a real discovery would, or the sweep
+  // closes it as crashed before `operator list` ever sees it (section 7 §17).
+  const locksDir = join(r, "state", "var", "locks", "runs");
+  mkdirSync(locksDir, { recursive: true });
+  writeFileSync(
+    join(locksDir, `${RUN}.lock`),
+    JSON.stringify({
+      schema: "intyy.lock/1.0",
+      owner: RUN,
+      pid: process.pid,
+      host: hostname(),
+      command: "discover",
+      staff: null,
+      started_at: "2026-09-28T14:00:00.000Z",
+    }),
+  );
   const index = [
     { run_id: RUN, status: "running", capability: "kvfcu/transfer" },
     { run_id: RUN, status: "escalated", capability: "kvfcu/transfer" },

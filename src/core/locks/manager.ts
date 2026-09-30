@@ -98,6 +98,14 @@ export class LockManager implements Locks {
     return info === "unreadable" ? null : info;
   }
 
+  /** Removes a lock unconditionally, whatever host or process holds it (section 9 §10.7). */
+  async forceRelease(kind: LockKind, key: string): Promise<LockInfo | null> {
+    const info = await this.#slots.read(kind, key);
+    if (info === null) return null;
+    await this.#slots.remove(kind, key);
+    return info === "unreadable" ? null : info;
+  }
+
   #checkOrder(kind: LockKind): void {
     for (const h of this.#held) {
       if (h.kind === "score")

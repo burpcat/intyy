@@ -75,6 +75,14 @@ export const registerDiscover: Register = (program: Command, ctxOf) => {
           staff,
           waitMs: 0,
         });
+        // Why a run lock too: the crash sweep tells a live discovery from a crashed one by
+        // whether this exact lock is still held (section 7 §17, docs/decisions.md, M05).
+        const runHold = await takeLock(ctx, "run", runId, {
+          owner: runId,
+          command: "discover",
+          staff,
+          waitMs: 0,
+        });
         const stop = new AbortController();
         const onInt = (): void => {
           progress(ctx.io, "Stopping: the run ends as ended_by_operator.");
@@ -139,6 +147,7 @@ export const registerDiscover: Register = (program: Command, ctxOf) => {
         } finally {
           process.removeListener("SIGINT", onInt);
           await marker.close();
+          await ctx.wiring.locks.release(runHold);
           await ctx.wiring.locks.release(hold);
         }
       }),

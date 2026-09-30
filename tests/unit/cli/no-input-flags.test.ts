@@ -30,6 +30,9 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--agent": "the calling agent's own ID, not member data",
   "--pin": "a trust key's name, refused until M10; not member data",
   "--wait": "a poll ceiling in milliseconds, not member data",
+  // M05 task 10: `run sweep --force-unlock`'s value is a lock identifier, `kind:key`, like
+  // `run:<run_id>`; the reason it gives comes from standard input, never this flag.
+  "--force-unlock": "a lock identifier, kind:key, like run:<run_id>; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

@@ -5,7 +5,7 @@ import { Command, CommanderError } from "commander";
 import { makeContext, printOptions, type Ctx, type GlobalFlags } from "./context.js";
 import { CliExit, EXIT } from "./exit-codes.js";
 import { printAnswer, printError, type Answer, type Io } from "./output.js";
-import { reportSweep, stubSweep, type Sweep } from "./sweep.js";
+import { realSweep, reportSweep, type Sweep } from "./sweep.js";
 import { wire } from "./wiring.js";
 
 /** Adds one noun's commands to the program. */
@@ -108,7 +108,18 @@ function buildProgram(io: Io, deps: RunDeps, setCtx: (c: Ctx) => void, ctxOf: ()
     checkRunFlags(action.name(), flags);
     const ctx = makeContext(io, flags, deps.wire ?? wire);
     setCtx(ctx);
-    reportSweep(io, await (deps.sweep ?? stubSweep)(ctx.tenant));
+    // Why skip here: `run sweep` (section 9 §10.7) runs the very same sweep itself, for its
+    // own detailed report. Running it twice would leave the second call nothing to find.
+    if (action.name() === "sweep" && action.parent?.name() === "run") return;
+    const sweep =
+      deps.sweep ??
+      realSweep({
+        evidence: ctx.wiring.evidence,
+        locks: ctx.wiring.locks,
+        clock: ctx.wiring.clock,
+        artifacts: ctx.wiring.candidates,
+      });
+    reportSweep(io, await sweep(ctx.tenant));
   });
 
   for (const register of deps.commands ?? []) register(program, ctxOf);

@@ -56,4 +56,10 @@ export interface Locks {
   release(hold: LockHold): Promise<void>;
   /** Reads a lock without taking it. */
   inspect(kind: LockKind, key: string, signal?: AbortSignal): Promise<LockInfo | null>;
+  /**
+   * Removes a lock unconditionally: held from another machine, or unreadable, not just stale on
+   * this one (section 9 §10.7, `run sweep --force-unlock`, operator role). Returns the removed
+   * lock, or `null` when none was held. The caller logs the reason; this port takes none.
+   */
+  forceRelease(kind: LockKind, key: string, signal?: AbortSignal): Promise<LockInfo | null>;
 }

@@ -9,6 +9,7 @@ import { wire as realWire } from "../../../src/cli/wiring.js";
 import { commands } from "../../../src/cli/commands/index.js";
 import { run } from "../../../src/cli/program.js";
 import type { Io } from "../../../src/cli/output.js";
+import { stubSweep, type Sweep } from "../../../src/cli/sweep.js";
 import { MailboxOperator } from "../../../src/adapters/mailbox/mailbox.js";
 import { Config } from "../../../src/core/model/config.js";
 import { policyKind, settingsKind } from "../../../src/core/model/kinds.js";
@@ -33,6 +34,7 @@ import {
 import { tempRoot } from "./helpers.js";
 
 export { ACCOUNT_NUMBER, MEMBER_FOUND, MEMBER_MISSING, ORIGIN, TENANT, fixtureSite, type SiteOpts };
+export { stubSweep, type Sweep };
 
 /** The env variable the request index's one signing key is bound to (section 4 §8.11). */
 export const REQUEST_INDEX_ENV = "INTYY_KEYSTONE_REQUEST_INDEX_KEY_K1";
@@ -141,6 +143,14 @@ async function sealArtifacts(root: string): Promise<void> {
 /** One CLI test's root, plus its policy and settings stores, ready for `replayCall`. */
 export type ReplayEnv = { root: string; policy: FakeDocumentStore<Policy>; settings: FakeDocumentStore<Settings> };
 
+/** The real, file-backed wiring for `env.root`: its evidence store, candidate store, and lock
+ * manager, all pointed at the same files a `replayCall` would use. For a test that seeds a
+ * crashed run directly, or inspects a lock, without going through the CLI. */
+export function realWiringOf(env: ReplayEnv): ReturnType<typeof realWire> {
+  const config = Config.parse(JSON.parse(readFileSync(join(env.root, "intyy.json"), "utf8")));
+  return realWire(env.root, config, {});
+}
+
 /** A fresh temp root, both fixture artifacts sealed, and approved policy and settings.
  * `settingsOverrides` lets a `--reveal-outputs` test build a settings doc that fails its own
  * checks, without touching the fixture site's origin. */
@@ -196,6 +206,10 @@ export type CallOpts = {
   answers?: readonly string[];
   env?: Record<string, string | undefined>;
   signal?: AbortSignal;
+  /** Replaces the program hook's own crash sweep (section 9 §7.8). A test that wants to prove
+   * `run sweep`'s own body in isolation, clear of the hook's sweep racing ahead of it, passes
+   * `stubSweep` here. */
+  sweep?: Sweep;
 };
 
 /** Starts one `intyy` call against `env`, without waiting for it to end. The real `wire()`,
@@ -220,6 +234,7 @@ export function startCall(env: ReplayEnv, argv: readonly string[], opts: CallOpt
   const site = opts.site ?? fixtureSite();
   const code = run(argv, io, {
     commands,
+    ...(opts.sweep === undefined ? {} : { sweep: opts.sweep }),
     wire: (root, config, wireEnv) => ({
       ...realWire(root, config, wireEnv),
       policy: env.policy,

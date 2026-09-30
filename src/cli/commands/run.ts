@@ -6,9 +6,11 @@ import type { Command } from "commander";
 import { RunId } from "../../core/model/ids.js";
 import type { Result } from "../../core/model/result.js";
 import { RunJson } from "../../core/model/run.js";
-import type { Ctx } from "../context.js";
+import { runSweep } from "../../core/orchestrator/sweep.js";
+import type { LockKind } from "../../ports/locks.js";
+import { requireRole, type Ctx } from "../context.js";
 import { CliExit, EXIT, exitForStatus, type RunStatus } from "../exit-codes.js";
-import { answer } from "../output.js";
+import { answer, progress } from "../output.js";
 import { act, type Register } from "../program.js";
 import { maskOutputsForDelivery, outputLines, outputSensitivity } from "./replay.js";
 
@@ -63,6 +65,17 @@ async function readRun(ctx: Ctx, runId: string): Promise<RunView> {
   const row = (await latestRows(ctx)).find((r) => r.run_id === runId);
   if (row === undefined) throw new CliExit(EXIT.usage, `run ${runId} is not in tenant ${ctx.tenant}`);
   return { status: row.status, final: false };
+}
+
+/** `--force-unlock`'s value, as `kind:key`. A place identifier, not member data. */
+function lockArg(s: string): [LockKind, string] {
+  const cut = s.indexOf(":");
+  const kind = cut < 0 ? "" : s.slice(0, cut);
+  const key = cut < 0 ? "" : s.slice(cut + 1);
+  if (kind !== "instance" && kind !== "run" && kind !== "score" || key === "") {
+    throw new CliExit(EXIT.usage, `--force-unlock ${s}: write kind:key, like run:<run_id>`);
+  }
+  return [kind, key];
 }
 
 /** A wait duration in milliseconds, from `--wait`. Not an input value: a poll ceiling. */
@@ -130,6 +143,51 @@ export const registerRun: Register = (program: Command, ctxOf) => {
           return answer({ run_id: runId, status: got.status }, `run ${runId}: ${got.status} (not yet final)`);
         }
         return answer(got.result, [`run ${runId}`, ...outputLines(got.result)].join("\n"));
+      }),
+    );
+
+  run
+    .command("sweep")
+    .option(
+      "--force-unlock <lock>",
+      "remove a lock held by another machine, as kind:key, like run:<run_id> (operator); the reason comes from standard input",
+    )
+    .description("close every crashed run in this tenant now (section 9 §10.7)")
+    .action(
+      act(ctxOf, async (ctx, _args, opts) => {
+        if (typeof opts.forceUnlock === "string") {
+          const staff = requireRole(ctx, ctx.tenant, "operator");
+          const [kind, key] = lockArg(opts.forceUnlock);
+          // Why standard input: docs/decisions.md, M03/M04, free text never goes on a flag.
+          const reason = (await ctx.io.stdin.readAll()).trim();
+          if (reason === "") {
+            throw new CliExit(EXIT.usage, "give a reason for --force-unlock on standard input");
+          }
+          const removed = await ctx.wiring.locks.forceRelease(kind, key);
+          progress(
+            ctx.io,
+            removed === null
+              ? `run sweep: ${opts.forceUnlock} held no lock.`
+              : `run sweep: force-unlocked ${opts.forceUnlock} (was ${removed.command}, staff ${removed.staff ?? "none"}). ${staff}: ${reason}`,
+          );
+        }
+        const report = await runSweep(
+          {
+            evidence: ctx.wiring.evidence,
+            locks: ctx.wiring.locks,
+            clock: ctx.wiring.clock,
+            artifacts: ctx.wiring.candidates,
+          },
+          ctx.tenant,
+        );
+        const runs = report.runs ?? [];
+        if (runs.length === 0) return answer(report, "No crashed runs.");
+        const lines = runs.map((r) => {
+          const commit = r.commit === undefined ? "" : `, commit ${r.commit}`;
+          const reconcile = r.commit === "uncertain" ? `\n  intyy reconcile ${r.runId} --inputs <file>` : "";
+          return `${r.runId} (${r.kind}${commit})${reconcile}`;
+        });
+        return answer(report, lines.join("\n"));
       }),
     );
 };
