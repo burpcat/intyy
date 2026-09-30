@@ -26,6 +26,13 @@ export type FakeHarnessConfig = {
   environment?: "test" | "production";
   /** Default every feature. A narrower set proves certify's report of a gap (section 8 §6.5). */
   features?: readonly HarnessFeature[];
+  /**
+   * Test-only convenience: `reset()` refills the fault log with these lines, instead of
+   * emptying it. A live bank generates its own log as the run dispatches requests; this fake
+   * has no live app to do that, so a test that wants `runCertifyCase`'s baseline to "see" a
+   * clean run's requests supplies the log it would have produced (docs/decisions.md, M06).
+   */
+  autoFaultLogOnReset?: readonly FaultLogEntry[];
 };
 
 /**
@@ -41,10 +48,12 @@ export class FakeHarness implements Harness {
   #chaos: { entropy: number; seed: string } = { entropy: 0, seed: "0" };
   #clockDate: string | null = null;
   readonly #oracle = new Map<string, OracleAnswer>();
+  readonly #autoFaultLogOnReset: readonly FaultLogEntry[];
 
   constructor(config: FakeHarnessConfig = {}) {
     this.#allowed = (config.environment ?? "test") === "test";
     this.#features = new Set(config.features ?? ALL_FEATURES);
+    this.#autoFaultLogOnReset = config.autoFaultLogOnReset ?? [];
   }
 
   /** Test setup only, never on the Harness port: the oracle's answer for one notes text. */
@@ -80,7 +89,7 @@ export class FakeHarness implements Harness {
     const refused = this.#refuse();
     if (refused) return Promise.resolve(refused);
     this.#namedFaults = [];
-    this.#log = [];
+    this.#log = this.#autoFaultLogOnReset.slice();
     return Promise.resolve(ok(undefined));
   }
 

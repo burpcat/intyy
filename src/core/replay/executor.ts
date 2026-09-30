@@ -109,6 +109,10 @@ export type ReplayInput = {
    * If this child's own commit also ends `absent_by_check`, it ends the request instead of
    * asking for another retry. */
   retryAttempted?: boolean;
+  /** Which certify batch and case this run belongs to (section 3 §4.9, the certify run spec's
+   * `batch_id`/`case_id`; docs/decisions.md, M06). `null`/omitted for every other run. */
+  batchId?: string | null;
+  caseId?: string | null;
 };
 
 /** The ports one replay run uses. */
@@ -181,7 +185,8 @@ function frozenFacts(input: ReplayInput, artifact: Artifact | null, session: Art
     kind: input.kind ?? "replay",
     parent_run_id: input.parentRunId ?? null,
     purpose: input.purpose ?? null,
-    batch_id: null,
+    batch_id: input.batchId ?? null,
+    case_id: input.caseId ?? null,
     request_id: input.request.request_id,
     tenant: input.tenant,
     agent_id: input.agentId,
@@ -282,7 +287,8 @@ async function finish(
     kind: input.kind ?? "replay",
     capability,
     parent_run_id: input.parentRunId === undefined || input.parentRunId === null ? null : fact(input.parentRunId),
-    batch_id: null,
+    batch_id: protectId(input.batchId ?? null),
+    case_id: input.caseId ?? null,
     request_id: protectId(input.request.request_id),
     status,
     result: { ...(result as unknown as Record<string, unknown>), run_id: fact(result.run_id), request_id: protectId(result.request_id) },

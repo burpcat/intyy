@@ -1,10 +1,13 @@
 // Proves `intyy replay`: exit codes against design section 9 §7.5's own table, usage refusals,
 // `--reveal-outputs`, the start confirmation, and Ctrl-C. Design section 9 §10.1 to §10.3;
 // section 4 §9.14 (reveal rules); docs/decisions.md, M05. M05 task 9.
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
 import { maskOutputsForDelivery } from "../../../src/cli/commands/replay.js";
+import { commands } from "../../../src/cli/commands/index.js";
 import type { Result } from "../../../src/core/model/result.js";
-import { cleanRoots } from "./helpers.js";
+import { call, cleanRoots } from "./helpers.js";
 import {
   ACCOUNT_NUMBER,
   MEMBER_FOUND,
@@ -331,6 +334,104 @@ describe("maskOutputsForDelivery (section 3 §5.13)", () => {
     if (masked.status !== "success") throw new Error("expected success");
     expect(masked.outputs).toEqual({ note: "hello" });
     expect(masked.warnings.some((w) => w.code === "outputs_masked")).toBe(false);
+  });
+});
+
+/** Runs one CLI command in `env.root`, as `staff` (mirrors this file's own `replayCall`, for
+ * commands `replay-harness.ts` does not wrap, like `pack`). */
+function cli(env: ReplayEnv, staff: string, argv: string[], extraEnv: Record<string, string> = {}) {
+  return call(argv, { cwd: env.root, env: { INTYY_STAFF: staff, ...extraEnv }, deps: { commands } });
+}
+
+/** Seals (never approves: `loadFrozenSetFor` accepts a merely sealed pack, section 9 §8.5)
+ * one global-scope pack with a single `needs_human` handler, through the real CLI (the
+ * `EDITOR: cp` trick). No response action, so no risk decision or second look is needed. */
+async function sealGlobalNeedsHumanPack(env: ReplayEnv, handlerId: string, detectorText: string): Promise<void> {
+  const body = {
+    schema: "intyy.pack/1.0",
+    scope: { level: "global" },
+    revision: 1,
+    reason: "Test pack: proves library/packs loads into the frozen set (M06 task 8).",
+    targets: [],
+    conditions: [
+      {
+        id: `${handlerId}_shown`,
+        check: "text_visible",
+        description: "The detector text is visible",
+        text: detectorText,
+        match: "contains",
+      },
+    ],
+    handlers: [
+      {
+        id: handlerId,
+        description: "Proves a pack handler loads from library/packs.",
+        class: "needs_human",
+        detector: `${handlerId}_shown`,
+        fixtures: { fire: [], no_fire: [] },
+        operator_note: "Loaded from library/packs (M06 task 8 proof).",
+      },
+    ],
+    provenance: { runs: [], decisions: [], sealed: null },
+  };
+  const editedPath = join(env.root, `pack-edited-${String(Math.random()).slice(2)}.json`);
+  writeFileSync(editedPath, JSON.stringify(body));
+  await cli(env, "op_017", ["pack", "edit", "global"], { EDITOR: `cp "${editedPath}"` });
+  const sealed = await cli(env, "op_017", ["pack", "seal", "global"]);
+  if (sealed.code !== 0) throw new Error(`test setup: pack seal failed: ${sealed.stderr}`);
+}
+
+/** Answers one open mailbox request with `word`, retrying past a transient "not yet open" or
+ * "wrong slot" refusal (the same tolerant retry `runSupervisedToEnd` uses for the start
+ * confirmation), until `timeoutMs` runs out. */
+async function decideRetrying(env: ReplayEnv, runId: string, word: string, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  let got = await replayCall(env, ["operator", "decide", runId, word]);
+  while (got.code !== 0 && Date.now() - start < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    got = await replayCall(env, ["operator", "decide", runId, word]);
+  }
+  if (got.code !== 0) throw new Error(`test setup: operator decide ${word} failed: ${got.stderr}`);
+}
+
+describe("replay loads library/packs into the frozen set (section 5 §7.4; M06 task 8)", () => {
+  test("a sealed global needs_human handler fires: the escalation's reason is needs_human_handler, not the bare climb's stuck", async () => {
+    const env = await replayRoot();
+    // Why `homeMissingBox`: `home_shown` is a bare `location` check, so a run with no pack at
+    // all climbs straight to rung 4 with reason `stuck` (docs/decisions.md, M06). Search's own
+    // text stays on `/home` either way, so a handler detecting it fires first instead, proving
+    // the pack this test seals was genuinely loaded, not the default empty set.
+    await sealGlobalNeedsHumanPack(env, "search_text_shown_proof", "Search");
+    const inputs = writeInputs(env, { member_id: MEMBER_FOUND });
+    const auth = writeAuthorization(env, "kvfcu/open_sub@1");
+    const started = startCall(
+      env,
+      [
+        "replay",
+        "kvfcu/open_sub@1",
+        "--mode",
+        "supervised",
+        "--inputs",
+        inputs,
+        "--authorization",
+        auth,
+        "--json",
+      ],
+      { site: fixtureSite({ homeMissingBox: true }) },
+    );
+    const runId = await waitForPrompt(started);
+    await decideRetrying(env, runId, "approved");
+    await decideRetrying(env, runId, "end_run");
+    await started.code;
+
+    const events = readEvents(env, runId);
+    const decided = events.find(
+      (e) =>
+        (e as { event?: string }).event === "escalation" &&
+        (e as { data?: { kind?: string; staff_id?: string } }).data?.kind === "takeover" &&
+        (e as { data?: { staff_id?: string } }).data?.staff_id === "op_017",
+    ) as { data?: { reason?: string } } | undefined;
+    expect(decided?.data?.reason).toBe("needs_human_handler");
   });
 });
 

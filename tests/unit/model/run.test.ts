@@ -45,6 +45,7 @@ function replayFixture(): Record<string, unknown> {
     capability: "kvfcu/open_share_subaccount",
     parent_run_id: null,
     batch_id: null,
+    case_id: null,
     request_id: "agt-teller-7f3c-0042",
     status: "running",
     result: runningResult(),

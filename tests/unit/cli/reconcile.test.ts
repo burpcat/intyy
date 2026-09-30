@@ -69,6 +69,7 @@ function seededRun(requestId: string | null): unknown {
     capability: "kvfcu/open_sub_checked",
     parent_run_id: null,
     batch_id: null,
+    case_id: null,
     request_id: requestId,
     status: "failed",
     result,

@@ -1,8 +1,9 @@
 // `intyy suite edit | check | seal | approve <app>/<capability>@<major>`: the certify suite files.
 // Follows design section 9 §8.7 and section 8 §6.1 (suite file).
 import type { Command } from "commander";
+import { resolveMajor } from "../../core/catalog/capabilities.js";
 import { suiteKind } from "../../core/model/kinds.js";
-import { CapabilityMajor, checkSuite, type Suite } from "../../core/model/suite.js";
+import { CapabilityMajor, checkSuite, checkSuiteSteps, type Suite } from "../../core/model/suite.js";
 import type { Ctx } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
 import { answer } from "../output.js";
@@ -43,6 +44,16 @@ function target(ctx: Ctx, capability: string): DocTarget<Suite> {
 /** Section 8 §6.1's self-contained loader checks; the artifact-driven "extra names a missing
  * step" check waits for the certify runner (M06 task 8). */
 const validate = (doc: Suite): Promise<string[]> => Promise.resolve(checkSuite(doc));
+
+/** `checkSuiteSteps` against the capability's newest sealed artifact, or `[]` when none is
+ * sealed yet (the check then has nothing to compare against). */
+async function voidStepWarnings(ctx: Ctx, capability: string, doc: Suite): Promise<string[]> {
+  const m = /^([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_]*)@(\d+)$/.exec(capability);
+  if (m?.[1] === undefined || m[2] === undefined || m[3] === undefined) return [];
+  const found = await resolveMajor(ctx.wiring.candidates, m[1], m[2], Number(m[3]));
+  if (!found.ok) return [];
+  return checkSuiteSteps(doc, found.value.steps.map((s) => s.id));
+}
 
 /** A fresh candidate: the previous sealed revision counted up, or an empty skeleton. */
 function nextRevision(capability: string, base: Loaded<Suite> | undefined): unknown {
@@ -89,14 +100,21 @@ export const registerSuite: Register = (program: Command, ctxOf) => {
     .description("validate the candidate, or else the newest sealed revision; writes nothing")
     .action(
       act(ctxOf, async (ctx, args) => {
-        const t = target(ctx, capabilityArg(args[0]));
+        const capability = capabilityArg(args[0]);
+        const t = target(ctx, capability);
         const got = await load(t, ["candidate", "approved", "sealed"]);
         if (!got) throw new CliExit(EXIT.usage, `${t.label} has no candidate or sealed revision`);
         const problems = await validate(got.doc);
         if (problems.length > 0) throw new CliExit(EXIT.invalid, `${t.label} ${got.rev}:\n${problems.join("\n")}`);
+        // Section 9 §8.7: "`suite check` lists extra cases that name steps missing from a sealed
+        // version." Informational only: a `void` case is expected, never refused (section 8 §6.1).
+        const voidSteps = await voidStepWarnings(ctx, capability, got.doc);
         return answer(
-          { document: t.label, rev: got.rev, state: got.state, valid: true },
-          `${t.label} ${got.rev} (${got.state}) is valid.`,
+          { document: t.label, rev: got.rev, state: got.state, valid: true, void_steps: voidSteps },
+          [
+            `${t.label} ${got.rev} (${got.state}) is valid.`,
+            ...voidSteps.map((w) => `warning: ${w}`),
+          ].join("\n"),
         );
       }),
     );

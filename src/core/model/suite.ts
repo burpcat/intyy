@@ -84,9 +84,7 @@ export type Suite = z.infer<typeof Suite>;
 
 /**
  * Loader checks beyond the schema (section 8 §6.1): every class and extra-case ID is unique, and
- * `matrix.class`, `stability.class`, and each extra case's `class` name a real class. Checking
- * an `extra` case against the capability's real step IDs waits for the certify runner (M06 task
- * 8), since that needs the capability's sealed artifact, not just the suite file.
+ * `matrix.class`, `stability.class`, and each extra case's `class` name a real class.
  */
 export function checkSuite(doc: Suite): string[] {
   const problems: string[] = [];
@@ -104,6 +102,28 @@ export function checkSuite(doc: Suite): string[] {
   if (!classIds.has(doc.matrix.class)) problems.push(`unknown_class: matrix names class ${doc.matrix.class}`);
   if (!classIds.has(doc.stability.class)) {
     problems.push(`unknown_class: stability names class ${doc.stability.class}`);
+  }
+  return problems;
+}
+
+/**
+ * `suite check` lists `extra` cases that name steps missing from a sealed version (section 9
+ * §8.7). `stepIds` are the capability's real step IDs, from its sealed artifact; the caller
+ * skips this check outright when no sealed artifact exists yet. Void, not invalid: "an `extra`
+ * case may name a step missing from a version. That case is `void`, and the report says why"
+ * (section 8 §6.1) — a certify batch report flags it, so a candidate suite is not refused for it.
+ */
+export function checkSuiteSteps(doc: Suite, stepIds: readonly string[]): string[] {
+  const known = new Set(stepIds);
+  const problems: string[] = [];
+  for (const e of doc.extra) {
+    for (const f of e.faults) {
+      if (!f.at.startsWith("@step:")) continue;
+      const stepId = f.at.slice("@step:".length);
+      if (!known.has(stepId)) {
+        problems.push(`void_step: extra ${e.id} names step ${stepId}, missing from the sealed version`);
+      }
+    }
   }
   return problems;
 }

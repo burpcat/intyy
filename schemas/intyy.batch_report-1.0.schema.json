@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.batch_report/1.0"
+    },
+    "batch_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "app": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "capability": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    },
+    "cases": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "class": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "success",
+                  "business_outcome",
+                  "failed",
+                  "escalated"
+                ]
+              },
+              "detail": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "detail"
+            ],
+            "additionalProperties": false
+          },
+          "truth": {
+            "type": "object",
+            "properties": {
+              "commit": {
+                "type": "object",
+                "properties": {
+                  "match": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "match"
+                ],
+                "additionalProperties": false
+              },
+              "output": {
+                "type": "object",
+                "properties": {
+                  "match": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "match"
+                ],
+                "additionalProperties": false
+              },
+              "outcome": {
+                "type": "object",
+                "properties": {
+                  "match": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "match"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "explained",
+              "assisted",
+              "unexplained",
+              "wrong",
+              "void"
+            ]
+          }
+        },
+        "required": [
+          "case_id",
+          "run_id",
+          "class",
+          "result",
+          "truth",
+          "verdict"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "gate": {
+      "type": "object",
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "passed"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "batch_id",
+    "tenant",
+    "app",
+    "capability",
+    "ended_at",
+    "cases",
+    "gate"
+  ],
+  "additionalProperties": false
+}

@@ -89,6 +89,9 @@ const ReplayRunJson = z
     capability: AppCapabilityName,
     parent_run_id: RunId.nullable(),
     batch_id: BatchId.nullable(),
+    /** Which case in the batch this run is (section 3 §4.9, the certify run spec). `null` for
+     * every run outside a certify batch. */
+    case_id: z.string().min(1).nullable(),
     request_id: RequestId.nullable(),
     status: ReplayRunStatus,
     /** The stored result, sensitive outputs masked (section 3 §7.3). */

@@ -20,6 +20,7 @@ import { load, orExit } from "./documents.js";
 import { CliExit, EXIT, exitForStatus } from "../exit-codes.js";
 import { progress, type Answer } from "../output.js";
 import { act, readVersion, type Register } from "../program.js";
+import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
 
@@ -339,6 +340,11 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           operator: ctx.wiring.discovery.operator,
           signal: stop.signal,
         };
+        // Section 5 §7.4: the merged, approved handler set for this tenant, app, and app
+        // version. `app === undefined` here means pre-run checks reject the request before a
+        // frozen set could matter anyway (docs/decisions.md, M06: no pack files → empty set).
+        const frozenSet =
+          app === undefined ? undefined : await loadFrozenSetFor(ctx, ctx.tenant, appName, app.app_version);
         const input: ReplayInput = {
           runId,
           request,
@@ -350,6 +356,7 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           engineVersion: readVersion(),
           outputsRevealed: ctx.io.stdout.isTTY === true || ctx.flags.revealOutputs,
           visible: false,
+          ...(frozenSet === undefined ? {} : { frozenSet }),
         };
 
         let outcome: ReplayOutcome;

@@ -3,6 +3,8 @@
 // registered here. Follows build plan section 10 §5.2.
 import { z } from "zod";
 import { Artifact } from "../src/core/model/artifact.js";
+import { BatchPlan } from "../src/core/model/batch-plan.js";
+import { BatchReport } from "../src/core/model/batch-report.js";
 import { CandidateDecision } from "../src/core/model/candidate-decision.js";
 import { CandidateIssues } from "../src/core/model/candidate-issues.js";
 import { CandidateRuns } from "../src/core/model/candidate-runs.js";
@@ -55,4 +57,6 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.suite-1.0": Suite,
   "intyy.testdata-1.0": Testdata,
   "intyy.faults-1.0": Faults,
+  "intyy.batch_plan-1.0": BatchPlan,
+  "intyy.batch_report-1.0": BatchReport,
 };

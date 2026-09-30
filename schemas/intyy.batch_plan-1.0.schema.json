@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.batch_plan/1.0"
+    },
+    "batch_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "app": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "capability": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "const": "quick"
+    },
+    "started_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    },
+    "instance": {
+      "type": "object",
+      "properties": {
+        "variant": {
+          "type": "string",
+          "minLength": 1
+        },
+        "strip_semantics": {
+          "type": "boolean"
+        },
+        "drop_labels": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "label_seed": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "variant",
+        "strip_semantics",
+        "drop_labels",
+        "label_seed"
+      ],
+      "additionalProperties": false
+    },
+    "route_map": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "route": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nth": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "route",
+          "nth"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "cases": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "class": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inputs": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "faults": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "session_expire",
+                    "known_popup",
+                    "unknown_popup",
+                    "supervisor_required",
+                    "server_error",
+                    "maintenance",
+                    "drop_after_confirm"
+                  ]
+                },
+                "route": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "nth": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "repeat": {
+                  "type": "string",
+                  "enum": [
+                    "once",
+                    "always"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "route",
+                "nth",
+                "repeat"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "seed": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "case_id",
+          "run_id",
+          "class",
+          "profile",
+          "inputs",
+          "faults",
+          "seed",
+          "expect"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "rerun_of": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "batch_id",
+        "case_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "batch_id",
+    "tenant",
+    "app",
+    "capability",
+    "kind",
+    "started_by",
+    "started_at",
+    "instance",
+    "route_map",
+    "cases"
+  ],
+  "additionalProperties": false
+}

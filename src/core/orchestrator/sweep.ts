@@ -264,6 +264,7 @@ async function closeOne(deps: SweepDeps, tenant: string, index: IndexRow, redact
         capability,
         parent_run_id: null,
         batch_id: null,
+        case_id: null,
         request_id: result.request_id,
         status: "failed",
         result,

@@ -42,6 +42,11 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--run": "a run ID to capture the fixture from; not member data",
   "--seq": "a run log line's seq number; not member data",
   "--kind": "one of two choices: trouble or normal",
+  // M06 task 8: `certify case`'s own flags. Each names a suite ID of intyy's own making, never
+  // a value read from the bank app's screen or typed by a member.
+  "--class": "a suite class ID, like valid or missing; not member data",
+  "--profile": "a standard fault profile ID, or a suite extra case ID; not member data",
+  "--at": "an anchor, like @step:click_submit; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */
