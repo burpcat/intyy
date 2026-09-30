@@ -4,6 +4,7 @@
 // `run_start` event carries a `schema` field. These schemas are the recorder's own parsing
 // concern, so they live here rather than in `src/core/model/`.
 import { z } from "zod";
+import { Intervention } from "../model/mailbox.js";
 
 /** One acted control's fingerprint, as the log already masked it (section 6 §13.1). */
 export const Fingerprint = z
@@ -126,7 +127,8 @@ export type ExtractLine = z.infer<typeof ExtractLine>;
 /** One `escalation` line's `data` (loop.ts `approval`, `stuck`). Only `approval` carries `risk_hint`. */
 const EscalationData = z
   .object({
-    kind: z.enum(["approval", "takeover"]),
+    // Why: the executor also logs start_confirmation, reconciliation_decision, retry_decision.
+    kind: Intervention.shape.kind,
     reason: z.string(),
     state: z.string(),
     decision: z.string().nullable().optional(),
