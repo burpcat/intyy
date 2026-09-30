@@ -1,0 +1,48 @@
+{
+  "schema": "intyy.faults/1.0",
+  "app": "kvfcu",
+  "revision": 1,
+  "profiles": [
+    {
+      "id": "server_error",
+      "kind": "server_error",
+      "at": "@each_request_step",
+      "expect_commit": "reconciles_absent",
+      "expect_window": "recovers"
+    },
+    {
+      "id": "maintenance",
+      "kind": "maintenance",
+      "at": "@each_request_step",
+      "expect_commit": "reconciles_absent",
+      "expect_window": "fails:app_error"
+    },
+    {
+      "id": "known_popup",
+      "kind": "known_popup",
+      "at": "@each_request_step",
+      "expect_commit": "reconciles_absent",
+      "expect_window": "recovers"
+    },
+    {
+      "id": "unknown_popup",
+      "kind": "unknown_popup",
+      "at": "@each_request_step",
+      "expect_commit": "reconciles_absent",
+      "expect_window": "recovers_or_escalates"
+    },
+    {
+      "id": "session_expire",
+      "kind": "session_expire",
+      "at": "@each_request_step",
+      "expect_commit": "reconciles_absent",
+      "expect_window": "recovers"
+    },
+    {
+      "id": "reply_lost",
+      "kind": "drop_after_confirm",
+      "at": "@commit_point",
+      "expect_commit": "reconciles_found"
+    }
+  ]
+}
