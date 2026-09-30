@@ -34,7 +34,6 @@ const KEY = "kvfcu/open_share_subaccount@1.0.0";
 /** The suite's own ID: the suite is found by major. */
 const SUITE_ID = "kvfcu/open_share_subaccount@1";
 const TASK = "kvfcu/open_share_subaccount";
-const SIGN_IN_FINDER = "kvfcu/find_account_by_reference";
 /** The sealed version the owner's discoveries produce (M06 spec, "Owner checks"). */
 const VERSION = "1.0.0";
 /** An operator in the real `library/staff.json`. */
@@ -80,16 +79,16 @@ async function hasApproved(
 
 /**
  * Fails with ONE message that names every missing owner step. Never skips, and never treats the
- * missing state as a pass. The steps: both artifacts sealed, then suite, test data, faults, and
+ * missing state as a pass. The steps: the task artifact sealed, then suite, test data, faults, and
  * both packs approved (M06 spec, "Owner checks").
  */
 export async function requireCertifyPrereqs(): Promise<void> {
   const missing: string[] = [];
   const artifacts = candidateStore();
-  for (const id of [TASK, SIGN_IN_FINDER]) {
-    if (!(await artifacts.listSealedVersions(id)).includes(VERSION))
-      missing.push(`sealed ${id}@${VERSION}`);
-  }
+  // Why one artifact: the owner chose a reconciliation waiver for open_share_subaccount, so no
+  // find_account_by_reference exists (docs/decisions.md, 2026-09-30, M05).
+  if (!(await artifacts.listSealedVersions(TASK)).includes(VERSION))
+    missing.push(`sealed ${TASK}@${VERSION}`);
   const dirs = (dir: string): { dir: string; tmpDir: string } => ({ dir: join(lib, dir), tmpDir });
   const packs = new FileDocumentStore(packKind, dirs("packs"), clock);
   const wanted = [

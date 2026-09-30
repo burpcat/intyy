@@ -273,3 +273,48 @@ describe("the M06 gate row: drop_after_confirm ends success, found_by_check, thr
     expect(result.effect).toMatchObject({ commit: "found_by_check", check: { decided_by: "code" } });
   });
 });
+
+/** `open_sub_checked` with a waiver in place of the check (section 2 §16.3). Sealed per test. */
+const OPEN_SUB_WAIVED = ArtifactSchema.parse({
+  ...OPEN_SUB_CHECKED,
+  identity: { ...OPEN_SUB_CHECKED.identity, capability: "open_sub_waived" },
+  recovery: { commit_point: "click_confirm", reconciliation: { waiver: { reason: "The app shows no screen to check." } } },
+});
+
+/** Every `escalation` log line of run `runId`, as loose objects. */
+async function escalationLines(h: Awaited<ReturnType<typeof buildHarness>>, runId: string): Promise<{ data: { kind?: string; reason?: string } }[]> {
+  const events = await h.deps.evidence.events(TENANT, runId);
+  if (!events.ok) throw new Error("events missing");
+  return events.value.filter((e) => (e as { event?: string }).event === "escalation") as { data: { kind?: string; reason?: string } }[];
+}
+
+describe("the reconciliation_decision reason (section 3 §5.7; docs/decisions.md, M06)", () => {
+  test("a waiver: the log lines and the mailbox request carry reconciliation_waived", async () => {
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "not_found" }]);
+    const h = await buildHarness(siteChecked("absent"), { operator: () => operator });
+    const sealed = await h.deps.artifacts.seal("kvfcu/open_sub_waived/cand_2026-01-15_1000000006", "1.0.0", "op_017", OPEN_SUB_WAIVED, {});
+    if (!sealed.ok) throw new Error("test setup: waived seal failed");
+
+    const { runId } = await runReplay(inputFor(h, "kvfcu/open_sub_waived@1"), h.deps);
+
+    const recon = (await escalationLines(h, runId)).filter((l) => l.data.kind === "reconciliation_decision");
+    expect(recon.length).toBeGreaterThanOrEqual(2);
+    expect(recon.every((l) => l.data.reason === "reconciliation_waived")).toBe(true);
+    expect(operator.requests[1]).toMatchObject({ kind: "reconciliation_decision", reason: "reconciliation_waived" });
+  });
+
+  test("a check with an unclear result: reconciliation_unclear, in the log lines and the request", async () => {
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "not_found" }]);
+    const h = await buildHarness(siteChecked("absent"), {
+      operator: () => operator,
+      reconciliationCheck: () => Promise.resolve({ kind: "unclear" }),
+    });
+
+    const { runId } = await runReplay(inputFor(h), h.deps);
+
+    const recon = (await escalationLines(h, runId)).filter((l) => l.data.kind === "reconciliation_decision");
+    expect(recon.length).toBeGreaterThanOrEqual(2);
+    expect(recon.every((l) => l.data.reason === "reconciliation_unclear")).toBe(true);
+    expect(operator.requests[1]).toMatchObject({ kind: "reconciliation_decision", reason: "reconciliation_unclear" });
+  });
+});

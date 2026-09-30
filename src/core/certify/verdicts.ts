@@ -68,6 +68,20 @@ export function matchesExpectRule(
   return rc.status === "success" && commit === "confirmed";
 }
 
+/**
+ * The expected ending of a commit-step fault on an artifact whose recovery is a waiver
+ * (docs/decisions.md, M06; section 3 §5.12): escalated at a `reconciliation_decision`, reason
+ * `reconciliation_waived`, commit `uncertain`. It replaces the profile's own commit-step rule,
+ * which assumes a check (section 8 §6.3).
+ */
+export function matchesWaivedEnding(rc: ResultClass, commit: CommitState | null, commitStepId: string | null): boolean {
+  return (
+    rc.status === "escalated" &&
+    rc.detail === `reconciliation_decision/reconciliation_waived/${commitStepId ?? ""}` &&
+    commit === "uncertain"
+  );
+}
+
 /** `x` when it is a string, else `""`. `expect`'s own fields are typed `unknown`, since a
  * suite's `expect` object is a loose Zod shape (section 8 §6.1). */
 function asString(x: unknown): string {

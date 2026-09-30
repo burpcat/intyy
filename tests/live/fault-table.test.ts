@@ -107,31 +107,41 @@ describe("window open: an idempotent step (section 5 §14, middle column)", () =
   );
 });
 
-describe("window closed: right after Confirm (section 5 §14, right column)", () => {
+// Why these two rows differ from section 5 §14: the owner chose a reconciliation waiver for
+// open_share_subaccount (docs/decisions.md, 2026-09-30, M05), so no check exists. Every failed
+// commit goes straight to a human (section 2 §16.3). The scripted operator gives no answer, the
+// case records the escalation, and the run ends with the commit `uncertain` (section 8 §7.6;
+// section 3 §5.12). Certify expects exactly this ending for a waived artifact (docs/decisions.md,
+// 2026-09-30, M06), so the verdict is `pass` and the report case is marked `waived`.
+describe("window closed: right after Confirm, with a waiver (section 5 §14, right column)", () => {
+  /** Ended at the human decision, commit uncertain, nothing judged false. */
+  function expectWaivedEnding(r: CaseRun): void {
+    const c = r.report.cases[0];
+    expect(c?.result).toEqual({
+      status: "escalated",
+      detail: `reconciliation_decision/reconciliation_waived/${commitStep}`,
+    });
+    expect(r.commit).toBe("uncertain");
+    expect(c?.truth.commit?.match).not.toBe(false);
+    expect(c?.verdict).toBe("pass");
+    expect(c?.waived).toBe(true);
+  }
+
   test(
-    "drop_after_confirm: reconcile, the check finds the account: success, found_by_check",
+    "drop_after_confirm: the waiver sends the lost reply to a human: escalated, commit uncertain",
     () => {
       // The same case the step lookup already ran (fixed seed), so it is not run twice.
       const r = replyLost;
       if (r === null) throw new Error("the reply_lost case did not run in beforeAll");
-      expect(r.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(r.commit).toBe("found_by_check");
-      expect(r.report.cases[0]?.truth.commit?.match).toBe(true);
-      expectJudgedPass(r);
+      expectWaivedEnding(r);
     },
     CASE_TIMEOUT_MS,
   );
 
   test(
-    "server_error on Confirm: reconcile, the check finds nothing, one retry commits once",
+    "server_error on Confirm: the waiver sends it to a human: escalated, commit uncertain",
     async () => {
-      // The closed-window column says "Reconcile" for every fault; this is its `reconciles_absent` path.
-      const r = await run("server_error", commitStep);
-      expect(r.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(r.commit).toBe("confirmed");
-      expect(r.recoveries.some((x) => x.via === "reconciliation")).toBe(true);
-      expect(r.report.cases[0]?.truth.commit?.match).toBe(true);
-      expectJudgedPass(r);
+      expectWaivedEnding(await run("server_error", commitStep));
     },
     CASE_TIMEOUT_MS,
   );

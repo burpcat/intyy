@@ -214,7 +214,7 @@ export class OperatorSupervisor implements Supervisor {
    * (section 5 §2.3).
    */
   async reconciliationDecision(
-    ask: { step: string },
+    ask: { step: string; waived?: boolean },
     signal?: AbortSignal,
   ): Promise<
     | { kind: "found"; staff: string }
@@ -224,7 +224,8 @@ export class OperatorSupervisor implements Supervisor {
   > {
     const req = this.#request({
       kind: "reconciliation_decision",
-      reason: "reconciliation_unclear",
+      // Why: section 3 §5.7; a waiver has no check to be unclear.
+      reason: ask.waived === true ? "reconciliation_waived" : "reconciliation_unclear",
       step: { id: ask.step, intent: null },
       trouble: null,
       approval: null,

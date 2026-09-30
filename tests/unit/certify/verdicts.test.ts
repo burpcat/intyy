@@ -2,7 +2,7 @@
 // fault-profile `expect` rule matches, and a suite extra case's own `expect` match.
 // Design section 8 §6.3, §8.1, §8.3. M06 task 8.
 import { describe, expect, test } from "vitest";
-import { judgeCase, matchesExpectRule, matchesExtraExpect } from "../../../src/core/certify/verdicts.js";
+import { judgeCase, matchesExpectRule, matchesExtraExpect, matchesWaivedEnding } from "../../../src/core/certify/verdicts.js";
 import type { ResultClass } from "../../../src/core/certify/verdicts.js";
 
 describe("judgeCase", () => {
@@ -98,5 +98,33 @@ describe("matchesExtraExpect", () => {
   test("every other status matches on status alone", () => {
     expect(matchesExtraExpect(SUCCESS, { status: "success" })).toBe(true);
     expect(matchesExtraExpect(FAILED_APP_ERROR, { status: "failed" })).toBe(true);
+  });
+});
+
+describe("matchesWaivedEnding (docs/decisions.md, M06: a waiver has no check)", () => {
+  const WAIVED: ResultClass = { status: "escalated", detail: "reconciliation_decision/reconciliation_waived/click_confirm" };
+
+  test("escalated at reconciliation_decision/reconciliation_waived on the commit step, commit uncertain: true", () => {
+    expect(matchesWaivedEnding(WAIVED, "uncertain", "click_confirm")).toBe(true);
+  });
+
+  test("reason reconciliation_unclear: false", () => {
+    const unclear: ResultClass = { status: "escalated", detail: "reconciliation_decision/reconciliation_unclear/click_confirm" };
+    expect(matchesWaivedEnding(unclear, "uncertain", "click_confirm")).toBe(false);
+  });
+
+  test("another step: false", () => {
+    expect(matchesWaivedEnding(WAIVED, "uncertain", "click_search")).toBe(false);
+    expect(matchesWaivedEnding(WAIVED, "uncertain", null)).toBe(false);
+  });
+
+  test("commit found_by_check, or any commit other than uncertain: false", () => {
+    expect(matchesWaivedEnding(WAIVED, "found_by_check", "click_confirm")).toBe(false);
+    expect(matchesWaivedEnding(WAIVED, "confirmed", "click_confirm")).toBe(false);
+    expect(matchesWaivedEnding(WAIVED, null, "click_confirm")).toBe(false);
+  });
+
+  test("status success: false", () => {
+    expect(matchesWaivedEnding(SUCCESS, "uncertain", "click_confirm")).toBe(false);
   });
 });

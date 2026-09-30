@@ -35,7 +35,7 @@ export const Intervention = z
     // Why `no_authorization`: docs/decisions.md, M05. A supervised replay commit with no valid
     // authorization opens this same mailbox, answered `approved` or `declined` (section 3 §5.7).
     // Why `supervised_mode`: the one reason a `start_confirmation` ever opens (section 3 §5.7).
-    // Why `needs_human_handler`/`reconciliation_unclear`/`retry_needs_approval`: docs/decisions.md,
+    // Why `needs_human_handler`/`reconciliation_unclear`/`reconciliation_waived`/`retry_needs_approval`: docs/decisions.md,
     // M06 (section 3 §5.7's kinds-and-reasons table).
     reason: z.enum([
       "discovery_irreversible",
@@ -44,6 +44,7 @@ export const Intervention = z
       "supervised_mode",
       "needs_human_handler",
       "reconciliation_unclear",
+      "reconciliation_waived",
       "retry_needs_approval",
     ]),
     step: z.object({ id: z.string().min(1), intent: z.string().nullable() }).strict(),

@@ -37,6 +37,7 @@
         "supervised_mode",
         "needs_human_handler",
         "reconciliation_unclear",
+        "reconciliation_waived",
         "retry_needs_approval"
       ]
     },

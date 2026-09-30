@@ -1106,7 +1106,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
      * joins the same `absent_by_check` path a plain-code answer would. */
     const askHumanReconciliation = async (stepId: string): Promise<ReplayOutcome> => {
       const opening = deps.clock.now().toISOString();
-      await log.append({ event: "escalation", step: stepId, by: "engine", data: { kind: "reconciliation_decision", reason: "reconciliation_unclear", state: "open" } });
+      // Why: section 3 §5.7. A waiver has no check, so the reason is `reconciliation_waived`.
+      const reason = artifact.recovery?.reconciliation?.waiver !== undefined ? "reconciliation_waived" : "reconciliation_unclear";
+      await log.append({ event: "escalation", step: stepId, by: "engine", data: { kind: "reconciliation_decision", reason, state: "open" } });
       await deps.evidence.appendIndex(
         input.tenant,
         r.value({ run_id: fact(runId), at: fact(opening), status: "escalated", code: null, kind: "replay", capability: capabilityStr }),
@@ -1119,7 +1121,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         // Why the fallback of 240 (4h): section 7 §13.3's own default, "reconciliation_decision."
         deadlineMinutes: input.policy.effective.escalation.reconciliation_decision_minutes ?? 240,
       });
-      const got = await supervisor.reconciliationDecision({ step: stepId }, deps.signal);
+      const got = await supervisor.reconciliationDecision({ step: stepId, waived: reason === "reconciliation_waived" }, deps.signal);
       const decidedByHuman = "staff" in got;
       await log.append({
         event: "escalation",
@@ -1127,7 +1129,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         by: decidedByHuman ? "human" : "engine",
         data: {
           kind: "reconciliation_decision",
-          reason: "reconciliation_unclear",
+          reason,
           state: got.kind === "timed_out" ? "timed_out" : got.kind === "run_ended" ? "run_ended" : "resolved",
           decision: decidedByHuman ? got.kind : null,
           ...(decidedByHuman ? { staff_id: got.staff } : {}),

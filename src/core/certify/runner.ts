@@ -38,7 +38,7 @@ import {
   outputTruthAgainstOracle,
   type TruthResult,
 } from "./truth.js";
-import { judgeCase, matchesExpectRule, matchesExtraExpect, type ResultClass } from "./verdicts.js";
+import { judgeCase, matchesExpectRule, matchesExtraExpect, matchesWaivedEnding, type ResultClass } from "./verdicts.js";
 
 /** One profile or suite `extra` case, already picked out by the caller (updates file §11.1). */
 export type CertifySelection =
@@ -435,8 +435,15 @@ export async function runCertifyCase(
     truth.outcome = outcomeTruth(caseOutcome.result.outcome.code, cls.expect);
   }
 
-  const classMatches =
-    input.selection.kind === "profile"
+  // Why: docs/decisions.md, M06. A waiver has no check, so a commit-step fault ends at a human.
+  const waived =
+    input.selection.kind === "profile" &&
+    artifact.recovery?.reconciliation?.waiver !== undefined &&
+    isCommitStepFault(input.selection.profile, input.at, commitStepId);
+
+  const classMatches = waived
+    ? matchesWaivedEnding(resultClass, commit, commitStepId)
+    : input.selection.kind === "profile"
       ? matchesExpectRule(
           expectRuleFor(input.selection.profile, input.at, commitStepId),
           resultClass,
@@ -507,6 +514,7 @@ export async function runCertifyCase(
       ...(truth.outcome === undefined ? {} : { outcome: truth.outcome }),
     },
     verdict,
+    ...(waived ? { waived: true as const } : {}),
   };
   const report: BatchReport = {
     schema: "intyy.batch_report/1.0",
@@ -525,11 +533,16 @@ export async function runCertifyCase(
  * when the fault landed on the artifact's own commit step, else `expect_window`. For
  * `@each_request_step`, `at` (the caller's `--at`) names the exact step. */
 function expectRuleFor(profile: FaultProfile, at: string | undefined, commitStepId: string | null): ExpectRule {
+  return isCommitStepFault(profile, at, commitStepId) ? profile.expect_commit : profile.expect_window ?? profile.expect_commit;
+}
+
+/** Whether the profile's fault lands on the artifact's own commit step. */
+function isCommitStepFault(profile: FaultProfile, at: string | undefined, commitStepId: string | null): boolean {
   const stepId =
     profile.at === "@commit_point"
       ? commitStepId
       : profile.at === "@each_request_step"
         ? (at?.replace(/^@step:/, "") ?? null)
         : profile.at.replace(/^@step:/, "");
-  return stepId !== null && stepId === commitStepId ? profile.expect_commit : profile.expect_window ?? profile.expect_commit;
+  return stepId !== null && stepId === commitStepId;
 }

@@ -140,6 +140,10 @@
               "wrong",
               "void"
             ]
+          },
+          "waived": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [

@@ -43,6 +43,9 @@ export const BatchReportCase = z
     result: ResultClass,
     truth: TruthChecks,
     verdict: Verdict,
+    /** `true` when the artifact's recovery is a waiver and this commit-step fault was judged
+     * against the waived ending instead of the profile's rule (docs/decisions.md, M06). */
+    waived: z.literal(true).optional(),
   })
   .strict();
 
