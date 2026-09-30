@@ -9,6 +9,7 @@ import { registerFixture } from "./fixture.js";
 import { registerOperator } from "./operator.js";
 import { registerPack } from "./pack.js";
 import { registerPolicy } from "./policy.js";
+import { registerReconcile } from "./reconcile.js";
 import { registerReplay } from "./replay.js";
 import { registerRun } from "./run.js";
 import { registerSettings } from "./settings.js";
@@ -25,6 +26,7 @@ export const commands: readonly Register[] = [
   registerOperator,
   registerPack,
   registerPolicy,
+  registerReconcile,
   registerReplay,
   registerRun,
   registerSettings,

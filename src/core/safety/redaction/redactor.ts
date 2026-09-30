@@ -79,6 +79,16 @@ function mask<T>(value: T): Masked<T> {
   return value as Masked<T>;
 }
 
+/**
+ * `JSON.stringify`, then re-branded (section 9 §5.1). `value` must already be masked, like
+ * `Redactor.value`'s own output: this never runs a rule itself, so it must never see a raw
+ * value. Digit-run masking treats free text; a fact-wrapped ID inside `value` has already
+ * resolved to its plain string (`Fact.toJSON`), so running it again here would mangle it.
+ */
+export function maskedJson(value: Masked<unknown>): Masked<string> {
+  return mask(JSON.stringify(value));
+}
+
 /** A piece of one line. A masked piece is never scanned again (§9.5). */
 type Segment = { text: string; masked: boolean };
 

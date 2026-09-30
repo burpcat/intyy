@@ -3,6 +3,7 @@
 // §7.5 (exit codes); section 3 §5.13 (a re-read after the delivery window shows masked outputs,
 // with warning `outputs_masked`). M05 task 9.
 import type { Command } from "commander";
+import { EffectUpdate } from "../../core/model/effect-update.js";
 import { RunId } from "../../core/model/ids.js";
 import type { Result } from "../../core/model/result.js";
 import { RunJson } from "../../core/model/run.js";
@@ -45,6 +46,31 @@ function runArg(args: string[]): string {
 /** What one `run status`/`show` read found: the run's final result, or its last known status. */
 type RunView = { status: string; final: boolean; result?: Result };
 
+/** A manual reconcile's own finding (section 9 §10.6), if the run's folder holds one. "A final
+ * result never changes": this never rewrites `run.json`, only warns the reader about it. */
+async function readEffectUpdate(ctx: Ctx, runId: string): Promise<EffectUpdate | null> {
+  const folder = await ctx.wiring.evidence.openRun(ctx.tenant, runId);
+  if (!folder.ok) return null;
+  const read = await folder.value.readFile("effect_update.json");
+  if (!read.ok) return null;
+  const parsed = EffectUpdate.safeParse(JSON.parse(new TextDecoder().decode(read.value)));
+  return parsed.success ? parsed.data : null;
+}
+
+/** Adds warning `effect_updated` (section 9 §10.6) when a manual reconcile later found the
+ * truth. Its message names the finding and the check run. */
+function withEffectUpdateWarning(result: Result, update: EffectUpdate): Result {
+  if (result.warnings.some((w) => w.code === "effect_updated")) return result;
+  const checkRun = update.check_run_id ?? "none";
+  return {
+    ...result,
+    warnings: [
+      ...result.warnings,
+      { code: "effect_updated", message: `a later manual reconcile found ${update.finding} (check run ${checkRun})` },
+    ],
+  };
+}
+
 /** Reads `run.json` if the run ended; otherwise the tenant index's last line for it. Once the
  * delivery window ends (in the CLI, once the hosting `replay` process exits), a re-read always
  * goes through the same masked delivery (section 3 §5.13, `maskOutputsForDelivery`), never the
@@ -54,13 +80,15 @@ async function readRun(ctx: Ctx, runId: string): Promise<RunView> {
   if (read.ok) {
     const parsed = RunJson.safeParse(read.value);
     if (!parsed.success) throw new CliExit(EXIT.invalid, `run ${runId}: run.json does not fit its schema`);
-    // Why only `replay`: a discovery run.json carries no `intyy.result/1.0` block at all.
-    if (parsed.data.kind !== "replay") return { status: parsed.data.status, final: true };
+    // Why not `discovery`: its run.json carries no `intyy.result/1.0` block at all. A
+    // `reconciliation` child (docs/decisions.md, M06) shares `replay`'s own full shape.
+    if (parsed.data.kind === "discovery") return { status: parsed.data.status, final: true };
     const masked = maskOutputsForDelivery(
       parsed.data.result,
       await outputSensitivity(ctx, parsed.data.result.capability),
     );
-    return { status: parsed.data.status, final: true, result: masked };
+    const update = await readEffectUpdate(ctx, runId);
+    return { status: parsed.data.status, final: true, result: update === null ? masked : withEffectUpdateWarning(masked, update) };
   }
   const row = (await latestRows(ctx)).find((r) => r.run_id === runId);
   if (row === undefined) throw new CliExit(EXIT.usage, `run ${runId} is not in tenant ${ctx.tenant}`);

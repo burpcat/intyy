@@ -55,7 +55,7 @@ function requireRequestId(request: Request): string {
 
 /** The content section 3 §4.4 and section 4 §8.11 both hash: capability, inputs, mode, and the
  * consent reference (or `null`). One definition, used for every lookup and every record. */
-function contentSubject(request: Request): unknown {
+export function contentSubject(request: Request): unknown {
   return {
     capability: request.capability,
     inputs: request.inputs,

@@ -22,9 +22,11 @@ import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import { snapshotFactory } from "../../../src/fakes/snapshot-surface/index.js";
 import {
   ACCOUNT_NUMBER,
+  CHECK_SUB,
   MEMBER_FOUND,
   MEMBER_MISSING,
   OPEN_SUB,
+  OPEN_SUB_CHECKED,
   ORIGIN,
   SIGN_IN,
   TENANT,
@@ -52,7 +54,7 @@ function appLayer(): Policy {
     scope: { level: "app", app: "kvfcu" },
     revision: 1,
     reason: "Test app layer.",
-    paths: { allow: ["/", "/home", "/result", "/done"], deny: [], irreversible: [], case_sensitive: true },
+    paths: { allow: ["/", "/home", "/result", "/done", "/check"], deny: [], irreversible: [], case_sensitive: true },
     secrets: {},
   });
 }
@@ -138,6 +140,22 @@ async function sealArtifacts(root: string): Promise<void> {
     {},
   );
   if (!sealedOpenSub.ok) throw new Error("test setup: open_sub seal failed");
+  const sealedCheckSub = await wiring.candidates.seal(
+    "kvfcu/check_sub/cand_2026-01-15_1000000003",
+    "1.0.0",
+    "op_017",
+    CHECK_SUB,
+    {},
+  );
+  if (!sealedCheckSub.ok) throw new Error("test setup: check_sub seal failed");
+  const sealedOpenSubChecked = await wiring.candidates.seal(
+    "kvfcu/open_sub_checked/cand_2026-01-15_1000000004",
+    "1.0.0",
+    "op_017",
+    OPEN_SUB_CHECKED,
+    {},
+  );
+  if (!sealedOpenSubChecked.ok) throw new Error("test setup: open_sub_checked seal failed");
 }
 
 /** One CLI test's root, plus its policy and settings stores, ready for `replayCall`. */

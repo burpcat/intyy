@@ -76,14 +76,16 @@ const DiscoveryRunJson = z
  * The replay `run.json` (section 3 §7.3, full form). `capability` is not in the design's
  * example; it is added, common with the discovery shape, so a reader never has to open
  * `result` to learn what a run was for (owner decision, 2026-09-29: a documented gap-fill,
- * not part of the literal §7.3 example).
+ * not part of the literal §7.3 example). `kind: "reconciliation"` (docs/decisions.md, M06;
+ * section 7 §11.1) shares this same shape: a check run is a replay run in every way but its
+ * own `kind` and `parent_run_id`.
  */
 const ReplayRunJson = z
   .object({
     schema: z.literal("intyy.run/1.0"),
     run_id: RunId,
     tenant: TenantId,
-    kind: z.literal("replay"),
+    kind: z.enum(["replay", "reconciliation"]),
     capability: AppCapabilityName,
     parent_run_id: RunId.nullable(),
     batch_id: BatchId.nullable(),

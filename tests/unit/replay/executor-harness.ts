@@ -44,8 +44,13 @@ function parsedArtifact(name: string): Artifact {
 
 /** The session artifact: read-only, entry `/`, one click step to `/home`. */
 export const SIGN_IN = parsedArtifact("sign_in.json");
-/** The task artifact: commits, links `kvfcu/sign_in@1`, entry `/home`. */
+/** The task artifact: commits, links `kvfcu/sign_in@1`, entry `/home`. No reconciliation check
+ * (`recovery.reconciliation` is `null`): M06's own "no check at all" case. */
 export const OPEN_SUB = parsedArtifact("open_sub.json");
+/** Same task, but linked to a real reconciliation check (section 7 §11), `kvfcu/check_sub@1`. */
+export const OPEN_SUB_CHECKED = parsedArtifact("open_sub_checked.json");
+/** The reconciliation check capability `open_sub_checked` links: read-only, entry `/check`. */
+export const CHECK_SUB = parsedArtifact("check_sub.json");
 
 const globalLayer = GlobalPolicy.parse(
   JSON.parse(readFileSync(new URL("../../../library/policy/global/1.json", import.meta.url), "utf8")),
@@ -58,7 +63,7 @@ function policy(): MergeResult {
     scope: { level: "app", app: "kvfcu" },
     revision: 1,
     reason: "Test policy.",
-    paths: { allow: ["/", "/home", "/result", "/done"], case_sensitive: true },
+    paths: { allow: ["/", "/home", "/result", "/done", "/check"], case_sensitive: true },
     secrets: {},
   });
   const tenant = TenantPolicy.parse({
@@ -114,6 +119,8 @@ export async function buildHarness(
   const store = newArtifactStore();
   await store.seal("kvfcu/sign_in/cand_2026-01-15_1000000001", "1.0.0", "op_017", SIGN_IN, {});
   await store.seal("kvfcu/open_sub/cand_2026-01-15_1000000002", "1.0.0", "op_017", OPEN_SUB, {});
+  await store.seal("kvfcu/check_sub/cand_2026-01-15_1000000003", "1.0.0", "op_017", CHECK_SUB, {});
+  await store.seal("kvfcu/open_sub_checked/cand_2026-01-15_1000000004", "1.0.0", "op_017", OPEN_SUB_CHECKED, {});
   const clock = new SteppingClock();
   const deps: ReplayDeps = {
     evidence: new FakeEvidenceStore(),

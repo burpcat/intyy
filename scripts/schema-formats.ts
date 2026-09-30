@@ -8,6 +8,7 @@ import { CandidateIssues } from "../src/core/model/candidate-issues.js";
 import { CandidateRuns } from "../src/core/model/candidate-runs.js";
 import { Cassette } from "../src/core/model/cassette.js";
 import { Config } from "../src/core/model/config.js";
+import { EffectUpdate } from "../src/core/model/effect-update.js";
 import { Fixture } from "../src/core/model/fixture.js";
 import { LockFile } from "../src/core/model/lock.js";
 import { HandlerDraft } from "../src/core/model/handler-draft.js";
@@ -47,4 +48,5 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.cassette-1.0": Cassette,
   "intyy.request-1.0": Request,
   "intyy.result-1.0": Result,
+  "intyy.effect_update-1.0": EffectUpdate,
 };

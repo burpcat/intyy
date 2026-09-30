@@ -1,0 +1,184 @@
+{
+  "schema": "intyy.artifact/1.0",
+
+  "identity": {
+    "app": "kvfcu",
+    "capability": "open_sub_checked",
+    "version": "1.0.0"
+  },
+
+  "runs_on": {
+    "surface": "web",
+    "app_versions": ["8.*"],
+    "viewport": { "width": 1280, "height": 800, "scale": 1 },
+    "entry": "/home",
+    "paths": ["/home", "/result", "/done"],
+    "session": "kvfcu/sign_in@1"
+  },
+
+  "about": {
+    "title": "Open a share sub-account, with a reconciliation check",
+    "summary": "Same as open_sub, but linked to a real reconciliation check (section 7 §11).",
+    "when_to_use": "Use when a member asks to open a new share sub-account.",
+    "limits": "Test fixture only: a small, invented flow."
+  },
+
+  "contract": {
+    "inputs": [
+      {
+        "name": "member_id",
+        "type": "string",
+        "description": "The member's ID number",
+        "required": true,
+        "sensitivity": "pii",
+        "constraints": { "format": "digits", "length": { "min": 6, "max": 6 } }
+      }
+    ],
+    "outputs": [
+      {
+        "name": "account_number",
+        "type": "string",
+        "description": "The new account's number",
+        "sensitivity": "financial"
+      }
+    ],
+    "outcomes": [
+      {
+        "code": "member_not_found",
+        "description": "No member has this ID",
+        "condition": "not_found_text"
+      }
+    ],
+    "effect": "commits"
+  },
+
+  "targets": [
+    {
+      "id": "member_id_box",
+      "description": "Member ID box on the home page",
+      "clues": { "role": "textbox", "label": "Member ID" }
+    },
+    {
+      "id": "search_button",
+      "description": "Search button on the home page",
+      "clues": { "role": "button", "name": "Search", "text": "Search" }
+    },
+    {
+      "id": "confirm_button",
+      "description": "Confirm button on the result page",
+      "clues": { "role": "button", "name": "Confirm", "text": "Confirm" }
+    },
+    {
+      "id": "account_number_display",
+      "description": "The new account number, on the done page",
+      "clues": { "role": "generic", "label": "Account number" }
+    }
+  ],
+
+  "conditions": [
+    {
+      "id": "home_shown",
+      "check": "location",
+      "description": "The home page is showing",
+      "pattern": "/home"
+    },
+    {
+      "id": "member_id_entered",
+      "check": "field_value",
+      "description": "The member ID box holds the input",
+      "target": "member_id_box",
+      "value": "{input.member_id}",
+      "match": "exact"
+    },
+    {
+      "id": "member_found_shown",
+      "check": "element_visible",
+      "description": "The member was found: Confirm is showing",
+      "target": "confirm_button"
+    },
+    {
+      "id": "not_found_text",
+      "check": "text_visible",
+      "description": "The app says no member was found",
+      "text": "No member found",
+      "match": "contains"
+    },
+    {
+      "id": "done_shown",
+      "check": "location",
+      "description": "The done page is showing",
+      "pattern": "/done"
+    }
+  ],
+
+  "steps": [
+    {
+      "id": "type_member_id",
+      "intent": "Enter the member ID",
+      "action": { "type": "type", "target": "member_id_box", "value": "{input.member_id}" },
+      "precondition": "home_shown",
+      "checkpoint": "member_id_entered",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    },
+    {
+      "id": "click_search",
+      "intent": "Search for the member",
+      "action": { "type": "click", "target": "search_button" },
+      "precondition": "member_id_entered",
+      "checkpoint": "member_found_shown",
+      "outcomes": ["member_not_found"],
+      "risk": "idempotent",
+      "timeout_ms": 8000
+    },
+    {
+      "id": "click_confirm",
+      "intent": "Confirm and open the account",
+      "action": { "type": "click", "target": "confirm_button" },
+      "precondition": "member_found_shown",
+      "checkpoint": "done_shown",
+      "outcomes": [],
+      "risk": "irreversible",
+      "timeout_ms": 15000
+    },
+    {
+      "id": "read_account_number",
+      "intent": "Read the new account number",
+      "action": { "type": "read", "target": "account_number_display", "source": "text", "output": "account_number" },
+      "precondition": "done_shown",
+      "checkpoint": "done_shown",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    }
+  ],
+
+  "recovery": {
+    "commit_point": "click_confirm",
+    "reconciliation": {
+      "check": {
+        "capability": "kvfcu/check_sub@1",
+        "inputs": { "member_id": "{input.member_id}" },
+        "not_found_outcomes": ["sub_not_found"],
+        "outputs": { "account_number": "{result.account_number}" }
+      }
+    }
+  },
+
+  "provenance": {
+    "runs": [
+      {
+        "run_id": "run_2026-01-15_1000000004",
+        "kind": "discovery",
+        "goal": "Open a share sub-account for member {input.member_id}, with a reconciliation check.",
+        "model": "claude-sonnet-5",
+        "recorder_version": "0.1.0"
+      }
+    ],
+    "derived_from": null,
+    "actions": [],
+    "decisions": [],
+    "sealed": null
+  }
+}

@@ -125,7 +125,10 @@
         },
         "kind": {
           "type": "string",
-          "const": "replay"
+          "enum": [
+            "replay",
+            "reconciliation"
+          ]
         },
         "capability": {
           "type": "string",

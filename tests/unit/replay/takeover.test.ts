@@ -64,7 +64,7 @@ const SUPERVISOR_HANDLER: Handler = {
 const FROZEN_SET = frozenSetWith(SUPERVISOR_HANDLER, "Ask a supervisor to approve this", "supervisor_banner_shown");
 
 describe("a takeover ended while the commit is in flight (docs/decisions.md, M06)", () => {
-  test("end_run: the reconciliation check hook runs first; the run ends failed, ended_by_operator", async () => {
+  test("end_run: the reconciliation check hook runs first, and its finding decides the ending (M06 task 5)", async () => {
     let checkCalls = 0;
     // `deps.operator` is a factory the executor calls fresh at each mailbox interaction; one
     // shared instance keeps the script's answers in order across them. `requestOf`'s default
@@ -76,7 +76,9 @@ describe("a takeover ended while the commit is in flight (docs/decisions.md, M06
       operator: () => operator,
       reconciliationCheck: () => {
         checkCalls += 1;
-        return Promise.resolve();
+        // A terminal verdict (section 7 §11.1: "Found, but outputs missing"): no further
+        // escalation follows, so this test's two-answer script stays complete.
+        return Promise.resolve({ kind: "found_outputs_unavailable" });
       },
     });
     const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }), { frozenSet: FROZEN_SET });
@@ -85,12 +87,13 @@ describe("a takeover ended while the commit is in flight (docs/decisions.md, M06
 
     expect(result.status).toBe("failed");
     if (result.status !== "failed") throw new Error("expected failed");
+    // The hook is awaited before the run ends (docs/decisions.md, M06): "No retry is offered.
+    // The run ends failed, ended_by_operator, with the commit state the check found." Unlike
+    // the ordinary uncertain-commit path, the check's own finding never changes the takeover's
+    // own ending code here — only `effect.commit`.
     expect(result.failure.code).toBe("ended_by_operator");
-    expect(result.failure.ladder).toEqual({ rung: 4, verdict: "needs_human", ref: "takeover" });
-    // The hook is awaited before the run ends (docs/decisions.md, M06). Its answer is not yet
-    // wired into `effect` in this milestone (task 4's own comment: "task 5's own hook").
     expect(checkCalls).toBe(1);
-    expect(result.effect).toMatchObject({ commit: "uncertain" });
+    expect(result.effect).toMatchObject({ commit: "found_by_check" });
 
     const events = await h.deps.evidence.events(TENANT, runId);
     if (!events.ok) throw new Error("events failed");
@@ -100,7 +103,10 @@ describe("a takeover ended while the commit is in flight (docs/decisions.md, M06
 
   test("the intervention request carries the in-flight notice, the operator_note, and reason needs_human_handler", async () => {
     const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "end_run" }]);
-    const h = await buildHarness(siteStuckOnConfirm(), { operator: () => operator, reconciliationCheck: () => Promise.resolve() });
+    const h = await buildHarness(siteStuckOnConfirm(), {
+      operator: () => operator,
+      reconciliationCheck: () => Promise.resolve({ kind: "found_outputs_unavailable" }),
+    });
     const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }), { frozenSet: FROZEN_SET });
 
     await runReplay(input, h.deps);
@@ -115,14 +121,14 @@ describe("a takeover ended while the commit is in flight (docs/decisions.md, M06
     });
   });
 
-  test("a timeout still runs the reconciliation check first (section 7 §13.3's table)", async () => {
+  test("a timeout still runs the reconciliation check first, and its finding still decides the ending (section 7 §13.3's table; M06 task 5)", async () => {
     let checkCalls = 0;
     const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, "silent"]);
     const h = await buildHarness(siteStuckOnConfirm(), {
       operator: () => operator,
       reconciliationCheck: () => {
         checkCalls += 1;
-        return Promise.resolve();
+        return Promise.resolve({ kind: "found_outputs_unavailable" });
       },
     });
     const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }), { frozenSet: FROZEN_SET });
@@ -131,7 +137,11 @@ describe("a takeover ended while the commit is in flight (docs/decisions.md, M06
 
     expect(result.status).toBe("failed");
     if (result.status !== "failed") throw new Error("expected failed");
+    // "Commit in flight or uncertain: reconciliation check first. Then the result follows it"
+    // (section 7 §13.3): a takeover timeout still runs the check first, then still ends
+    // `escalation_timeout` (docs/decisions.md, M06) — only `effect.commit` reflects the check.
     expect(result.failure.code).toBe("escalation_timeout");
     expect(checkCalls).toBe(1);
+    expect(result.effect).toMatchObject({ commit: "found_by_check" });
   });
 });

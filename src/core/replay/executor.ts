@@ -33,6 +33,7 @@ import { commitStep, type CommitApproval, type CommitContext } from "./commit.js
 import { OperatorSupervisor } from "../discovery/supervisor.js";
 import { capture } from "../capture/capture.js";
 import { matchDetectors, runLadder, type LadderStep } from "./ladder.js";
+import { runReconciliationCheck, type ReconciliationVerdict } from "./reconciliation.js";
 import { PRECONDITION_TIMEOUT_MS, runPrelude, runStep, type StepFailure, type StepRunnerContext } from "./prelude.js";
 import { waitForCondition } from "./wait.js";
 import type { EvalCtx } from "../targets/evaluate.js";
@@ -58,7 +59,14 @@ function pathAndQuery(url: string): string {
 
 /** One `result.recoveries[]` entry (section 3 §5.10). Rung is always `1` in M06: rungs 2 and 3
  * are off (docs/decisions.md). */
-type RecoveryLine = { step: string; rung: 1; via: "handler" | "retry"; ref: string; resumed_at: string; at: string };
+type RecoveryLine = {
+  step: string;
+  rung: 1 | 2 | 3 | null;
+  via: "handler" | "retry" | "reviewer" | "reconciliation";
+  ref: string;
+  resumed_at: string;
+  at: string;
+};
 
 /** The browser window size for replay. Fixed, so boxes and crops stay comparable. */
 export const REPLAY_VIEWPORT: Viewport = { width: 1280, height: 800 };
@@ -84,6 +92,23 @@ export type ReplayInput = {
    * this module's job (docs/decisions.md, M06); a caller with none may omit this, and gets an
    * empty frozen set (not an error). */
   frozenSet?: FrozenSet;
+  /** The parent run, for a reconciliation check or a commit retry (section 7 §11.1, §11.3).
+   * `undefined`/`null` for a top-level run. */
+  parentRunId?: string | null;
+  /** `run_start.kind` (section 7 §11.1): `reconciliation` for a check child; `replay`
+   * (the default) for everything else, including a commit-retry child. */
+  kind?: "replay" | "reconciliation";
+  /** `run_start.purpose` (section 7 §11.1, §11.3): `commit_check` for a reconciliation check,
+   * `commit_retry` for a retry child. `null` (the default) for a top-level run. */
+  purpose?: string | null;
+  /** True for any child run this module starts on its own (section 7 §11.1, §11.3;
+   * docs/decisions.md, M06: "Child runs ask no start confirmation"). Skips the supervised-mode
+   * start confirmation outright, whatever `request.mode` says. */
+  isChildRun?: boolean;
+  /** True on a commit-retry child (section 7 §11.3): "At most one commit retry per request."
+   * If this child's own commit also ends `absent_by_check`, it ends the request instead of
+   * asking for another retry. */
+  retryAttempted?: boolean;
 };
 
 /** The ports one replay run uses. */
@@ -96,10 +121,10 @@ export type ReplayDeps = {
   artifacts: ArtifactStore;
   requestIndex: RequestIndexDeps;
   operator: (run: { runId: string; tenant: string }) => OperatorPort;
-  /** A takeover that ends while the commit is uncertain runs this first (docs/decisions.md,
-   * M06); a run with none ends `uncertain` as before. Task 5's own hook: what it checks, and
-   * what it answers, are its call to make. This is only the seam. */
-  reconciliationCheck?: (signal?: AbortSignal) => Promise<void>;
+  /** Overrides the real reconciliation check (section 7 §11.1) with a scripted answer: mostly
+   * for tests, so a case need not seal a whole second, read-only check capability. Omitted, the
+   * run asks the artifact's own `recovery.reconciliation.check` as a real child run. */
+  reconciliationCheck?: (signal?: AbortSignal) => Promise<ReconciliationVerdict>;
   signal?: AbortSignal;
 };
 
@@ -153,9 +178,9 @@ function frozenFacts(input: ReplayInput, artifact: Artifact | null, session: Art
   }
   return {
     schema: "intyy.log/1.0",
-    kind: "replay",
-    parent_run_id: null,
-    purpose: null,
+    kind: input.kind ?? "replay",
+    parent_run_id: input.parentRunId ?? null,
+    purpose: input.purpose ?? null,
     batch_id: null,
     request_id: input.request.request_id,
     tenant: input.tenant,
@@ -254,9 +279,9 @@ async function finish(
     schema: "intyy.run/1.0",
     run_id: fact(folder.runId),
     tenant: input.tenant,
-    kind: "replay",
+    kind: input.kind ?? "replay",
     capability,
-    parent_run_id: null,
+    parent_run_id: input.parentRunId === undefined || input.parentRunId === null ? null : fact(input.parentRunId),
     batch_id: null,
     request_id: protectId(input.request.request_id),
     status,
@@ -652,7 +677,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     // Step 6 (section 7 §4): supervised mode pauses here, after the prelude and before the
     // task's own steps, for a start confirmation. Unattended never reaches this point (check 7
     // always rejects it, above), but the mode check stays so the step reads on its own.
-    if (input.request.mode === "supervised") {
+    // `isChildRun` skips it outright (docs/decisions.md, M06: "Child runs ask no start
+    // confirmation"), whatever `request.mode` says.
+    if (input.request.mode === "supervised" && input.isChildRun !== true) {
       const opening = deps.clock.now().toISOString();
       await log.append({
         event: "escalation",
@@ -831,12 +858,298 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ...("staff" in got ? { staff_id: got.staff } : {}),
         },
       });
+      // "A takeover ended while the commit is in flight first runs the reconciliation check.
+      // No retry is offered. The run ends failed, ended_by_operator, with the commit state the
+      // check found" (docs/decisions.md, M06). Unlike the ordinary uncertain-commit path, this
+      // never opens a further `reconciliation_decision` or `retry_decision`: one check, then
+      // the takeover's own ending stands, with the commit state the check found.
       if (inFlight) {
-        // TODO (task 5): use the check's own finding to decide `found_by_check`/
-        // `absent_by_check`, instead of always ending `uncertain` below.
-        await deps.reconciliationCheck?.(deps.signal);
+        const { verdict, checkRunId } =
+          deps.reconciliationCheck !== undefined
+            ? { verdict: await deps.reconciliationCheck(deps.signal), checkRunId: null as string | null }
+            : await (async () => {
+                const r2 = await runReconciliationCheck(input, artifact, refs, deps);
+                return { verdict: r2.verdict, checkRunId: r2.childRunId };
+              })();
+        const foundCommit = verdict.kind === "found" || verdict.kind === "found_outputs_unavailable";
+        const newCommit = foundCommit ? "found_by_check" : verdict.kind === "absent" ? "absent_by_check" : "uncertain";
+        effect = {
+          ...(effect ?? notSentEffect()),
+          commit: newCommit,
+          ...(checkRunId === null ? {} : { check: { run_id: checkRunId, decided_by: "code" as const, staff_id: null } }),
+        };
       }
       return endAfterTakeover(stepId, got.kind);
+    };
+
+    /** Section 3 §5.10's `via: "reconciliation"` recovery entry (section 7 §11.1: "`recoveries`
+     * lists `via: reconciliation`"). `rung` is `null`: not a ladder rung. */
+    const reconciliationRecovery = (stepId: string, checkRunId: string | null): RecoveryLine => ({
+      step: stepId,
+      rung: null,
+      via: "reconciliation",
+      ref: checkRunId ?? "none",
+      resumed_at: stepId,
+      at: deps.clock.now().toISOString(),
+    });
+
+    /** The `effect.check` block a plain-code or human reconciliation decision leaves
+     * (section 3 §5.8: "`check.decided_by`: `code`, `jev`, or `human`"). `null` when no check
+     * ever ran at all (a waiver, or no linked check). */
+    const checkInfo = (
+      checkRunId: string | null,
+      decidedBy: "code" | "human",
+      staffId: string | null,
+    ): EffectBlock["check"] | undefined =>
+      checkRunId === null ? undefined : { run_id: checkRunId, decided_by: decidedBy, staff_id: staffId };
+
+    /** Ends the run `success`, commit `found_by_check` (section 7 §11.1: "Found. The commit
+     * worked"). */
+    const endFound = async (
+      stepId: string,
+      outputs: Record<string, ContractValue>,
+      checkRunId: string | null,
+      decidedBy: "code" | "human",
+      staffId: string | null,
+    ): Promise<ReplayOutcome> => {
+      const info = checkInfo(checkRunId, decidedBy, staffId);
+      effect = { ...(effect ?? notSentEffect()), commit: "found_by_check", ...(info === undefined ? {} : { check: info }) };
+      const endedAt = deps.clock.now().toISOString();
+      const result = Result.parse({
+        schema: "intyy.result/1.0",
+        run_id: runId,
+        request_id: input.request.request_id,
+        capability: capabilityBlock,
+        warnings: [],
+        recoveries: [...recoveries, reconciliationRecovery(stepId, checkRunId)],
+        interventions: [],
+        timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
+        evidence: `runs/${runId}`,
+        status: "success",
+        outputs,
+        effect,
+      });
+      return endRun("success", null, result, stepId);
+    };
+
+    /** Ends the run "found, but outputs missing" (section 7 §11.1). */
+    const endFoundNoOutputs = async (
+      stepId: string,
+      checkRunId: string | null,
+      decidedBy: "code" | "human",
+      staffId: string | null,
+    ): Promise<ReplayOutcome> => {
+      const info = checkInfo(checkRunId, decidedBy, staffId);
+      effect = { ...(effect ?? notSentEffect()), commit: "found_by_check", ...(info === undefined ? {} : { check: info }) };
+      await captureOnFailure(`${stepId}_outputs_unavailable`);
+      const endedAt = deps.clock.now().toISOString();
+      const result = failedResult(
+        runId,
+        capabilityBlock,
+        stepId,
+        { code: "outputs_unavailable", phase: "extract", message: "the check found the commit, but its outputs could not be read" },
+        await currentLocation(eyes),
+        false,
+        captureFiles,
+        startedAt,
+        endedAt,
+        effect,
+      );
+      if (result.status === "failed") result.recoveries = [...recoveries, reconciliationRecovery(stepId, checkRunId)];
+      return endRun("failed", "outputs_unavailable", result, stepId);
+    };
+
+    /** A commit retry (section 7 §11.3): a new child run, `kind: replay`, `purpose:
+     * commit_retry`, with a new run ID. The parent's final result copies the child's status,
+     * outputs, and effect, with the earlier attempt prepended to `effect.attempts`. */
+    const runCommitRetry = async (stepId: string): Promise<ReplayOutcome> => {
+      const retryRunId = deps.ids.runId();
+      const retryInput: ReplayInput = {
+        ...input,
+        runId: retryRunId,
+        // Why `request_id: null`: the original request ID is already in the request index,
+        // pointing at this very run, which is not finished yet (section 3 §4.4). Reusing it
+        // here would read that entry back as "a repeat" before this run ever wrote its own
+        // `run.json`.
+        request: { ...input.request, request_id: null },
+        parentRunId: runId,
+        purpose: "commit_retry",
+        isChildRun: true,
+        retryAttempted: true,
+      };
+      const retryOutcome = await runReplay(retryInput, deps);
+      const rr = retryOutcome.result;
+      const priorAttempt = { run_id: runId, commit: "absent_by_check" as const };
+      const foldedEffect: EffectBlock | undefined =
+        rr.effect === undefined ? undefined : { ...rr.effect, attempts: [priorAttempt, ...rr.effect.attempts] };
+      const endedAt = deps.clock.now().toISOString();
+      const base = {
+        schema: "intyy.result/1.0" as const,
+        run_id: runId,
+        request_id: input.request.request_id,
+        capability: capabilityBlock,
+        warnings: rr.warnings,
+        recoveries: [...recoveries, ...rr.recoveries, reconciliationRecovery(stepId, retryRunId)],
+        interventions: rr.interventions,
+        timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
+        evidence: `runs/${runId}`,
+      };
+      const withEffect = foldedEffect === undefined ? {} : { effect: foldedEffect };
+      if (rr.status === "success") {
+        const folded = Result.parse({ ...base, status: "success", outputs: rr.outputs, ...withEffect });
+        return endRun("success", null, folded, stepId);
+      }
+      if (rr.status === "business_outcome") {
+        const folded = Result.parse({ ...base, status: "business_outcome", outcome: rr.outcome, ...withEffect });
+        return endRun("business_outcome", rr.outcome.code, folded, stepId);
+      }
+      if (rr.status === "failed") {
+        const folded = Result.parse({ ...base, status: "failed", failure: rr.failure, ...withEffect });
+        return endRun("failed", rr.failure.code, folded, stepId);
+      }
+      if (rr.status === "rejected") {
+        const folded = Result.parse({ ...base, status: "rejected", rejection: rr.rejection });
+        return endRun("rejected", null, folded, stepId);
+      }
+      // A child's own `runReplay` call always ends `finish()`ed at one of the four statuses
+      // above; only bugs throw (per CLAUDE.md).
+      throw new Error(`commit retry ${retryRunId} ended ${rr.status}, not a final status`);
+    };
+
+    /** After `absent_by_check` (section 7 §11.3): a human approves any retry. `retryAttempted`
+     * on this very run caps it at one: "a second `absent_by_check` ends the request." */
+    const settleAbsent = async (
+      stepId: string,
+      checkRunId: string | null,
+      decidedBy: "code" | "human",
+      staffId: string | null,
+    ): Promise<ReplayOutcome> => {
+      const info = checkInfo(checkRunId, decidedBy, staffId);
+      effect = { ...(effect ?? notSentEffect()), commit: "absent_by_check", ...(info === undefined ? {} : { check: info }) };
+      if (input.retryAttempted === true) {
+        await captureOnFailure(`${stepId}_absent`);
+        const endedAt = deps.clock.now().toISOString();
+        const result = failedResult(
+          runId,
+          capabilityBlock,
+          stepId,
+          { code: "action_failed", phase: "action", message: "the retry also found no change" },
+          await currentLocation(eyes),
+          true,
+          captureFiles,
+          startedAt,
+          endedAt,
+          effect,
+        );
+        if (result.status === "failed") result.recoveries = [...recoveries, reconciliationRecovery(stepId, checkRunId)];
+        return endRun("failed", "action_failed", result, stepId);
+      }
+      const opening = deps.clock.now().toISOString();
+      await log.append({ event: "escalation", step: stepId, by: "engine", data: { kind: "retry_decision", reason: "retry_needs_approval", state: "open" } });
+      await deps.evidence.appendIndex(
+        input.tenant,
+        r.value({ run_id: fact(runId), at: fact(opening), status: "escalated", code: null, kind: "replay", capability: capabilityStr }),
+        deps.signal,
+      );
+      const supervisor = new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
+        runId,
+        tenant: input.tenant,
+        capability: capabilityStr,
+        deadlineMinutes: input.policy.effective.escalation.retry_decision_minutes ?? 30,
+      });
+      const got = await supervisor.retryDecision({ step: stepId, screenshot: null }, deps.signal);
+      const decidedByHuman = "staff" in got;
+      await log.append({
+        event: "escalation",
+        step: stepId,
+        by: decidedByHuman ? "human" : "engine",
+        data: {
+          kind: "retry_decision",
+          reason: "retry_needs_approval",
+          state: got.kind === "timed_out" ? "timed_out" : got.kind === "run_ended" ? "run_ended" : "resolved",
+          decision: decidedByHuman ? got.kind : null,
+          ...(decidedByHuman ? { staff_id: got.staff } : {}),
+        },
+      });
+      if (got.kind === "retry") return runCommitRetry(stepId);
+      // `no_retry`, `timed_out`, or `run_ended` all end the request here (section 7 §11.3 point
+      // 3): "the parent ends `failed`, commit `absent_by_check`, `safe_to_retry: true`."
+      await captureOnFailure(`${stepId}_absent`);
+      const endedAt = deps.clock.now().toISOString();
+      const code = got.kind === "timed_out" ? "escalation_timeout" : "action_failed";
+      const message =
+        got.kind === "timed_out"
+          ? "the retry decision timed out"
+          : got.kind === "run_ended"
+            ? "the operator ended the run"
+            : "the operator declined to retry";
+      const result = failedResult(runId, capabilityBlock, stepId, { code, phase: "escalation", message }, await currentLocation(eyes), true, captureFiles, startedAt, endedAt, effect);
+      if (result.status === "failed") result.recoveries = [...recoveries, reconciliationRecovery(stepId, checkRunId)];
+      return endRun("failed", code, result, stepId);
+    };
+
+    /** Anything else the check said (section 2 §16.2): jev is off in M06, so this goes straight
+     * to a human, `reconciliation_decision`. "Human `found`" (docs/decisions.md, M06) still ends
+     * `outputs_unavailable`: a human's eyes carry no structured outputs. "Human `not_found`"
+     * joins the same `absent_by_check` path a plain-code answer would. */
+    const askHumanReconciliation = async (stepId: string): Promise<ReplayOutcome> => {
+      const opening = deps.clock.now().toISOString();
+      await log.append({ event: "escalation", step: stepId, by: "engine", data: { kind: "reconciliation_decision", reason: "reconciliation_unclear", state: "open" } });
+      await deps.evidence.appendIndex(
+        input.tenant,
+        r.value({ run_id: fact(runId), at: fact(opening), status: "escalated", code: null, kind: "replay", capability: capabilityStr }),
+        deps.signal,
+      );
+      const supervisor = new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
+        runId,
+        tenant: input.tenant,
+        capability: capabilityStr,
+        // Why the fallback of 240 (4h): section 7 §13.3's own default, "reconciliation_decision."
+        deadlineMinutes: input.policy.effective.escalation.reconciliation_decision_minutes ?? 240,
+      });
+      const got = await supervisor.reconciliationDecision({ step: stepId }, deps.signal);
+      const decidedByHuman = "staff" in got;
+      await log.append({
+        event: "escalation",
+        step: stepId,
+        by: decidedByHuman ? "human" : "engine",
+        data: {
+          kind: "reconciliation_decision",
+          reason: "reconciliation_unclear",
+          state: got.kind === "timed_out" ? "timed_out" : got.kind === "run_ended" ? "run_ended" : "resolved",
+          decision: decidedByHuman ? got.kind : null,
+          ...(decidedByHuman ? { staff_id: got.staff } : {}),
+        },
+      });
+      if (got.kind === "found") return endFoundNoOutputs(stepId, null, "human", got.staff);
+      if (got.kind === "not_found") return settleAbsent(stepId, null, "human", got.staff);
+      // Unanswered (section 7 §13.3, "the worst case in section 3 §5.12"): commit stays
+      // `uncertain`; nobody knows yet.
+      await captureOnFailure(`${stepId}_unclear`);
+      const endedAt = deps.clock.now().toISOString();
+      const code = got.kind === "timed_out" ? "escalation_timeout" : "ended_by_operator";
+      const message = got.kind === "timed_out" ? "the reconciliation decision timed out" : "the operator ended the run";
+      const result = failedResult(runId, capabilityBlock, stepId, { code, phase: "escalation", message }, await currentLocation(eyes), false, captureFiles, startedAt, endedAt, effect);
+      if (result.status === "failed") result.recoveries = recoveries;
+      return endRun("failed", code, result, stepId);
+    };
+
+    /**
+     * Never ends on `uncertain` while a check can still run (section 5 §2.6). Saves the
+     * "commit_after" evidence (section 7 §11.1), then asks the linked check as a fresh child
+     * run (or `deps.reconciliationCheck`, for a test that scripts the answer directly), and
+     * settles the run by what it found.
+     */
+    const settleUncertainCommit = async (stepId: string): Promise<ReplayOutcome> => {
+      await captureOnFailure(`${stepId}_commit_after`);
+      const { verdict, childRunId } =
+        deps.reconciliationCheck !== undefined
+          ? { verdict: await deps.reconciliationCheck(deps.signal), childRunId: null as string | null }
+          : await runReconciliationCheck(input, artifact, refs, deps);
+      if (verdict.kind === "found") return endFound(stepId, verdict.outputs, childRunId, "code", null);
+      if (verdict.kind === "found_outputs_unavailable") return endFoundNoOutputs(stepId, childRunId, "code", null);
+      if (verdict.kind === "absent") return settleAbsent(stepId, childRunId, "code", null);
+      return askHumanReconciliation(stepId);
     };
 
     /** One `runLadder` call for `step`'s trouble, and the counters that go with it. `stepIndex`
@@ -1137,10 +1450,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           const startFiles = await captureLadderStart(`${step.id}_takeover`);
           return await attemptTakeover(step.id, "needs_human_handler", null, needsHuman.operator_note, startFiles.find((f) => f.endsWith(".png")) ?? null);
         }
-        // TODO (task 5): the reconciliation check itself; only the hook runs here.
-        await deps.reconciliationCheck?.(deps.signal);
-        await captureOnFailure(`${step.id}_failed`);
-        return await failEnd(step.id, { code: "action_failed", phase: "action", message: `commit step ${step.id} ended uncertain` }, await currentLocation(eyes), safeToRetryOf(effect));
+        return await settleUncertainCommit(step.id);
       }
       if (effect.commit !== "confirmed") {
         await captureOnFailure(`${step.id}_failed`);

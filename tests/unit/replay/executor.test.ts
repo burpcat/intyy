@@ -198,8 +198,14 @@ describe("runReplay: output masking (section 3 §6.4, §6.7)", () => {
   });
 });
 
-describe("runReplay: an uncertain commit", () => {
-  test("neither the checkpoint nor a declared outcome passes: failed, safe_to_retry false", async () => {
+describe("runReplay: an uncertain commit (section 5 §2.6: never end on uncertain while a check can run)", () => {
+  test("open_sub has no reconciliation check: a human's not_found, then no_retry, ends failed/action_failed, safe_to_retry true, absent_by_check", async () => {
+    // No `recovery.reconciliation.check` on `open_sub.json`: `runReconciliationCheck` answers
+    // `unclear` at once (section 7 §11.1's own fallback), so this goes straight to a human
+    // reconciliation decision. With nothing scripted, the fake operator's own fallback answers
+    // `not_found` (docs/decisions.md, M06), then `no_retry` for the retry decision that follows
+    // (section 7 §11.3 point 3: "the parent ends `failed`, commit `absent_by_check`,
+    // `safe_to_retry: true`").
     const h = await buildHarness(fixtureSite({ confirm: "stuck" }));
     const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }));
 
@@ -207,6 +213,25 @@ describe("runReplay: an uncertain commit", () => {
 
     expect(result.status).toBe("failed");
     if (result.status !== "failed") throw new Error(`expected failed, got ${result.status}`);
+    expect(result.failure.code).toBe("action_failed");
+    expect(result.failure.safe_to_retry).toBe(true);
+    expect(result.effect).toMatchObject({ commit: "absent_by_check", performed_by: "bot" });
+  });
+
+  test("no human answers the reconciliation decision: the commit stays uncertain, safe_to_retry false, escalation_timeout (section 3 §5.12, the worst case)", async () => {
+    // One shared operator instance answers the run's own start confirmation (the first mailbox
+    // interaction, docs/decisions.md M05), then stays silent on the reconciliation decision that
+    // follows, until its own deadline (section 7 §13.3's table: "Reconciliation decision
+    // unanswered: `failed`, `escalation_timeout`, commit `uncertain`").
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, "silent"]);
+    const h = await buildHarness(fixtureSite({ confirm: "stuck" }), { operator: () => operator });
+    const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }));
+
+    const { result } = await runReplay(input, h.deps);
+
+    expect(result.status).toBe("failed");
+    if (result.status !== "failed") throw new Error(`expected failed, got ${result.status}`);
+    expect(result.failure.code).toBe("escalation_timeout");
     expect(result.failure.safe_to_retry).toBe(false);
     expect(result.effect).toMatchObject({ commit: "uncertain", performed_by: "bot" });
   });

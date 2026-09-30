@@ -1,0 +1,107 @@
+{
+  "schema": "intyy.artifact/1.0",
+
+  "identity": {
+    "app": "kvfcu",
+    "capability": "check_sub",
+    "version": "1.0.0"
+  },
+
+  "runs_on": {
+    "surface": "web",
+    "app_versions": ["8.*"],
+    "viewport": { "width": 1280, "height": 800, "scale": 1 },
+    "entry": "/check",
+    "paths": ["/check"],
+    "session": null
+  },
+
+  "about": {
+    "title": "Check a share sub-account",
+    "summary": "Reads back whether a share sub-account exists for a member.",
+    "when_to_use": "Use as the reconciliation check for open_sub_checked.",
+    "limits": "Test fixture only: a small, invented read-only screen."
+  },
+
+  "contract": {
+    "inputs": [
+      {
+        "name": "member_id",
+        "type": "string",
+        "description": "The member's ID number",
+        "required": true,
+        "sensitivity": "pii",
+        "constraints": { "format": "digits", "length": { "min": 6, "max": 6 } }
+      }
+    ],
+    "outputs": [
+      {
+        "name": "account_number",
+        "type": "string",
+        "description": "The sub-account's number",
+        "sensitivity": "financial"
+      }
+    ],
+    "outcomes": [
+      {
+        "code": "sub_not_found",
+        "description": "No sub-account exists for this member",
+        "condition": "not_found_text"
+      }
+    ],
+    "effect": "read_only"
+  },
+
+  "targets": [
+    {
+      "id": "account_number_display",
+      "description": "The sub-account number, on the check page",
+      "clues": { "role": "generic", "label": "Account number" }
+    }
+  ],
+
+  "conditions": [
+    {
+      "id": "check_shown",
+      "check": "location",
+      "description": "The check page is showing",
+      "pattern": "/check"
+    },
+    {
+      "id": "not_found_text",
+      "check": "text_visible",
+      "description": "The app says no sub-account exists",
+      "text": "No sub-account found",
+      "match": "contains"
+    }
+  ],
+
+  "steps": [
+    {
+      "id": "read_result",
+      "intent": "Read the sub-account number, if any",
+      "action": { "type": "read", "target": "account_number_display", "source": "text", "output": "account_number" },
+      "precondition": "check_shown",
+      "checkpoint": "check_shown",
+      "outcomes": ["sub_not_found"],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    }
+  ],
+
+  "provenance": {
+    "runs": [
+      {
+        "run_id": "run_2026-01-15_1000000003",
+        "kind": "discovery",
+        "goal": "Check whether member {input.member_id} has a share sub-account.",
+        "model": "claude-sonnet-5",
+        "recorder_version": "0.1.0"
+      }
+    ],
+    "derived_from": null,
+    "actions": [],
+    "decisions": [],
+    "sealed": null
+  }
+}
