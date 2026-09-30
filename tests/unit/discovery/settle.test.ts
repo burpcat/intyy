@@ -43,4 +43,19 @@ describe("settle (section 6 §10.1 step 1)", () => {
     expect(await settle(e, new SteppingClock())).toMatchObject({ ok: false, failure: "page_gone" });
     expect(e.calls).toBeGreaterThan(30);
   });
+
+  test("two zero-element looks agree but never settle: it returns only at the cap, newest look", async () => {
+    const empty = screen([], { url: "http://127.0.0.1:8080/main.do" });
+    const e = eyes([ok(empty)]);
+    expect(await settle(e, new SteppingClock())).toEqual({ ok: true, value: empty });
+    // Same cap as a page that never answers: many looks, not the usual two.
+    expect(e.calls).toBeGreaterThan(30);
+  });
+
+  test("elements that appear after empty looks settle normally, on two agreeing looks", async () => {
+    const empty = screen([], { url: "http://127.0.0.1:8080/main.do" });
+    const e = eyes([ok(empty), ok(empty), ok(b), ok(b)]);
+    expect(await settle(e, new SteppingClock())).toEqual({ ok: true, value: b });
+    expect(e.calls).toBe(4);
+  });
 });

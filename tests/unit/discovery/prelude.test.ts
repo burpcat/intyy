@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { Artifact } from "../../../src/core/model/artifact.js";
 import { RunSpec } from "../../../src/core/model/runspec.js";
 import { ScriptedPlanner } from "../../../src/fakes/scripted-planner.js";
+import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import { run, SIGN_IN, SITE, type Ran } from "./run-kit.js";
 
 const done: Ran[] = [];
@@ -89,7 +90,7 @@ const LINKED_SPEC = RunSpec.parse({
 });
 
 describe("the discovery prelude (section 6 §5.5, section 7 §10)", () => {
-  test("runs the session artifact first, then spec.entry, then the loop starts there", async () => {
+  test("runs the session artifact first, then the loop starts on spec.entry with no second navigate", async () => {
     const planner = new ScriptedPlanner([{ name: "done", input: { summary: "On the home page.", proof: ["e1"] } }]);
     const r = await go({ spec: LINKED_SPEC, sealedSession: SESSION_ARTIFACT, planner, site: SITE });
 
@@ -99,8 +100,9 @@ describe("the discovery prelude (section 6 §5.5, section 7 §10)", () => {
     const gateSteps = r.events.filter((e) => e.event === "gate").map((e) => e.step);
     expect(gateSteps).toContain("session:entry");
     expect(gateSteps).toContain("session:click_login");
-    // The engine's own navigate to spec.entry, after the prelude, before the loop.
-    expect(gateSteps).toContain("entry");
+    // The prelude's click already landed on spec.entry (`/home`), so the engine does not
+    // navigate there again: a reload of a frameset shows an empty screen (docs/decisions.md, M05).
+    expect(gateSteps).not.toContain("entry");
 
     // No llm_decision or action line belongs to the prelude: only the loop's one turn shows up.
     expect(r.events.filter((e) => e.event === "llm_decision")).toHaveLength(1);
@@ -113,5 +115,30 @@ describe("the discovery prelude (section 6 §5.5, section 7 §10)", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]?.message).toContain('<screen location="/home" title="Teller Workstation">');
     expect(seen[0]?.message).not.toContain('location="/"');
+  });
+
+  test("when the prelude ends somewhere else, the engine still navigates to spec.entry", async () => {
+    // The session's click lands on `/home?from=login`: the same path as `/home`, but a different
+    // place (path and query both count), so the entry navigate must still run.
+    const start = SITE.screens["/"];
+    if (start === undefined) throw new Error("SITE has no start screen");
+    const site: FakeSite = {
+      ...SITE,
+      screens: {
+        ...SITE.screens,
+        "/": {
+          ...start,
+          elements: start.elements.map((e) => (e.id === "go" ? { ...e, onClick: { go: "/home?from=login" } } : e)),
+        },
+      },
+    };
+    const planner = new ScriptedPlanner([{ name: "done", input: { summary: "On the home page.", proof: ["e1"] } }]);
+    const r = await go({ spec: LINKED_SPEC, sealedSession: SESSION_ARTIFACT, planner, site });
+
+    expect(r.result).toMatchObject({ status: "success", code: null });
+    const gateSteps = r.events.filter((e) => e.event === "gate").map((e) => e.step);
+    expect(gateSteps).toContain("session:click_login");
+    expect(gateSteps).toContain("entry");
+    expect(gateSteps.indexOf("entry")).toBeGreaterThan(gateSteps.indexOf("session:click_login"));
   });
 });

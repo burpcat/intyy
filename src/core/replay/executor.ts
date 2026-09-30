@@ -22,6 +22,7 @@ import { RunJson } from "../model/run.js";
 import type { FrozenSet } from "../packs/merge.js";
 import type { MergeResult } from "../safety/policy/merge.js";
 import { buildAllowlist } from "../safety/policy/allowlist.js";
+import { isSamePlace } from "../safety/policy/paths.js";
 import type { Settings } from "../model/settings.js";
 import { openGate, type GateRun } from "../safety/gate/gate.js";
 import { fact, Redactor, redactionRules, type Fact, type KnownValue } from "../safety/redaction/redactor.js";
@@ -742,11 +743,16 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       }
     }
 
-    const navToTask = await gate.act(
-      { actor: "engine", lease, action: { type: "navigate", to: artifact.runs_on.entry }, step: "entry" },
-      deps.signal,
-    );
-    if (!navToTask.ok || navToTask.value.decision !== "allowed" || navToTask.value.act?.dispatched === false) {
+    // Why: skip the entry navigate when the browser already stands on it (same rule as discovery).
+    const hereNow = await eyes.observe(deps.signal);
+    const atTaskEntry = hereNow.ok && isSamePlace(hereNow.value.url, artifact.runs_on.entry);
+    const navToTask = atTaskEntry
+      ? null
+      : await gate.act(
+          { actor: "engine", lease, action: { type: "navigate", to: artifact.runs_on.entry }, step: "entry" },
+          deps.signal,
+        );
+    if (navToTask !== null && (!navToTask.ok || navToTask.value.decision !== "allowed" || navToTask.value.act?.dispatched === false)) {
       await captureOnFailure("entry_failed");
       return await failEnd("entry", { code: "app_unreachable", phase: "start", message: "could not navigate to the task's entry" }, await currentLocation(eyes), true);
     }

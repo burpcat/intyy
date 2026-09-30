@@ -140,3 +140,17 @@ export function matchesAny(
 ): boolean {
   return patterns.some((p) => matchPath(p, n, caseSensitive));
 }
+
+/**
+ * True when the page address `url` (full, from the browser) is the same place as `entry` (a path
+ * and query from a spec or artifact). Both go through `normalizePath` first, so `;` parameters,
+ * `..`, and encoding cannot make two different places look equal. A malformed side is never equal.
+ * Why: a run must not reload a page it already stands on (docs/decisions.md, M05 entry rule).
+ */
+export function isSamePlace(url: string, entry: string): boolean {
+  if (!URL.canParse(url)) return false;
+  const u = new URL(url);
+  const a = normalizePath(`${u.pathname}${u.search}`, true);
+  const b = normalizePath(entry, true);
+  return a.ok && b.ok && JSON.stringify(a.value) === JSON.stringify(b.value);
+}

@@ -22,7 +22,8 @@ function stateKey(o: Observation): string {
 /**
  * Looks until two looks in a row agree, then returns the last one. At the cap it returns the
  * newest look anyway: discovery goes on, and the LLM sees what is there. A failed look counts as
- * "still loading": right after a click the page is often mid-navigation. Only a page that is
+ * "still loading": right after a click the page is often mid-navigation. So does a look with no
+ * elements. Only a page that is
  * still unreadable at the cap is `page_gone`.
  * ponytail: a still screen, not the network's quiet; add request events if pages flicker.
  */
@@ -35,7 +36,9 @@ export async function settle(
   let prev: Observation | null = null;
   for (;;) {
     const cur = await eyes.observe(signal);
-    if (cur.ok && prev !== null && stateKey(cur.value) === stateKey(prev)) return ok(cur.value);
+    // Why: a frameset reloading reads as a page with no elements, and two such looks agree. An
+    // empty look is never a stable screen (docs/decisions.md, M05); at the cap it is still returned.
+    if (cur.ok && cur.value.elements.length > 0 && prev !== null && stateKey(cur.value) === stateKey(prev)) return ok(cur.value);
     if (cur.ok) prev = cur.value;
     if (clock.now().getTime() - start >= SETTLE_CAP_MS)
       return prev === null ? fail("page_gone") : ok(prev);

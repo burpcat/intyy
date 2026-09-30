@@ -32,9 +32,11 @@ describe("a scripted sign-in (section 6 §10.1)", () => {
     expect(ev.filter((e) => e === "observation")).toHaveLength(4);
     expect(ev.filter((e) => e === "llm_decision")).toHaveLength(4);
     expect(ev.filter((e) => e === "action")).toHaveLength(3);
-    // Why 4, not 3: the engine's own navigate to `spec.entry`, step "entry", passes the gate
-    // too, before the LLM loop's own three turns (section 7 §10; docs/decisions.md, M05).
-    expect(ev.filter((e) => e === "gate")).toHaveLength(4);
+    // Why 3, not 4: the run already stands on `spec.entry` when it starts, so the engine skips its
+    // own navigate (step "entry") and only the LLM loop's three actions pass the gate
+    // (section 7 §10; docs/decisions.md, M05: no reload of the page a run already stands on).
+    expect(ev.filter((e) => e === "gate")).toHaveLength(3);
+    expect(r.events.filter((e) => e.event === "gate").map((e) => e.step)).not.toContain("entry");
     expect(ev.at(-1)).toBe("run_end");
     expect(r.events.at(-1)).toMatchObject({ data: { status: "success", code: null } });
     // Why: seq numbers count up with no gap, in file order (section 3 §6.1).

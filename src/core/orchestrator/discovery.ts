@@ -22,6 +22,7 @@ import type { Settings } from "../model/settings.js";
 import { runPrelude, type PreludeContext } from "../replay/prelude.js";
 import { openGate } from "../safety/gate/gate.js";
 import { buildAllowlist } from "../safety/policy/allowlist.js";
+import { isSamePlace } from "../safety/policy/paths.js";
 import type { MergeResult } from "../safety/policy/merge.js";
 import { fact, Redactor, redactionRules } from "../safety/redaction/redactor.js";
 import { startCheck, type SecretSources } from "../safety/secrets/injector.js";
@@ -418,7 +419,11 @@ export async function runDiscovery(
       // declare no outcomes, so a prelude "outcome" here is a bug in the sealed session itself.
       else if (preluded.kind === "outcome") preludeCode = "internal_error";
     }
-    if (preludeCode === null) {
+    // Why: a run that already stands on the entry (the prelude's last click landed there) must not
+    // reload it. A reloaded frameset shows an empty screen (docs/decisions.md, M05).
+    const here = await eyes.observe(deps.signal);
+    const atEntry = here.ok && isSamePlace(here.value.url, spec.entry);
+    if (preludeCode === null && !atEntry) {
       const navToEntry = await gate.act(
         { actor: "engine", lease, action: { type: "navigate", to: spec.entry }, step: "entry" },
         deps.signal,

@@ -54,9 +54,8 @@ describe("a hang recovers on an idempotent step (section 5 §14)", () => {
   test("the app 'glitches' back to home once; a plain retry resumes and the run succeeds", async () => {
     // `/home`'s Search button targets itself on its second load (the glitch), and `/result`
     // every other time: the ladder's own retry, which only re-observes and never navigates,
-    // sees this by resuming at `type_member_id`, which retypes and re-clicks. (The first load
-    // is the prelude's own login click; the second is the task's own re-navigate to its entry,
-    // the page the task's first click actually reads.)
+    // sees this by resuming at `type_member_id`, which retypes and re-clicks. (The first load is the prelude's own login click, and it is also the page the task's
+    // first click reads: the task no longer re-navigates to an entry it already stands on.)
     let homeVisits = 0;
     const site: FakeSite = {
       origin: ORIGIN,
@@ -64,7 +63,7 @@ describe("a hang recovers on an idempotent step (section 5 §14)", () => {
         "/": { elements: [START_SCREEN] },
         get "/home"() {
           homeVisits += 1;
-          const target = homeVisits === 2 ? "/home" : "/result";
+          const target = homeVisits === 1 ? "/home" : "/result";
           return { elements: [MEMBER_ID_BOX, searchButton(target)] };
         },
         "/result": { elements: [CONFIRM_BUTTON] },

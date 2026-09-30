@@ -5,6 +5,7 @@
 import { describe, expect, test } from "vitest";
 import { runReplay } from "../../../src/core/replay/executor.js";
 import { FakeOperator } from "../../../src/fakes/operator.js";
+import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import {
   ACCOUNT_NUMBER,
   MEMBER_MISSING,
@@ -29,7 +30,7 @@ function eventNames(events: readonly unknown[]): string[] {
 const OPEN_SUB_AUTH = authorizationFor("kvfcu/open_sub@1");
 
 describe("runReplay: success (section 7 §4, §10)", () => {
-  test("returns outputs, confirms the commit, and runs the prelude before the task's entry", async () => {
+  test("returns outputs, confirms the commit, and runs the prelude, and skips the task's entry when the prelude already landed there", async () => {
     const h = await buildHarness(fixtureSite());
     const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }));
 
@@ -48,8 +49,37 @@ describe("runReplay: success (section 7 §4, §10)", () => {
     const firstTaskStep = stepIndex(events.value, "type_member_id");
     expect(preludeEntry).toBeGreaterThanOrEqual(0);
     expect(preludeClick).toBeGreaterThan(preludeEntry);
+    // The prelude's click lands on `/home`, the task's own entry: no second navigate (a reload
+    // of a frameset shows an empty screen; docs/decisions.md, M05).
+    expect(taskEntry).toBe(-1);
+    expect(firstTaskStep).toBeGreaterThan(preludeClick);
+  });
+
+  test("when the prelude ends somewhere else, the task's entry navigate still runs", async () => {
+    // Login lands on `/home?from=login`: the task's entry `/home` has the same path but a
+    // different query, so it is a different place and must be navigated to.
+    const base = fixtureSite();
+    const site: FakeSite = {
+      ...base,
+      screens: {
+        ...base.screens,
+        "/": {
+          elements: [
+            { id: "login_button", role: "button", roleGroup: "button_like", name: "Login", text: "Login", onClick: { go: "/home?from=login" } },
+          ],
+        },
+      },
+    };
+    const h = await buildHarness(site);
+    const { runId, result } = await runReplay(replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH })), h.deps);
+
+    expect(result.status).toBe("success");
+    const events = await h.deps.evidence.events(TENANT, runId);
+    if (!events.ok) throw new Error("events failed");
+    const preludeClick = stepIndex(events.value, "session:click_login");
+    const taskEntry = stepIndex(events.value, "entry");
     expect(taskEntry).toBeGreaterThan(preludeClick);
-    expect(firstTaskStep).toBeGreaterThan(taskEntry);
+    expect(stepIndex(events.value, "type_member_id")).toBeGreaterThan(taskEntry);
   });
 });
 

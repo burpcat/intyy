@@ -2,6 +2,7 @@
 // Section 4 §14, "Path matcher"; M02 task 1.
 import { describe, expect, test } from "vitest";
 import {
+  isSamePlace,
   matchPath,
   normalizePath,
   parsePattern,
@@ -145,5 +146,34 @@ describe("normalizing (section 4 §6.3)", () => {
   test("the normal form is plain", () => {
     const n = normalizePath("//a/./b/../c;x=1?q=1#f", true);
     expect(n.ok && n.value.path).toBe("/a/c");
+  });
+});
+
+describe("isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05)", () => {
+  const at = (path: string): string => `http://127.0.0.1:8080${path}`;
+
+  test("equal path, and equal path with equal query, are the same place", () => {
+    expect(isSamePlace(at("/main.do"), "/main.do")).toBe(true);
+    expect(isSamePlace(at("/Main.do?cmd=view&id=7"), "/Main.do?cmd=view&id=7")).toBe(true);
+  });
+
+  test("`;` parameters, `..`, and a fragment cannot hide or fake a difference", () => {
+    expect(isSamePlace(at("/app/main.do;jsessionid=abc"), "/app/main.do")).toBe(true);
+    expect(isSamePlace(at("/main.do"), "/app/../main.do")).toBe(true);
+    expect(isSamePlace(at("/main.do#top"), "/main.do")).toBe(true);
+    expect(isSamePlace(at("/app/main.do"), "/other/../main.do")).toBe(false);
+  });
+
+  test("a different path or a different query is not the same place", () => {
+    expect(isSamePlace(at("/main.do"), "/login.do")).toBe(false);
+    expect(isSamePlace(at("/main.do?cmd=view"), "/main.do?cmd=edit")).toBe(false);
+    expect(isSamePlace(at("/main.do?cmd=view"), "/main.do")).toBe(false);
+  });
+
+  test("a malformed address on either side is never equal", () => {
+    expect(isSamePlace("not a url", "/main.do")).toBe(false);
+    expect(isSamePlace(at("/a%2Fb"), "/a%2Fb")).toBe(false);
+    expect(isSamePlace(at("/main.do"), "main.do")).toBe(false);
+    expect(isSamePlace(at("/main.do"), "/a%2Fb")).toBe(false);
   });
 });
