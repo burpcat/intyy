@@ -104,6 +104,11 @@ export async function editDoc<T>(
   t: DocTarget<T>,
   start: (base: Loaded<T> | undefined) => unknown,
   validate: (doc: T) => Promise<string[]>,
+  /** Runs on the parsed edit before `validate`, with the base it started from and the editing
+   * staff ID: for a stamp only the CLI itself may write (docs/decisions.md, M06, owner decision
+   * on `pack edit`'s risk stamps: "a hand-written entry the editor did not make must not be
+   * trusted"). Omitted by every other caller. */
+  transform?: (doc: T, base: Loaded<T> | undefined, staff: string) => T,
 ): Promise<Answer> {
   const staff = requireKnownStaff(ctx);
   const base = await load(t, ["candidate", "approved", "sealed"]);
@@ -129,16 +134,17 @@ export async function editDoc<T>(
       `${t.label}: ${issueText(parsed.error)}. The edit is kept at ${path}`,
     );
   }
-  const problems = await validate(parsed.data);
+  const doc = transform ? transform(parsed.data, base, staff) : parsed.data;
+  const problems = await validate(doc);
   if (problems.length > 0) {
     throw new CliExit(
       EXIT.invalid,
       `${t.label}:\n${problems.join("\n")}\nThe edit is kept at ${path}`,
     );
   }
-  orExit(await t.store.putCandidate(t.id, parsed.data, staff), `${t.label} candidate`);
+  orExit(await t.store.putCandidate(t.id, doc, staff), `${t.label} candidate`);
   rmSync(path, { force: true });
-  const rev = t.kind.revOf(parsed.data);
+  const rev = t.kind.revOf(doc);
   return answer(
     { document: t.label, rev, state: "candidate" },
     `${t.label} candidate ${rev} saved.`,

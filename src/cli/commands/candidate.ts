@@ -16,6 +16,7 @@ import { CandidateId, RunId } from "../../core/model/ids.js";
 import type { HandlerDraft } from "../../core/model/handler-draft.js";
 import { CapabilityName } from "../../core/model/runspec.js";
 import {
+  adoptPackOutcome,
   attachNegativeRun,
   recordPositiveRun,
   regenerateCandidate,
@@ -24,12 +25,15 @@ import {
 } from "../../core/recorder/candidates.js";
 import type { RecorderOutput } from "../../core/recorder/record.js";
 import { secondLook, sealCandidate, type SealedFixture } from "../../core/recorder/seal.js";
+import { handlerFiresOnScreen } from "../../core/packs/fixture-suite.js";
 import { requireRole, type Ctx } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
 import { answer, progress, type Answer } from "../output.js";
 import { act, type Register } from "../program.js";
-import { orExit } from "./documents.js";
+import { orExit, load } from "./documents.js";
+import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
+import { settingsTarget } from "./settings.js";
 import { specLookup } from "./spec.js";
 
 /** A candidate's store ID, split into its parts: `<app>/<capability>/<candidate_id>`. */
@@ -345,6 +349,49 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
         orExit(await ctx.wiring.candidates.appendDecision(id, decision), id);
         const runs = orExit(await ctx.wiring.candidates.getFile(id, "runs.json"), id);
         const output = orExit(await regenerateCandidate(candidateDeps(ctx), id, runs), id);
+        return candidateAnswer(id, output.issues);
+      }),
+    );
+
+  candidate
+    .command("adopt")
+    .argument("<id>", "app/capability/candidate_id")
+    .argument("<outcome>", "the negative run's already-drafted outcome code")
+    .argument("<pack_ref>", "pack:<handler_id>")
+    .description(
+      "adopts a pack handler as a negative run's screen outcome (section 6 §15's table); " +
+        "checks the handler exists and fires on that screen first",
+    )
+    .action(
+      act(ctxOf, async (ctx, args) => {
+        const ref = parseCandidateArg(args[0]);
+        const id = docId(ref);
+        const outcome = args[1] ?? "";
+        const packRef = args[2] ?? "";
+        const m = /^pack:([a-z][a-z0-9_]*)$/.exec(packRef);
+        if (m?.[1] === undefined) {
+          throw new CliExit(EXIT.usage, "adopt: the third argument must be pack:<handler_id>");
+        }
+        const handlerId = m[1];
+        const staff = requireRole(ctx, ctx.tenant, "reviewer");
+        const deps = candidateDeps(ctx);
+        const runs = orExit(await deps.candidates.getFile(id, "runs.json"), id);
+        const settings = await load(settingsTarget(ctx), ["approved", "sealed"]);
+        const appVersion = settings?.doc.apps[ref.app]?.app_version;
+        if (appVersion === undefined) {
+          throw new CliExit(EXIT.usage, `adopt: no app_version for ${ref.app} in ${runs.positive.tenant}'s settings`);
+        }
+        const frozen = await loadFrozenSetFor(ctx, runs.positive.tenant, ref.app, appVersion);
+        const output = orExit(
+          await adoptPackOutcome(deps, id, outcome, handlerId, staff, {
+            handlerExists: (hid) => frozen.handlers.some((h) => h.id === hid),
+            handlerFires: (hid, a11y, location) => {
+              const h = frozen.handlers.find((x) => x.id === hid);
+              return h !== undefined && handlerFiresOnScreen(h, frozen.targets, frozen.conditions, a11y, location);
+            },
+          }),
+          id,
+        );
         return candidateAnswer(id, output.issues);
       }),
     );

@@ -8,6 +8,7 @@
 // landmark) instead of a lacks-in-normal diff. A human edits the draft before it is adopted
 // (section 5 §12.3: "The draft is a start, not a decision"), so this is a starting point only.
 import type { HandlerDraft, RiskHint } from "../model/handler-draft.js";
+import type { Handler, HandlerAction } from "../model/pack.js";
 import { fromA11ySnapshot } from "../targets/a11y-snapshot.js";
 import { ConditionRegistry, elementVisibleCheck, locationCheck, textVisibleCheck } from "./conditions.js";
 import { toPathPattern } from "./paths.js";
@@ -33,14 +34,47 @@ function incidentalGroups(tagged: readonly TaggedAction[]): TaggedAction[][] {
 
 /** The draft class (section 5 §12.4). A human typing a known input, `[human_text]`, or
  * `[secret]`, or the gate classing any action possibly irreversible (a logged approval hint,
- * `riskHint !== null`), both need a human. Otherwise: `recoverable`. */
+ * `riskHint !== null`), both need a human. So does `scroll` or `navigate`: neither is a legal
+ * pack response action type (section 5 §6.4 lists no `scroll`, and a bare `navigate` here has
+ * no known fixed path or `{system.last_good_path}` to draft). Otherwise: `recoverable`. */
 function classOf(group: readonly TaggedAction[]): "recoverable" | "needs_human" {
   const needsHuman = group.some((a) => {
     if (a.riskHint !== null) return true;
+    if (a.tool === "scroll" || a.tool === "navigate") return true;
     const v = a.value ?? "";
     return v === "[human_text]" || v === "[secret]" || /^\{input\.[a-z0-9_]+\}$/.test(v);
   });
   return needsHuman ? "needs_human" : "recoverable";
+}
+
+/** One action as a pack response action (section 5 §6.4), or `null` when it cannot resolve one
+ * (no target, or an empty value where the schema needs one): the caller then falls back to
+ * `needs_human`, never a guessed value. The risk stays a placeholder, `reversible`: the true,
+ * possibly worse rules' class is `risk_hints`, for the reviewer to compare at review (section 5
+ * §12.5 point 4). A reviewer confirms the real value, which then becomes the `risk` decision
+ * `pack edit` stamps (section 5 §6.7). */
+function toHandlerAction(a: TaggedAction, targetId: string | null): HandlerAction | null {
+  switch (a.tool) {
+    case "click":
+      return targetId === null ? null : { type: "click", target: targetId, risk: "reversible" };
+    case "type": {
+      const value = a.value ?? "";
+      return targetId === null || value === "" ? null : { type: "type", target: targetId, value, risk: "reversible" };
+    }
+    case "select": {
+      const value = a.option ?? a.value ?? "";
+      return targetId === null || value === "" ? null : { type: "select", target: targetId, value, risk: "reversible" };
+    }
+    case "set_checked":
+      return targetId === null ? null : { type: "set_checked", target: targetId, checked: a.checked ?? false, risk: "reversible" };
+    case "press": {
+      const key = a.key ?? "";
+      return /^[A-Z][A-Za-z0-9]*$/.test(key) ? { type: "press", key, risk: "reversible" } : null;
+    }
+    case "navigate":
+    case "scroll":
+      return null;
+  }
 }
 
 /** One draft handler's ID, from its first action's screen and turn (deterministic, unique per
@@ -93,11 +127,30 @@ function draftHandler(
     class: a.riskHint ?? "irreversible",
     source: a.riskHint === null ? "rules" : "gate",
   }));
-  const cls = classOf(group);
-  const handler: Record<string, unknown> = { id, class: cls, detector: detectorId, fixtures: { fire: `${id}_fire` } };
-  if (cls === "recoverable") {
-    handler.response = group.map((a) => ({ type: a.tool, target: targetIdOf.get(a) ?? null }));
-  }
+  const description = `Drafted from ${first?.beforeLocation ?? "an unknown screen"} (turn ${String(first?.turn ?? 0)}). A reviewer must edit this before it is used.`;
+  const mappedActions = group.map((a) => toHandlerAction(a, targetIdOf.get(a) ?? null));
+  const cls = classOf(group) === "recoverable" && mappedActions.every((m) => m !== null) ? "recoverable" : "needs_human";
+  const fixtures = { fire: [`${id}_fire`], no_fire: [] };
+  const handler: Handler =
+    cls === "recoverable"
+      ? {
+          id,
+          description,
+          class: "recoverable",
+          detector: detectorId,
+          response: mappedActions.filter((m): m is HandlerAction => m !== null),
+          limits: { per_step: 1, per_run: 1 },
+          on_exhausted: { class: "needs_human", operator_note: `${description} It kept recurring.` },
+          fixtures,
+        }
+      : {
+          id,
+          description,
+          class: "needs_human",
+          detector: detectorId,
+          operator_note: `Review this drafted handler from ${first?.beforeLocation ?? "an unknown screen"}.`,
+          fixtures,
+        };
   return {
     schema: "intyy.handler_draft/1.0",
     id,

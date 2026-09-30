@@ -1,10 +1,12 @@
 // The handler draft file (`intyy.handler_draft/1.0`): a proposed pack handler, before review.
-// Follows design section 5 §12.2. `handler` stays loosely typed until M06 defines the pack
-// format (docs/decisions.md, M04).
+// Follows design section 5 §12.2. `handler` is the real pack handler schema (M06 defines it,
+// docs/decisions.md, M04): the draft's own `fixtures.no_fire` starts empty, which the schema
+// allows (section 5 §13.3's "at least one" is a fixture-suite check, not a shape rule).
 import { z } from "zod";
 import { AppId, TenantId } from "./common.js";
 import { RunId } from "./ids.js";
 import { Condition } from "./artifact/conditions.js";
+import { Handler } from "./pack.js";
 import { SnakeId } from "./artifact/shared.js";
 import { Target } from "./artifact/targets.js";
 
@@ -50,8 +52,8 @@ export const HandlerDraft = z
     suggested_scope: z.literal("tenant"),
     targets: z.array(Target),
     conditions: z.array(Condition),
-    /** The proposed handler, in pack format. Loosely typed until M06. */
-    handler: z.unknown(),
+    /** The proposed handler, in pack format (section 5 §12.2). */
+    handler: Handler,
     risk_hints: z.array(RiskHint),
     fixtures: z.object({ fire: SnakeId, no_fire: z.array(SnakeId) }).strict(),
   })

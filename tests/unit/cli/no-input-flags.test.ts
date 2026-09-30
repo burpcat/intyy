@@ -36,6 +36,12 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   // M05 task 11: `spec new --session` names the linked session capability, a link of intyy's
   // own making (`app/capability@major`), never member data.
   "--session": "a session capability link, like kvfcu/sign_in@1; not member data",
+  // M06 task 1: `fixture new`'s own flags. Each names a place, a run, a log line number, or a
+  // fixed choice, of intyy's own making, never a value read from the bank app's screen.
+  "--variant": "the bank app's branding variant, like keystone or lakeshore; not member data",
+  "--run": "a run ID to capture the fixture from; not member data",
+  "--seq": "a run log line's seq number; not member data",
+  "--kind": "one of two choices: trouble or normal",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

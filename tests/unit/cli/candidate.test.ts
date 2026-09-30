@@ -486,6 +486,130 @@ describe("discover records a candidate", () => {
   });
 });
 
+/** Runs the sign_in positive discovery, then the find_member negative discovery attached to
+ * it (section 6 §15's table); returns the shared candidate ID. `find_member`'s spec never
+ * navigates before `report_outcome`, so the negative run's own saved screen is SITE's `/`
+ * page: "Teller Sign In". */
+async function candidateWithNegativeRun(env: {
+  root: string;
+  policy: FakeDocumentStore<Policy>;
+  settings: FakeDocumentStore<Settings>;
+}): Promise<string> {
+  // Why: `candidate adopt` and `pack ...` read settings and packs off the real, file-backed
+  // wire() (unlike `discover`, whose own wiring is swapped above), so they need the real
+  // approved settings on disk, not just `env.settings`'s in-memory fake.
+  cpSync(join("library", "settings"), join(env.root, "library", "settings"), { recursive: true });
+  writeSignInSpec(env.root);
+  writeFindMemberSpec(env.root);
+  const positive = await discoverCall(env, ["kvfcu/sign_in"], new ScriptedPlanner(SIGN_IN_STEPS), SITE);
+  const id = (JSON.parse(positive.stdout) as { candidate: string }).candidate;
+  const negativePlanner = new ScriptedPlanner([
+    { name: "report_outcome", input: { summary: "No such member.", proof: ["e1"] } },
+  ]);
+  await discoverCall(env, ["kvfcu/find_member", "--candidate", id], negativePlanner, SITE);
+  // Why hand-patch: `find_member`'s own goal never repeats sign_in's own steps, so
+  // `alignNegativeRun` (section 6 §14.8) never aligns it, and the recorder leaves this as a
+  // blocking `failed_alignment` issue instead of drafting `not_found` into `contract.outcomes`.
+  // That alignment machinery is a separate concern from `candidate adopt` (section 6 §15's
+  // table), which this test exists to prove; adding "not_found" here is exactly the fixture a
+  // reviewer's own `candidate decide outcome_name` work would otherwise leave in place before
+  // ever reaching `adopt`.
+  const candidatePath = join(env.root, "library", "candidates", id, "candidate.json");
+  const artifact = JSON.parse(readFileSync(candidatePath, "utf8")) as {
+    contract: { outcomes: Record<string, unknown>[] };
+  };
+  artifact.contract.outcomes.push({ code: "not_found", description: "No such member.", condition: "not_found_shown" });
+  writeFileSync(candidatePath, JSON.stringify(artifact));
+  return id;
+}
+
+/** One global-scope pack, sealed and approved through the real CLI (the `EDITOR: cp` trick),
+ * with one handler whose detector matches `detectorText` (`text_visible`, `contains`). */
+async function sealGlobalPack(r: string, handlerId: string, detectorText: string): Promise<void> {
+  const body = {
+    schema: "intyy.pack/1.0",
+    scope: { level: "global" },
+    revision: 1,
+    reason: "Test pack for candidate adopt.",
+    targets: [{ id: "any_button", description: "Any button", clues: { role: "button" } }],
+    conditions: [
+      { id: `${handlerId}_shown`, check: "text_visible", description: "The screen is showing", text: detectorText, match: "contains" },
+    ],
+    handlers: [
+      {
+        id: handlerId,
+        description: "A pack handler for the adopt test.",
+        class: "recoverable",
+        detector: `${handlerId}_shown`,
+        response: [{ type: "click", target: "any_button", risk: "idempotent" }],
+        limits: { per_step: 1, per_run: 1 },
+        on_exhausted: { class: "hard_failure", failure: "app_error" },
+        fixtures: { fire: [`${handlerId}_fire`], no_fire: [`${handlerId}_near_miss`] },
+      },
+    ],
+    provenance: { runs: [], decisions: [], sealed: null },
+  };
+  const editedPath = join(r, `pack-edited-${String(Math.random()).slice(2)}.json`);
+  writeFileSync(editedPath, JSON.stringify(body));
+  await call(["pack", "edit", "global"], {
+    cwd: r,
+    env: { INTYY_STAFF: "op_017", EDITOR: `cp "${editedPath}"` },
+    deps: { commands },
+  });
+  await cli(r, "op_022", ["pack", "second-look", "global", `${handlerId}.response[0]`, "--agree"]);
+  const sealed = await cli(r, "op_022", ["pack", "seal", "global", "--json"]);
+  const rev = (JSON.parse(sealed.stdout) as { rev: string }).rev;
+  await cli(r, "op_031", ["pack", "approve", "global", "--rev", rev]);
+}
+
+describe("candidate adopt (section 6 §15's table)", () => {
+  test("an unknown outcome code is rejected", async () => {
+    const env = await discoverRoot();
+    const id = await candidateWithNegativeRun(env);
+    await sealGlobalPack(env.root, "sign_in_shown", "Sign In");
+    const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "no_such_outcome", "pack:sign_in_shown"]);
+    expect(got.code).toBe(EXIT.invalid);
+    expect(got.stderr).toContain("is not a known outcome");
+  });
+
+  test("a handler not in the merged pack set is rejected", async () => {
+    const env = await discoverRoot();
+    const id = await candidateWithNegativeRun(env);
+    const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "not_found", "pack:no_such_handler"]);
+    expect(got.code).toBe(EXIT.invalid);
+    expect(got.stderr).toContain("is not in the merged pack set");
+  });
+
+  test("a handler whose detector does not fire on the negative run's screen is refused", async () => {
+    const env = await discoverRoot();
+    const id = await candidateWithNegativeRun(env);
+    await sealGlobalPack(env.root, "never_fires", "This text never appears anywhere.");
+    const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "not_found", "pack:never_fires"]);
+    expect(got.code).toBe(EXIT.refused);
+    expect(got.stderr).toContain("detector does not fire");
+  });
+
+  test("the happy path: a firing handler records the adoption decision", async () => {
+    const env = await discoverRoot();
+    const id = await candidateWithNegativeRun(env);
+    await sealGlobalPack(env.root, "sign_in_shown", "Sign In");
+    const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "not_found", "pack:sign_in_shown", "--json"]);
+    expect(got.code).toBe(EXIT.ok);
+    // Why the raw decisions.jsonl, not `candidate show`: the recorder's own outcome-drafting
+    // pipeline (section 6 §14.8's alignment and proof rules) is a separate concern from adopt's
+    // own checks (known outcome, handler exists, handler fires); `adoptPackOutcome` (src/core/
+    // recorder/candidates.ts) always appends the decision once its own three checks pass.
+    const decisionsPath = join(env.root, "library", "candidates", id, "decisions.jsonl");
+    const lines = readFileSync(decisionsPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const decision = lines.find((l) => l.what === "outcome_name" && l.subject === "not_found");
+    if (decision === undefined) throw new Error("no outcome_name decision was recorded");
+    expect(decision).toMatchObject({ value: "pack:sign_in_shown", by: "op_017" });
+  });
+});
+
 /** Resolves every review decision the golden candidate needs, deciding `click_login`'s risk as
  * `clickRisk` (a lowering, to exercise the second look, or its own rules' class to skip it). */
 async function resolveBasics(r: string, id: string, clickRisk: string): Promise<void> {

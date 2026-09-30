@@ -18,7 +18,8 @@ import { CandidateDecision } from "../core/model/candidate-decision.js";
 import { CandidateIssues } from "../core/model/candidate-issues.js";
 import { CandidateRuns } from "../core/model/candidate-runs.js";
 import type { Config } from "../core/model/config.js";
-import { policyKind, settingsKind } from "../core/model/kinds.js";
+import { packKind, policyKind, settingsKind } from "../core/model/kinds.js";
+import type { Pack } from "../core/model/pack.js";
 import type { Policy } from "../core/model/policy.js";
 import type { CandidateFiles } from "../core/recorder/candidates.js";
 import { RequestIndexLine } from "../core/model/request-index.js";
@@ -40,6 +41,7 @@ export type Wiring = {
   secrets: Secrets;
   policy: DocumentStore<Policy>;
   settings: DocumentStore<Settings>;
+  packs: DocumentStore<Pack>;
   locks: Locks;
   evidence: EvidenceStore;
   candidates: CandidateStore<CandidateFiles, CandidateDecision>;
@@ -79,6 +81,7 @@ export function wire(
       { dir: join(library, "settings"), tmpDir },
       clock,
     ),
+    packs: new FileDocumentStore(packKind, { dir: join(library, "packs"), tmpDir }, clock),
     locks: new LockManager(new FileLockSlots(join(state, "var", "locks")), clock, systemLockEnv()),
     evidence: new FileEvidenceStore({ root: join(state, "evidence"), tmpDir }),
     candidates: new FileCandidateStore<CandidateFiles, CandidateDecision>(

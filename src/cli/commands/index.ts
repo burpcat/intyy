@@ -5,7 +5,9 @@ import { registerArtifact } from "./artifact.js";
 import { registerCandidate } from "./candidate.js";
 import { registerCapability } from "./capability.js";
 import { registerDiscover } from "./discover.js";
+import { registerFixture } from "./fixture.js";
 import { registerOperator } from "./operator.js";
+import { registerPack } from "./pack.js";
 import { registerPolicy } from "./policy.js";
 import { registerReplay } from "./replay.js";
 import { registerRun } from "./run.js";
@@ -19,7 +21,9 @@ export const commands: readonly Register[] = [
   registerCandidate,
   registerCapability,
   registerDiscover,
+  registerFixture,
   registerOperator,
+  registerPack,
   registerPolicy,
   registerReplay,
   registerRun,

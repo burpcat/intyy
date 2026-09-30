@@ -68,7 +68,7 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 
 ## Tasks, in order
 
-- [ ] 1. Write the pack and fixture schemas, loader checks, merge, frozen set, and tie rule. Test first.
+- [x] 1. Write the pack and fixture schemas, loader checks, merge, frozen set, and tie rule. Test first.
 - [ ] 2. Write the ladder, rung 1, on the snapshot surface. Test the helper window matrix, resume rule, rung order, and pre-commit sweep.
 - [ ] 3. Test "known screen, no progress": it fails with the underlying code and does not climb.
 - [ ] 4. Write rung 4 requests and the `operator decide` answers for retry and reconciliation.

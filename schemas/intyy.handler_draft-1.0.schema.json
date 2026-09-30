@@ -503,7 +503,605 @@
         ]
       }
     },
-    "handler": {},
+    "handler": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "detector": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "overrides": {
+              "type": "boolean"
+            },
+            "app_versions": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "fixtures": {
+              "type": "object",
+              "properties": {
+                "fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                },
+                "no_fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "fire",
+                "no_fire"
+              ],
+              "additionalProperties": false
+            },
+            "class": {
+              "type": "string",
+              "const": "business_outcome"
+            },
+            "outcome": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "description"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "description",
+            "detector",
+            "fixtures",
+            "class",
+            "outcome"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "detector": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "overrides": {
+              "type": "boolean"
+            },
+            "app_versions": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "fixtures": {
+              "type": "object",
+              "properties": {
+                "fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                },
+                "no_fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "fire",
+                "no_fire"
+              ],
+              "additionalProperties": false
+            },
+            "class": {
+              "type": "string",
+              "const": "recoverable"
+            },
+            "response": {
+              "maxItems": 5,
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "navigate"
+                      },
+                      "location": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "const": "{system.last_good_path}"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^\\/\\S*$"
+                          }
+                        ]
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "idempotent",
+                          "reversible"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "location",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "click"
+                      },
+                      "target": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "idempotent",
+                          "reversible"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "target",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "type"
+                      },
+                      "target": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "idempotent",
+                          "reversible"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "target",
+                      "value",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "select"
+                      },
+                      "target": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "value": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "idempotent",
+                          "reversible"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "target",
+                      "value",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "set_checked"
+                      },
+                      "target": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "checked": {
+                        "type": "boolean"
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "idempotent",
+                          "reversible"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "target",
+                      "checked",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "press"
+                      },
+                      "key": {
+                        "type": "string",
+                        "pattern": "^[A-Z][A-Za-z0-9]*$"
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "idempotent",
+                          "reversible"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "key",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "sign_in"
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "idempotent",
+                          "reversible"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "delay_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "done_when": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "wait_ms": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "per_step": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "per_run": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "per_step",
+                "per_run"
+              ],
+              "additionalProperties": false
+            },
+            "on_exhausted": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "class": {
+                      "type": "string",
+                      "const": "hard_failure"
+                    },
+                    "failure": {
+                      "type": "string",
+                      "enum": [
+                        "app_error",
+                        "permission_denied"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "class",
+                    "failure"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "class": {
+                      "type": "string",
+                      "const": "needs_human"
+                    },
+                    "operator_note": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "class",
+                    "operator_note"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "description",
+            "detector",
+            "fixtures",
+            "class",
+            "response",
+            "limits",
+            "on_exhausted"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "detector": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "overrides": {
+              "type": "boolean"
+            },
+            "app_versions": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "fixtures": {
+              "type": "object",
+              "properties": {
+                "fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                },
+                "no_fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "fire",
+                "no_fire"
+              ],
+              "additionalProperties": false
+            },
+            "class": {
+              "type": "string",
+              "const": "hard_failure"
+            },
+            "failure": {
+              "type": "string",
+              "enum": [
+                "app_error",
+                "permission_denied"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "description",
+            "detector",
+            "fixtures",
+            "class",
+            "failure"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "detector": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "overrides": {
+              "type": "boolean"
+            },
+            "app_versions": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "fixtures": {
+              "type": "object",
+              "properties": {
+                "fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                },
+                "no_fire": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "fire",
+                "no_fire"
+              ],
+              "additionalProperties": false
+            },
+            "class": {
+              "type": "string",
+              "const": "needs_human"
+            },
+            "operator_note": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id",
+            "description",
+            "detector",
+            "fixtures",
+            "class",
+            "operator_note"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
     "risk_hints": {
       "type": "array",
       "items": {

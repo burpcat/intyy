@@ -8,9 +8,11 @@ import { CandidateIssues } from "../src/core/model/candidate-issues.js";
 import { CandidateRuns } from "../src/core/model/candidate-runs.js";
 import { Cassette } from "../src/core/model/cassette.js";
 import { Config } from "../src/core/model/config.js";
+import { Fixture } from "../src/core/model/fixture.js";
 import { LockFile } from "../src/core/model/lock.js";
 import { HandlerDraft } from "../src/core/model/handler-draft.js";
 import { ClosedFile, DecisionFile, Intervention } from "../src/core/model/mailbox.js";
+import { Pack } from "../src/core/model/pack.js";
 import { Patch } from "../src/core/model/patch.js";
 import { Policy } from "../src/core/model/policy.js";
 import { Request } from "../src/core/model/request.js";
@@ -25,6 +27,8 @@ import { IndexLine } from "../src/core/model/store-index.js";
 export const formats: Record<string, z.ZodType> = {
   "intyy.artifact-1.0": Artifact,
   "intyy.patch-1.0": Patch,
+  "intyy.pack-1.0": Pack,
+  "intyy.fixture-1.0": Fixture,
   "intyy.candidate_decision-1.0": CandidateDecision,
   "intyy.candidate_runs-1.0": CandidateRuns,
   "intyy.candidate_issues-1.0": CandidateIssues,

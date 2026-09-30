@@ -187,6 +187,86 @@ export async function attachNegativeRun(
   return regenerateCandidate(deps, id, updated);
 }
 
+/** The masked location an `observation` event reported at `turn` (`events.jsonl`'s own step
+ * tag, `t<turn>`), or `null` when no such line exists. */
+function observationLocationAt(lines: readonly unknown[], turn: number): string | null {
+  for (const raw of lines) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const line = raw as Record<string, unknown>;
+    if (line.event !== "observation" || line.step !== `t${String(turn)}`) continue;
+    const data = line.data;
+    const location = typeof data === "object" && data !== null ? (data as Record<string, unknown>).location : undefined;
+    if (typeof location === "string") return location;
+  }
+  return null;
+}
+
+/** What {@link adoptPackOutcome} needs to know about the merged pack set, computed by the
+ * caller: `src/core/` never reads a pack file itself, and building the frozen set needs the
+ * document store, the policy, and the bank's app version (section 5 §7.4), which this module
+ * has no way to reach. */
+export type AdoptCheck = {
+  handlerExists(handlerId: string): boolean;
+  handlerFires(handlerId: string, a11y: string, location: string): boolean;
+};
+
+/**
+ * Adopts a pack handler as the outcome for a negative run's screen (section 6 §15's table:
+ * "Adopted pack outcome | `outcome_name`, value `pack:<handler_id>`"; section 2 §17.5). Checks
+ * the outcome is a real, already-drafted one, the handler exists in the merged pack set, and
+ * its detector actually fires on that negative run's own saved screen, before recording the
+ * decision and regenerating.
+ */
+export async function adoptPackOutcome(
+  deps: CandidateDeps,
+  id: string,
+  outcome: string,
+  handlerId: string,
+  staff: string,
+  check: AdoptCheck,
+): Promise<Outcome<RecorderOutput, "not_found" | "invalid" | "write_failed" | "rule">> {
+  const artifact = await deps.candidates.getFile(id, "candidate.json");
+  if (!artifact.ok) return artifact;
+  const decisions = await deps.candidates.decisions(id);
+  if (!decisions.ok) return decisions;
+  const mapped = resolveSubject(artifact.value, decisions.value, "outcome_name", outcome);
+  if (mapped === null) return fail("invalid", `${outcome} is not a known outcome`);
+  if (!check.handlerExists(handlerId)) {
+    return fail("invalid", `${handlerId} is not in the merged pack set for this app`);
+  }
+
+  const runsRead = await deps.candidates.getFile(id, "runs.json");
+  if (!runsRead.ok) return runsRead;
+  let screen: { a11y: string; location: string } | null = null;
+  for (const ref of runsRead.value.negatives) {
+    const loaded = await loadOneRun(deps, ref, "report_outcome");
+    if (!loaded.ok || loaded.value.spec.expected_outcome?.code !== mapped) continue;
+    const turn = loaded.value.snapshots?.proof?.turn;
+    const a11y = turn === undefined ? undefined : loaded.value.snapshots?.a11yByTurn.get(turn);
+    const location = turn === undefined ? null : observationLocationAt(loaded.value.lines, turn);
+    if (a11y !== undefined && location !== null) screen = { a11y, location };
+    break;
+  }
+  if (screen === null) {
+    return fail("invalid", `${mapped}'s negative run's screen could not be read`);
+  }
+  if (!check.handlerFires(handlerId, screen.a11y, screen.location)) {
+    return fail("rule", `${handlerId}'s detector does not fire on ${mapped}'s screen`);
+  }
+
+  const decision: CandidateDecision = {
+    schema: "intyy.candidate_decision/1.0",
+    what: "outcome_name",
+    subject: mapped,
+    value: `pack:${handlerId}`,
+    by: staff,
+    at: deps.clock.now().toISOString(),
+  };
+  const appended = await deps.candidates.appendDecision(id, decision);
+  if (!appended.ok) return appended;
+  return regenerateCandidate(deps, id, runsRead.value);
+}
+
 /**
  * Maps a currently shown (possibly renamed) step/target/condition ID back to the ID the
  * recorder first generated (docs/decisions.md, M04): `risk`, `risk_second_look`, and an `edit`

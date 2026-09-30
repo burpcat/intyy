@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.fixture/1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "app": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "tenant": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "app_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variant": {
+      "type": "string",
+      "minLength": 1
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1
+    },
+    "viewport": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "height": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "boxes": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "w": {
+            "type": "number"
+          },
+          "h": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_\\d{4}-\\d{2}-\\d{2}_[0-9a-hjkmnp-tv-z]{10}$"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "run_id",
+        "seq"
+      ],
+      "additionalProperties": false
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "trouble",
+        "normal"
+      ]
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "a11y.yaml",
+          "dom.html",
+          "screen.png"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "app",
+    "tenant",
+    "app_version",
+    "variant",
+    "location",
+    "viewport",
+    "source",
+    "kind"
+  ],
+  "additionalProperties": false
+}
