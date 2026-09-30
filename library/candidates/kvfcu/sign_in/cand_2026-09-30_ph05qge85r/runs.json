@@ -1,0 +1,8 @@
+{
+  "schema": "intyy.candidate_runs/1.0",
+  "positive": {
+    "run_id": "run_2026-09-29_qhkn64cebx",
+    "tenant": "keystone"
+  },
+  "negatives": []
+}
