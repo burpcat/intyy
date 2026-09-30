@@ -1,0 +1,12 @@
+{"schema":"intyy.candidate_decision/1.0","what":"edit","subject":"runs_on.paths","value":"[\"/\",\"/login.do\",\"/lastLogin.do\",\"/main.do\",\"/banner.do\",\"/menu.do\",\"/memberSearch.do\"]","by":"op_017","at":"2026-09-30T01:30:22.854Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"tag","subject":"run_2026-09-29_qhkn64cebx#7","value":"flow_step","by":"op_017","at":"2026-09-30T01:30:51.202Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"tag","subject":"run_2026-09-29_qhkn64cebx#11","value":"flow_step","by":"op_017","at":"2026-09-30T01:31:05.551Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"tag","subject":"run_2026-09-29_qhkn64cebx#15","value":"flow_step","by":"op_017","at":"2026-09-30T01:31:18.160Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"tag","subject":"run_2026-09-29_qhkn64cebx#19","value":"flow_step","by":"op_017","at":"2026-09-30T01:31:37.098Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"risk","subject":"type_user_id","value":"idempotent","by":"op_017","at":"2026-09-30T01:32:24.510Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"risk","subject":"type_password","value":"idempotent","by":"op_017","at":"2026-09-30T01:32:30.084Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"risk","subject":"click_login","value":"idempotent","by":"op_017","at":"2026-09-30T01:32:35.628Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"risk","subject":"click_continue","value":"idempotent","by":"op_017","at":"2026-09-30T01:32:41.590Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"edit","subject":"about.when_to_use","value":"Before any task that needs a signed-in operator.","by":"op_017","at":"2026-09-30T01:38:22.559Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"edit","subject":"about.limits","value":"Uses the operator account from bank settings. Does not handle a locked account.","by":"op_017","at":"2026-09-30T01:38:31.692Z"}
+{"schema":"intyy.candidate_decision/1.0","what":"edit","subject":"conditions.click_continue_checkpoint","value":"{\"check\":\"all_of\",\"checks\":[{\"check\":\"location\",\"pattern\":\"/main.do\"},{\"check\":\"text_visible\",\"text\":\"Logout\",\"match\":\"contains\"}]}","by":"op_017","at":"2026-09-30T01:39:07.251Z"}

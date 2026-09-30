@@ -3,7 +3,7 @@
   "identity": {
     "app": "kvfcu",
     "capability": "sign_in",
-    "version": null
+    "version": "1.0.0"
   },
   "runs_on": {
     "surface": "web",
@@ -366,6 +366,9 @@
         "at": "2026-09-30T01:39:07.251Z"
       }
     ],
-    "sealed": null
+    "sealed": {
+      "by": "op_017",
+      "at": "2026-09-30T01:39:40.272Z"
+    }
   }
 }

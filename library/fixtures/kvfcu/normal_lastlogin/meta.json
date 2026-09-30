@@ -1,0 +1,10 @@
+{
+  "schema": "intyy.fixture/1.0",
+  "id": "normal_lastlogin",
+  "app": "kvfcu",
+  "location": "/lastLogin.do",
+  "kind": "normal",
+  "missing": [
+    "dom.html"
+  ]
+}

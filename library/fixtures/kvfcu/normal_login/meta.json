@@ -1,0 +1,10 @@
+{
+  "schema": "intyy.fixture/1.0",
+  "id": "normal_login",
+  "app": "kvfcu",
+  "location": "/login.do",
+  "kind": "normal",
+  "missing": [
+    "dom.html"
+  ]
+}

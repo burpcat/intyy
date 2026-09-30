@@ -3,30 +3,6 @@
   "issues": [
     {
       "level": "blocking",
-      "code": "risk_undecided",
-      "subject": "type_user_id",
-      "message": "type_user_id's risk (idempotent) has not been confirmed by a risk decision yet."
-    },
-    {
-      "level": "blocking",
-      "code": "risk_undecided",
-      "subject": "type_password",
-      "message": "type_password's risk (idempotent) has not been confirmed by a risk decision yet."
-    },
-    {
-      "level": "blocking",
-      "code": "risk_undecided",
-      "subject": "click_login",
-      "message": "click_login's risk (idempotent) has not been confirmed by a risk decision yet."
-    },
-    {
-      "level": "blocking",
-      "code": "risk_undecided",
-      "subject": "click_continue",
-      "message": "click_continue's risk (idempotent) has not been confirmed by a risk decision yet."
-    },
-    {
-      "level": "blocking",
       "code": "null_version",
       "subject": "identity.version",
       "message": "no version is set yet"
@@ -36,42 +12,6 @@
       "code": "null_sealed",
       "subject": "provenance.sealed",
       "message": "not sealed yet"
-    },
-    {
-      "level": "blocking",
-      "code": "empty_about",
-      "subject": "about.when_to_use",
-      "message": "is empty"
-    },
-    {
-      "level": "blocking",
-      "code": "empty_about",
-      "subject": "about.limits",
-      "message": "is empty"
-    },
-    {
-      "level": "blocking",
-      "code": "undecided_tag",
-      "subject": "provenance.actions[0]",
-      "message": "has no human tag yet"
-    },
-    {
-      "level": "blocking",
-      "code": "undecided_tag",
-      "subject": "provenance.actions[1]",
-      "message": "has no human tag yet"
-    },
-    {
-      "level": "blocking",
-      "code": "undecided_tag",
-      "subject": "provenance.actions[2]",
-      "message": "has no human tag yet"
-    },
-    {
-      "level": "blocking",
-      "code": "undecided_tag",
-      "subject": "provenance.actions[3]",
-      "message": "has no human tag yet"
     },
     {
       "level": "warning",
