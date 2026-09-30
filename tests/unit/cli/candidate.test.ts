@@ -501,4 +501,22 @@ describe("candidate second-look and seal, through the CLI", () => {
     const data = JSON.parse(sealed.stdout) as { key: string };
     expect(data.key).toBe("kvfcu/sign_in@1.0.0");
   });
+
+  test("a successful seal writes a normal fixture folder matching the run's own bytes", async () => {
+    const r = await root();
+    const policy = await sealedPolicyStore([GLOBAL_LAYER, SEAL_APP_LAYER, TENANT_LAYER]);
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "idempotent");
+    const sealed = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy);
+    expect(sealed.code).toBe(EXIT.ok);
+
+    // The golden fixture's own `/login.do` turn saved only an a11y snapshot, never a DOM or
+    // screenshot capture (tests/fixtures/logs/golden/).
+    const dir = join(r, "library", "fixtures", "kvfcu", "normal_login");
+    expect(readFileSync(join(dir, "a11y.yaml"), "utf8")).toBe(readFileSync(`${LOG_DIR}a11y/t1.yaml`, "utf8"));
+    expect(existsSync(join(dir, "dom.html"))).toBe(false);
+    expect(existsSync(join(dir, "screen.png"))).toBe(false);
+    const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as { missing: string[] };
+    expect([...meta.missing].sort()).toEqual(["dom.html", "screen.png"]);
+  });
 });
