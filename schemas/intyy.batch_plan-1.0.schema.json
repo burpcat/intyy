@@ -26,6 +26,10 @@
       "type": "string",
       "const": "quick"
     },
+    "pin": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*\\/[a-z][a-z0-9_]*@\\d+\\.\\d+\\.\\d+$"
+    },
     "started_by": {
       "type": "string",
       "minLength": 1
@@ -228,6 +232,7 @@
     "app",
     "capability",
     "kind",
+    "pin",
     "started_by",
     "started_at",
     "instance",

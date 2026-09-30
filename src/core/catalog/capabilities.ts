@@ -133,3 +133,24 @@ export function toolDefinition(artifact: Artifact, major: number): ToolDefinitio
   const description = [artifact.about.summary, artifact.about.when_to_use, CALLER_RULES].join("\n\n");
   return { name, description, input_schema: inputsJsonSchema(artifact.contract.inputs) };
 }
+
+/**
+ * Reads one exact sealed version (a certify pin, section 3 §4.9: "the exact key under test").
+ * `not_found` when that version is not sealed, or (given `appVersion`) does not fit it.
+ */
+export async function resolveExact(
+  store: ArtifactStore,
+  app: string,
+  capability: string,
+  version: string,
+  appVersion?: string,
+): Promise<Outcome<Artifact, "not_found" | "invalid">> {
+  const versions = await store.listSealedVersions(`${app}/${capability}`);
+  if (!versions.includes(version)) return fail("not_found", `${app}/${capability}@${version} is not sealed`);
+  const read = await readArtifact(store, app, capability, version);
+  if (!read.ok) return read;
+  if (appVersion !== undefined && !matchesAnyPattern(read.value.runs_on.app_versions, appVersion)) {
+    return fail("not_found", `${app}/${capability}@${version} does not fit app version ${appVersion}`);
+  }
+  return ok(read.value);
+}

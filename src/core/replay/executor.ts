@@ -113,6 +113,10 @@ export type ReplayInput = {
    * `batch_id`/`case_id`; docs/decisions.md, M06). `null`/omitted for every other run. */
   batchId?: string | null;
   caseId?: string | null;
+  /** The exact sealed key under test, like `kvfcu/open_share_subaccount@1.0.0` (section 3
+   * §4.9, the certify run spec's `pin`). The task capability resolves to this version, not the
+   * newest of its major. `null`/omitted for every other run. */
+  pin?: string | null;
 };
 
 /** The ports one replay run uses. */
@@ -148,9 +152,10 @@ function splitCapabilityLink(link: string): { app: string; capability: string; m
 }
 
 /** One artifact's ID and hash, for `frozen.artifact`/`frozen.session` (section 3 §6.5). */
-function artifactRef(a: Artifact): { id: string; hash: ReturnType<typeof fact> } {
+function artifactRef(a: Artifact): { id: ReturnType<typeof fact>; hash: ReturnType<typeof fact> } {
   return {
-    id: `${a.identity.app}/${a.identity.capability}@${a.identity.version ?? ""}`,
+    // Why `?? "0.0.0"`: a sealed artifact always has a version; a candidate never reaches replay.
+    id: fact(`${a.identity.app}/${a.identity.capability}@${a.identity.version ?? "0.0.0"}`),
     hash: fact(`sha256:${sha256Hex(JSON.stringify(a))}`),
   };
 }
@@ -187,6 +192,7 @@ function frozenFacts(input: ReplayInput, artifact: Artifact | null, session: Art
     purpose: input.purpose ?? null,
     batch_id: input.batchId ?? null,
     case_id: input.caseId ?? null,
+    pin: input.pin === undefined || input.pin === null ? null : fact(input.pin),
     request_id: input.request.request_id,
     tenant: input.tenant,
     agent_id: input.agentId,
@@ -403,7 +409,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       now: deps.clock.now(),
       appVersion: input.appVersion,
       policy: input.policy.effective,
-      resolve: catalogResolve(deps.artifacts),
+      resolve: catalogResolve(deps.artifacts, input.pin ?? undefined),
       ...catalogRequestIndex(deps.requestIndex),
       secretSources: sources,
     },

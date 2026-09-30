@@ -14,7 +14,15 @@ import type { Masked } from "../../../src/ports/masked.js";
 import { ManualClock } from "../../../src/fakes/clock.js";
 import { MemoryLockSlots } from "../../../src/fakes/locks.js";
 import { FakeCandidateStore, FakeEvidenceStore } from "../../../src/fakes/stores.js";
-import { OPEN_SUB, SIGN_IN } from "../replay/executor-harness.js";
+import { runReplay } from "../../../src/core/replay/executor.js";
+import {
+  OPEN_SUB,
+  SIGN_IN,
+  buildHarness,
+  fixtureSite,
+  replayInputOf,
+  requestOf,
+} from "../replay/executor-harness.js";
 
 const TENANT = "keystone";
 
@@ -29,7 +37,10 @@ function line(seq: number, at: string, step: string | null, event: string, data:
 
 /** `run_start`'s own `data`, freezing one artifact reference. */
 function runStartData(artifactId: string, requestId: string): unknown {
-  return { frozen: { artifact: { id: artifactId, hash: `sha256:${"a".repeat(64)}` } }, request_id: requestId };
+  return {
+    frozen: { artifact: { id: artifactId, hash: `sha256:${"a".repeat(64)}` } },
+    request_id: requestId,
+  };
 }
 
 /** A fresh evidence store, a lock manager over its own memory slots, a clock, and both fixture
@@ -39,7 +50,11 @@ async function harness(): Promise<SweepDeps> {
   const env: LockEnv = { host: "test-host", pid: 1, isAlive: () => true };
   const store = new FakeCandidateStore(
     {
-      files: { "runs.json": CandidateRuns, "candidate.json": ArtifactSchema, "issues.json": CandidateIssues },
+      files: {
+        "runs.json": CandidateRuns,
+        "candidate.json": ArtifactSchema,
+        "issues.json": CandidateIssues,
+      },
       decision: CandidateDecision,
     },
     clock,
@@ -60,7 +75,12 @@ async function harness(): Promise<SweepDeps> {
 async function seedCrashedRun(
   deps: SweepDeps,
   runId: string,
-  opts: { kind: "discovery" | "replay"; capability: string; status?: "running" | "escalated"; events: unknown[] },
+  opts: {
+    kind: "discovery" | "replay";
+    capability: string;
+    status?: "running" | "escalated";
+    events: unknown[];
+  },
 ): Promise<void> {
   const created = await deps.evidence.createRun(TENANT, runId);
   if (!created.ok) throw new Error("test setup: createRun failed");
@@ -95,7 +115,13 @@ describe("runSweep: the design's own commit-state table (section 7 §17)", () =>
       kind: "replay",
       capability: "kvfcu/open_sub",
       events: [
-        line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/open_sub@1.0.0", runId)),
+        line(
+          1,
+          "2026-01-15T09:00:00.000Z",
+          null,
+          "run_start",
+          runStartData("kvfcu/open_sub@1.0.0", runId),
+        ),
         line(2, "2026-01-15T09:00:01.000Z", "type_member_id", "gate", {}),
       ],
     });
@@ -127,7 +153,13 @@ describe("runSweep: the design's own commit-state table (section 7 §17)", () =>
       kind: "replay",
       capability: "kvfcu/open_sub",
       events: [
-        line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/open_sub@1.0.0", runId)),
+        line(
+          1,
+          "2026-01-15T09:00:00.000Z",
+          null,
+          "run_start",
+          runStartData("kvfcu/open_sub@1.0.0", runId),
+        ),
         line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
         line(3, "2026-01-15T09:00:02.000Z", "read_account_number", "gate", {}),
       ],
@@ -149,7 +181,13 @@ describe("runSweep: the design's own commit-state table (section 7 §17)", () =>
       kind: "replay",
       capability: "kvfcu/open_sub",
       events: [
-        line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/open_sub@1.0.0", runId)),
+        line(
+          1,
+          "2026-01-15T09:00:00.000Z",
+          null,
+          "run_start",
+          runStartData("kvfcu/open_sub@1.0.0", runId),
+        ),
         line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
       ],
     });
@@ -171,7 +209,15 @@ describe("runSweep: a read_only capability's crash carries no effect block", () 
     await seedCrashedRun(deps, runId, {
       kind: "replay",
       capability: "kvfcu/sign_in",
-      events: [line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/sign_in@1.0.0", runId))],
+      events: [
+        line(
+          1,
+          "2026-01-15T09:00:00.000Z",
+          null,
+          "run_start",
+          runStartData("kvfcu/sign_in@1.0.0", runId),
+        ),
+      ],
     });
 
     const report = await runSweep(deps, TENANT);
@@ -183,6 +229,41 @@ describe("runSweep: a read_only capability's crash carries no effect block", () 
   });
 });
 
+describe("runSweep: a REAL on-disk run log (written through RunLog and the redactor)", () => {
+  test("a real read_only replay's own run_start resolves the effect type: no effect block", async () => {
+    // Why a real replay: hand-built lines are never masked, so they missed the redactor turning
+    // `kvfcu/sign_in@1.0.0` into `kvfcu/[email#1]` (section 3 §6.7; the crash sweep reads it).
+    const h = await buildHarness(fixtureSite());
+    const real = await runReplay(
+      replayInputOf(h, requestOf({ capability: "kvfcu/sign_in@1", inputs: {} })),
+      h.deps,
+    );
+    expect(real.result.status).toBe("success");
+    const written = await h.deps.evidence.events(TENANT, real.runId);
+    if (!written.ok) throw new Error("test setup: events failed");
+    const runStart = written.value[0] as {
+      event?: string;
+      data?: { frozen?: { artifact?: { id?: string } } };
+    };
+    expect(runStart.event).toBe("run_start");
+    expect(runStart.data?.frozen?.artifact?.id).toBe("kvfcu/sign_in@1.0.0");
+
+    const deps = await harness();
+    const runId = "run_2026-01-15_1000000015";
+    await seedCrashedRun(deps, runId, {
+      kind: "replay",
+      capability: "kvfcu/sign_in",
+      events: [runStart],
+    });
+
+    const report = await runSweep(deps, TENANT);
+    expect(report.runs?.[0]).toEqual({ runId, kind: "replay" });
+    const result = (await readBack(deps, runId)).result as Record<string, unknown>;
+    expect("effect" in result).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("could not be confirmed");
+  });
+});
+
 describe("runSweep: an artifact the sweep cannot resolve", () => {
   test("an unresolvable artifact still gets an effect block (the safe default), with a note", async () => {
     const deps = await harness();
@@ -190,7 +271,15 @@ describe("runSweep: an artifact the sweep cannot resolve", () => {
     await seedCrashedRun(deps, runId, {
       kind: "replay",
       capability: "kvfcu/vanished_cap",
-      events: [line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/vanished_cap@9.9.9", runId))],
+      events: [
+        line(
+          1,
+          "2026-01-15T09:00:00.000Z",
+          null,
+          "run_start",
+          runStartData("kvfcu/vanished_cap@9.9.9", runId),
+        ),
+      ],
     });
 
     const report = await runSweep(deps, TENANT);
@@ -234,9 +323,22 @@ describe("runSweep: live runs are left untouched", () => {
     await seedCrashedRun(deps, runId, {
       kind: "replay",
       capability: "kvfcu/open_sub",
-      events: [line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/open_sub@1.0.0", runId))],
+      events: [
+        line(
+          1,
+          "2026-01-15T09:00:00.000Z",
+          null,
+          "run_start",
+          runStartData("kvfcu/open_sub@1.0.0", runId),
+        ),
+      ],
     });
-    const held = await deps.locks.acquire("run", runId, { owner: runId, command: "replay", staff: null, waitMs: 0 });
+    const held = await deps.locks.acquire("run", runId, {
+      owner: runId,
+      command: "replay",
+      staff: null,
+      waitMs: 0,
+    });
     if (!held.ok) throw new Error("test setup: could not hold the run lock");
 
     const report = await runSweep(deps, TENANT);
@@ -257,7 +359,12 @@ describe("runSweep: live runs are left untouched", () => {
       events: [line(1, "2026-01-15T09:00:00.000Z", null, "run_start", {})],
       status: "escalated",
     });
-    const held = await deps.locks.acquire("run", runId, { owner: runId, command: "discover", staff: null, waitMs: 0 });
+    const held = await deps.locks.acquire("run", runId, {
+      owner: runId,
+      command: "discover",
+      staff: null,
+      waitMs: 0,
+    });
     if (!held.ok) throw new Error("test setup: could not hold the run lock");
 
     const report = await runSweep(deps, TENANT);
@@ -271,7 +378,9 @@ describe("runSweep: live runs are left untouched", () => {
     const runId = "run_2026-01-15_1000000018";
     const created = await deps.evidence.createRun(TENANT, runId);
     if (!created.ok) throw new Error("test setup: createRun failed");
-    await created.value.appendEvent(maskedCast(line(1, "2026-01-15T09:00:00.000Z", null, "run_start", {})));
+    await created.value.appendEvent(
+      maskedCast(line(1, "2026-01-15T09:00:00.000Z", null, "run_start", {})),
+    );
     const original = RunJson.parse({
       schema: "intyy.run/1.0",
       run_id: runId,
@@ -289,7 +398,13 @@ describe("runSweep: live runs are left untouched", () => {
     // one case §17's own check exists for — a `run.json` already answers the question.
     await deps.evidence.appendIndex(
       TENANT,
-      maskedCast({ run_id: runId, at: "2026-01-15T09:00:00.000Z", status: "running", code: null, kind: "discovery" }),
+      maskedCast({
+        run_id: runId,
+        at: "2026-01-15T09:00:00.000Z",
+        status: "running",
+        code: null,
+        kind: "discovery",
+      }),
     );
 
     const report = await runSweep(deps, TENANT);

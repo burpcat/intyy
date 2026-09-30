@@ -54,6 +54,9 @@ export const BatchPlan = z
     app: AppId,
     capability: z.string().min(1),
     kind: z.literal("quick"),
+    /** The exact sealed key under test, like `kvfcu/open_share_subaccount@1.0.0` (section 3 §4.9,
+     * the certify run spec's `pin`). `certify rerun` reuses it. */
+    pin: z.string().regex(/^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+\.\d+\.\d+$/, "app/capability@x.y.z"),
     started_by: z.string().min(1),
     started_at: z.iso.datetime(),
     instance: TestInstance,

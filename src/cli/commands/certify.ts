@@ -24,13 +24,22 @@ import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
 
-/** Parses `<app>/<capability>@<major>`. */
-function parseKey(text: string | undefined): { app: string; capability: string; major: number } {
-  const m = /^([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_]*)@([1-9]\d*)$/.exec(text ?? "");
-  if (m?.[1] === undefined || m[2] === undefined || m[3] === undefined) {
-    throw new CliExit(EXIT.usage, "name a capability, like kvfcu/open_share_subaccount@1");
+/**
+ * Parses `<app>/<capability>@<major>` (the newest sealed version of that major, a documented
+ * convenience) or `<app>/<capability>@<major>.<minor>.<patch>` (the exact sealed key under
+ * test, section 3 §4.9's `pin`). The suite is looked up by major either way.
+ */
+function parseKey(text: string | undefined): {
+  app: string;
+  capability: string;
+  major: number;
+  version: string | undefined;
+} {
+  const m = /^([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_]*)@(([1-9]\d*)(?:\.\d+\.\d+)?)$/.exec(text ?? "");
+  if (m?.[1] === undefined || m[2] === undefined || m[3] === undefined || m[4] === undefined) {
+    throw new CliExit(EXIT.usage, "name a capability, like kvfcu/open_share_subaccount@1 or @1.0.0");
   }
-  return { app: m[1], capability: m[2], major: Number(m[3]) };
+  return { app: m[1], capability: m[2], major: Number(m[4]), version: m[3].includes(".") ? m[3] : undefined };
 }
 
 /** The approved suite, test data, and faults a certify batch needs (section 9 §9.1 check 3). */
@@ -172,7 +181,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
     .action(
       act(ctxOf, async (ctx, args, opts) => {
         const staff = requireRole(ctx, ctx.tenant, "operator");
-        const { app, capability, major } = parseKey(args[0]);
+        const { app, capability, major, version } = parseKey(args[0]);
         const { suite, testdata, faults } = await loadCertifyInputs(ctx, app, capability, major);
         const selection = resolveSelection(String(opts.profile), suite, faults);
         const className = typeof opts.class === "string" ? opts.class : undefined;
@@ -199,6 +208,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
               app,
               capability,
               major,
+              ...(version === undefined ? {} : { version }),
               appVersion,
               staff,
               className: resolvedClassName,
@@ -283,6 +293,8 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
               app,
               capability,
               major,
+              // The plan's own pin, never the newest sealed version (section 9 §9.1: rerun repeats the plan entry).
+              version: oldPlan.pin.slice(oldPlan.pin.indexOf("@") + 1),
               appVersion,
               staff,
               className: oldCase.class,

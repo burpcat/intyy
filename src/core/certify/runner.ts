@@ -22,7 +22,7 @@ import type { Settings } from "../model/settings.js";
 import type { ExtraCase, SuiteClass } from "../model/suite.js";
 import type { TestInstance } from "../model/testdata.js";
 import type { RequestIndexDeps } from "../orchestrator/request-index.js";
-import { catalogResolve } from "../orchestrator/prechecks.js";
+import { resolveExact, resolveMajor } from "../catalog/capabilities.js";
 import type { FrozenSet } from "../packs/merge.js";
 import type { MergeResult } from "../safety/policy/merge.js";
 import { Redactor, redactionRules } from "../safety/redaction/redactor.js";
@@ -52,6 +52,9 @@ export type CertifyCaseInput = {
   app: string;
   capability: string;
   major: number;
+  /** The exact sealed version to test, like `1.0.0` (the `pin`, section 3 §4.9). Omitted means
+   * the newest sealed version of `major` that fits `appVersion`, a documented convenience. */
+  version?: string;
   appVersion: string | undefined;
   staff: string;
   className: string;
@@ -92,6 +95,8 @@ export type CertifyDeps = {
 export type CertifyFailure =
   | "environment_not_test"
   | "no_version_for_context"
+  /** `version` names a version that is not sealed, or does not fit the app version. */
+  | "version_not_sealed"
   | "unknown_class"
   | "needs_at"
   | "no_commit_point"
@@ -160,6 +165,7 @@ async function runOne(
   runId: string,
   caseId: string,
   link: string,
+  pin: string,
   inputs: Record<string, string>,
   input: CertifyCaseInput,
   deps: CertifyDeps,
@@ -190,6 +196,7 @@ async function runOne(
       // Section 3 §4.9: the certify run spec's own `batch_id`/`case_id`.
       batchId: input.batchId,
       caseId,
+      pin,
       // Section 5 §7.4: the same merged handler set a production replay of this key would load.
       ...(input.frozenSet === undefined ? {} : { frozenSet: input.frozenSet }),
     },
@@ -303,9 +310,18 @@ export async function runCertifyCase(
   const app = deps.settings.doc.apps[input.app];
   if (app === undefined || app.environment !== "test") return fail("environment_not_test");
 
-  const resolve = catalogResolve(deps.artifacts);
-  const artifact = await resolve(input.app, input.capability, input.major, input.appVersion);
-  if (artifact === undefined) return fail("no_version_for_context");
+  let artifact: Artifact;
+  if (input.version !== undefined) {
+    const exact = await resolveExact(deps.artifacts, input.app, input.capability, input.version, input.appVersion);
+    if (!exact.ok) return fail("version_not_sealed", exact.detail);
+    artifact = exact.value;
+  } else {
+    const newest = await resolveMajor(deps.artifacts, input.app, input.capability, input.major, input.appVersion);
+    if (!newest.ok) return fail("no_version_for_context", newest.detail);
+    artifact = newest.value;
+  }
+  // Section 3 §4.9: the resolved exact key is the run's `pin`, for the baseline, the case, and the plan.
+  const pin = `${input.app}/${input.capability}@${artifact.identity.version ?? input.version ?? ""}`;
 
   const cls = input.classes.find((c) => c.id === input.className);
   if (cls === undefined) return fail("unknown_class");
@@ -325,6 +341,7 @@ export async function runCertifyCase(
     baselineRunId,
     BASELINE_CASE_ID,
     link,
+    pin,
     { ...inputs },
     input,
     deps,
@@ -374,7 +391,7 @@ export async function runCertifyCase(
   if (!armed.ok) return fail("harness_unreachable", armed.detail);
 
   const caseRunId = deps.ids.runId();
-  const caseOutcome = await runOne(caseRunId, CASE_ID, link, { ...inputs }, input, deps, artifact.contract.effect);
+  const caseOutcome = await runOne(caseRunId, CASE_ID, link, pin, { ...inputs }, input, deps, artifact.contract.effect);
 
   // Section 8 §7.4 step 7: "Read the fault log. Copy this case's entries into the run's
   // faults.jsonl." Read before the final `clearFaults`/`reset` wipe it. The reset just above
@@ -470,6 +487,7 @@ export async function runCertifyCase(
     app: input.app,
     capability: link,
     kind: "quick",
+    pin,
     started_by: input.staff,
     started_at: startedAt,
     instance: input.instance,

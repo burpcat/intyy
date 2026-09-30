@@ -13,7 +13,7 @@
 // 4 and 5 use the real, app-version-aware resolver (`resolveMajor` in `catalog/capabilities.ts`),
 // injected as a plain function so this module never imports a store port directly.
 import type { ArtifactStore } from "../catalog/artifacts.js";
-import { resolveMajor } from "../catalog/capabilities.js";
+import { resolveExact, resolveMajor } from "../catalog/capabilities.js";
 import type { Artifact } from "../model/artifact.js";
 import { scanRefs } from "../model/artifact-checks-shared.js";
 import type { Contract, ContractInput } from "../model/artifact/contract.js";
@@ -67,8 +67,15 @@ export type PrecheckResult = { check: string; passed: boolean; errors: PrecheckE
  * inconsistency (`"invalid"`) is folded into "not found" too — a known simplification for the
  * minimal M05 resolver; a corrupted sealed artifact should really surface as `internal_error`.
  */
-export function catalogResolve(store: ArtifactStore): PrecheckInput["resolve"] {
+export function catalogResolve(store: ArtifactStore, pin?: string): PrecheckInput["resolve"] {
+  // Why: a certify run's `pin` is the exact key under test (section 3 §4.9); the task's own
+  // capability then resolves to that sealed version, never the newest of its major.
+  const pinned = pin === undefined ? null : /^([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_]*)@((\d+)\.\d+\.\d+)$/.exec(pin);
   return async (app, capability, major, appVersion) => {
+    if (pinned?.[1] === app && pinned[2] === capability && Number(pinned[4]) === major && pinned[3] !== undefined) {
+      const exact = await resolveExact(store, app, capability, pinned[3], appVersion);
+      return exact.ok ? exact.value : undefined;
+    }
     const found = await resolveMajor(store, app, capability, major, appVersion);
     return found.ok ? found.value : undefined;
   };

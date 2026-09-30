@@ -2,7 +2,11 @@
 // digit runs, and per-run tokens. Design section 4 §9.2 to §9.10, updates file §3; M02 task 4.
 // Names and values here are made up. Seed member 100240 is the canary and never appears.
 import { describe, expect, test } from "vitest";
-import { Redactor, type RedactionRules } from "../../../src/core/safety/redaction/redactor.js";
+import {
+  Redactor,
+  fact,
+  type RedactionRules,
+} from "../../../src/core/safety/redaction/redactor.js";
 
 /** The approved global lists (section 4 §9.7, §9.8; updates file §3). */
 const rules: RedactionRules = {
@@ -378,5 +382,28 @@ describe("known limit (section 4 §14)", () => {
   // Why: section 4 §15.3. A name with no label, no input, and no shape leaks. Tracked, not hidden.
   test.fails("a name inside a free sentence is masked", () => {
     expect(fresh().text("Account opened for Quillon Brask today.")).not.toContain("Quillon");
+  });
+});
+
+describe("artifact keys are facts only when intyy makes them (section 2 §9, section 3 §6.7)", () => {
+  test("an exact artifact key, wrapped as a fact, survives; so does the major form", () => {
+    expect(
+      fresh().value({ id: fact("kvfcu/open_sub@1.0.0"), link: fact("kvfcu/open_sub@1") }),
+    ).toEqual({
+      id: "kvfcu/open_sub@1.0.0",
+      link: "kvfcu/open_sub@1",
+    });
+  });
+
+  test("a key-like string inside screen text is still masked", () => {
+    const out = fresh().text("mail bob@1.0.0 now, or kvfcu/open_sub@1.0.0 today");
+    expect(out).not.toContain("bob@1.0.0");
+    expect(out).not.toContain("kvfcu/open_sub@1.0.0");
+  });
+
+  test("only the strict shape can become a fact", () => {
+    expect(() => fact("mail bob@1.0.0 now")).toThrow("not a fact shape");
+    expect(() => fact("kvfcu/open_sub@1.0")).toThrow("not a fact shape");
+    expect(() => fact("Bob/Open@1.0.0")).toThrow("not a fact shape");
   });
 });

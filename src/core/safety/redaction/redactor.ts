@@ -50,6 +50,9 @@ const FACT_SHAPES = [
   /^(run|batch|lease|alert)_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]{10}$/, // an ID (section 3 §7.2)
   /^sha256:[0-9a-f]{64}$/, // a hash
   /^(screens|dom|a11y|crops|llm|blobs)\/\d{5}_[a-z0-9_]+\.(png|html|yaml|json)$/, // a run file (§7.4)
+  // An artifact key: `<app>/<capability>@<major>` or `@<major>.<minor>.<patch>` (section 2 §9).
+  // Why a fact: the email detector would turn `kvfcu/open_sub@1.0.0` into `kvfcu/[email#1]`.
+  /^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+(\.\d+\.\d+)?$/,
 ];
 
 /**

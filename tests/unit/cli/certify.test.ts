@@ -3,7 +3,9 @@
 // operator-role refusal, a missing approved suite/testdata/faults refused, and `--profile` as a
 // suite extra case ID. Builds on the M05 replay CLI harness (sealed artifacts, policy, settings)
 // plus a route-mapping harness double standing in for the bank app's test-mode controls
-// (tests/unit/certify/route-mapping-harness.ts). M06 task 8.
+// (tests/unit/certify/route-mapping-harness.ts). Also the `pin`: an exact key, `@<major>` as the
+// newest sealed, an unsealed pin refused, the pin in plan.json and run_start, and rerun keeping
+// the plan's pin (section 3 §4.9; section 9 §9.1). M06 tasks 8 and 12.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
@@ -14,10 +16,14 @@ import type { Io } from "../../../src/cli/output.js";
 import type { BatchReport } from "../../../src/core/model/batch-report.js";
 import { FakeHarness } from "../../../src/fakes/harness.js";
 import { snapshotFactory } from "../../../src/fakes/snapshot-surface/index.js";
-import { fixtureSite, MEMBER_FOUND } from "../replay/executor-harness.js";
-import { idsNotifying, OPEN_SUB_ROUTE_FOR, RouteMappingHarness } from "../certify/route-mapping-harness.js";
+import { fixtureSite, MEMBER_FOUND, OPEN_SUB } from "../replay/executor-harness.js";
+import {
+  idsNotifying,
+  OPEN_SUB_ROUTE_FOR,
+  RouteMappingHarness,
+} from "../certify/route-mapping-harness.js";
 import { cleanRoots } from "./helpers.js";
-import { REQUEST_INDEX_ENV, type ReplayEnv, replayRoot } from "./replay-harness.js";
+import { REQUEST_INDEX_ENV, type ReplayEnv, realWiringOf, replayRoot } from "./replay-harness.js";
 
 /** The request index's one signing key, bound the same way `replay-harness.ts`'s own settings
  * doc expects it (section 4 §8.11): every certify call needs it too, since `runReplay` records
@@ -40,7 +46,11 @@ async function certifyCall(
   const io: Io = {
     stdout: { write: (t) => (stdout += t), isTTY: false },
     stderr: { write: (t) => (stderr += t), isTTY: false },
-    stdin: { isTTY: false, readAll: () => Promise.resolve(""), question: () => Promise.resolve("") },
+    stdin: {
+      isTTY: false,
+      readAll: () => Promise.resolve(""),
+      question: () => Promise.resolve(""),
+    },
     env: { [REQUEST_INDEX_ENV]: REQUEST_INDEX_KEY_VALUE, INTYY_STAFF: staff },
     cwd: env.root,
   };
@@ -49,7 +59,12 @@ async function certifyCall(
     wire: (root, config, wireEnv) => {
       const real = realWire(root, config, wireEnv);
       const base = new FakeHarness();
-      const routeHarness = new RouteMappingHarness(base, real.evidence, "keystone", OPEN_SUB_ROUTE_FOR);
+      const routeHarness = new RouteMappingHarness(
+        base,
+        real.evidence,
+        "keystone",
+        OPEN_SUB_ROUTE_FOR,
+      );
       return {
         ...real,
         policy: env.policy,
@@ -90,8 +105,16 @@ async function editWith(
   const io: Io = {
     stdout: { write: (t) => (stdout += t), isTTY: false },
     stderr: { write: (t) => (stderr += t), isTTY: false },
-    stdin: { isTTY: false, readAll: () => Promise.resolve(""), question: () => Promise.resolve("") },
-    env: { [REQUEST_INDEX_ENV]: REQUEST_INDEX_KEY_VALUE, INTYY_STAFF: staff, EDITOR: `cp "${editedPath}"` },
+    stdin: {
+      isTTY: false,
+      readAll: () => Promise.resolve(""),
+      question: () => Promise.resolve(""),
+    },
+    env: {
+      [REQUEST_INDEX_ENV]: REQUEST_INDEX_KEY_VALUE,
+      INTYY_STAFF: staff,
+      EDITOR: `cp "${editedPath}"`,
+    },
     cwd: env.root,
   };
   const code = await run(argv, io, { commands });
@@ -111,7 +134,9 @@ async function sealCertifyInputs(
       capability: CAP,
       revision: 1,
       reason: "Test suite.",
-      classes: [{ id: "valid", inputs: { member_id: "@members.valid" }, expect: { status: "success" } }],
+      classes: [
+        { id: "valid", inputs: { member_id: "@members.valid" }, expect: { status: "success" } },
+      ],
       matrix: { class: "valid", profiles: "standard" },
       stability: { class: "valid", levels: [0.05], seeds: 1, twins: false },
       drills: { count: 0 },
@@ -247,15 +272,39 @@ describe("certify case: exit codes", () => {
     expect(r.code).toBe(0);
     const body = JSON.parse(r.stdout) as { batch_id: string; report: BatchReport };
     expect(body.report.gate.passed).toBe(true);
-    const planPath = join(env.root, "state", "evidence", "keystone", "batches", body.batch_id, "plan.json");
-    const reportPath = join(env.root, "state", "evidence", "keystone", "batches", body.batch_id, "report.json");
-    const plan = JSON.parse(readFileSync(planPath, "utf8")) as { batch_id: string; cases: { case_id: string }[] };
+    const planPath = join(
+      env.root,
+      "state",
+      "evidence",
+      "keystone",
+      "batches",
+      body.batch_id,
+      "plan.json",
+    );
+    const reportPath = join(
+      env.root,
+      "state",
+      "evidence",
+      "keystone",
+      "batches",
+      body.batch_id,
+      "report.json",
+    );
+    const plan = JSON.parse(readFileSync(planPath, "utf8")) as {
+      batch_id: string;
+      cases: { case_id: string }[];
+    };
     const report = JSON.parse(readFileSync(reportPath, "utf8")) as { batch_id: string };
     expect(plan.batch_id).toBe(body.batch_id);
     expect(report.batch_id).toBe(body.batch_id);
     expect(plan.cases.map((c) => c.case_id)).toEqual(["baseline", "case"]);
 
-    const reported = await certifyCall(env, "op_017", ["certify", "report", body.batch_id, "--json"]);
+    const reported = await certifyCall(env, "op_017", [
+      "certify",
+      "report",
+      body.batch_id,
+      "--json",
+    ]);
     expect(reported.code).toBe(0);
     expect((JSON.parse(reported.stdout) as { batch_id: string }).batch_id).toBe(body.batch_id);
   });
@@ -337,10 +386,144 @@ describe("certify rerun", () => {
     expect(first.code).toBe(0);
     const firstBody = JSON.parse(first.stdout) as { batch_id: string };
 
-    const second = await certifyCall(env, "op_017", ["certify", "rerun", firstBody.batch_id, "case", "--json"]);
+    const second = await certifyCall(env, "op_017", [
+      "certify",
+      "rerun",
+      firstBody.batch_id,
+      "case",
+      "--json",
+    ]);
     expect(second.code).toBe(0);
     const secondBody = JSON.parse(second.stdout) as { batch_id: string; report: BatchReport };
     expect(secondBody.batch_id).not.toBe(firstBody.batch_id);
     expect(secondBody.report.cases[0]?.result.status).toBe("success");
   });
+});
+
+/** Seals a newer `open_sub` version, `1.1.0`, next to the `1.0.0` that `replayRoot()` sealed. */
+async function sealNewerOpenSub(env: ReplayEnv): Promise<void> {
+  const sealed = await realWiringOf(env).candidates.seal(
+    "kvfcu/open_sub/cand_2026-01-15_1000000005",
+    "1.1.0",
+    "op_017",
+    // Why the new `identity.version`: the pin reads the artifact's own version.
+    { ...OPEN_SUB, identity: { ...OPEN_SUB.identity, version: "1.1.0" } },
+    {},
+  );
+  if (!sealed.ok) throw new Error("test setup: open_sub 1.1.0 seal failed");
+}
+
+type Batch = {
+  batch_id: string;
+  plan: { pin: string; cases: { run_id: string }[] };
+  report: BatchReport;
+};
+
+/** The `pin` on one run's `run_start` line, or undefined. */
+async function runStartPin(env: ReplayEnv, runId: string): Promise<unknown> {
+  const events = await realWiringOf(env).evidence.events("keystone", runId);
+  if (!events.ok) throw new Error("test setup: the run log cannot be read");
+  const start = events.value.find((e) => (e as { event?: unknown }).event === "run_start") as
+    { data?: { pin?: unknown } } | undefined;
+  return start?.data?.pin;
+}
+
+async function certifyWith(
+  env: ReplayEnv,
+  key: string,
+): Promise<{ code: number; stderr: string; body?: Batch }> {
+  const r = await certifyCall(env, "op_017", [
+    "certify",
+    "case",
+    key,
+    "--class",
+    "valid",
+    "--profile",
+    "server_error_on_search",
+    "--json",
+  ]);
+  return r.stdout.trim() === "" || r.code === 7 || r.code === 1
+    ? { code: r.code, stderr: r.stderr }
+    : { code: r.code, stderr: r.stderr, body: JSON.parse(r.stdout) as Batch };
+}
+
+describe("certify case: the pin (section 3 §4.9)", () => {
+  test(
+    "an exact pin runs that version, even when a newer one is sealed",
+    { timeout: 20000 },
+    async () => {
+      const env = await replayRoot();
+      await sealCertifyInputs(env);
+      await sealNewerOpenSub(env);
+      const r = await certifyWith(env, "kvfcu/open_sub@1.0.0");
+      expect(r.code).toBe(0);
+      expect(r.body?.plan.pin).toBe("kvfcu/open_sub@1.0.0");
+    },
+  );
+
+  test("@<major> resolves the newest sealed version", { timeout: 20000 }, async () => {
+    const env = await replayRoot();
+    await sealCertifyInputs(env);
+    await sealNewerOpenSub(env);
+    const r = await certifyWith(env, CAP);
+    expect(r.code).toBe(0);
+    expect(r.body?.plan.pin).toBe("kvfcu/open_sub@1.1.0");
+  });
+
+  test("an exact version that is not sealed ends version_not_sealed", async () => {
+    const env = await replayRoot();
+    await sealCertifyInputs(env);
+    const r = await certifyWith(env, "kvfcu/open_sub@1.2.0");
+    expect(r.code).toBe(7);
+    expect(r.stderr).toContain("version_not_sealed");
+  });
+
+  test("plan.json and both run_start lines carry the pin", { timeout: 20000 }, async () => {
+    const env = await replayRoot();
+    await sealCertifyInputs(env);
+    const r = await certifyWith(env, "kvfcu/open_sub@1.0.0");
+    expect(r.code).toBe(0);
+    const body = r.body;
+    if (body === undefined) throw new Error("expected a batch");
+    const planPath = join(
+      env.root,
+      "state",
+      "evidence",
+      "keystone",
+      "batches",
+      body.batch_id,
+      "plan.json",
+    );
+    expect((JSON.parse(readFileSync(planPath, "utf8")) as { pin: string }).pin).toBe(
+      "kvfcu/open_sub@1.0.0",
+    );
+    expect(body.plan.cases).toHaveLength(2);
+    for (const c of body.plan.cases)
+      expect(await runStartPin(env, c.run_id)).toBe("kvfcu/open_sub@1.0.0");
+  });
+
+  test(
+    "rerun keeps the plan's pin when a newer version is sealed later",
+    { timeout: 30000 },
+    async () => {
+      const env = await replayRoot();
+      await sealCertifyInputs(env);
+      const first = await certifyWith(env, CAP);
+      expect(first.body?.plan.pin).toBe("kvfcu/open_sub@1.0.0");
+      await sealNewerOpenSub(env);
+
+      const second = await certifyCall(env, "op_017", [
+        "certify",
+        "rerun",
+        first.body?.batch_id ?? "",
+        "case",
+        "--json",
+      ]);
+      expect(second.code).toBe(0);
+      const body = JSON.parse(second.stdout) as Batch;
+      expect(body.plan.pin).toBe("kvfcu/open_sub@1.0.0");
+      const caseRun = body.plan.cases[1];
+      expect(await runStartPin(env, caseRun?.run_id ?? "")).toBe("kvfcu/open_sub@1.0.0");
+    },
+  );
 });
