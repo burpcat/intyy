@@ -215,6 +215,34 @@ export class FileCandidateStore<F extends Record<string, unknown>, D> implements
     return ok(read.value);
   }
 
+  /** Every sealed artifact ID and version. */
+  async listSealedArtifacts(): Promise<readonly { id: string; version: Rev }[]> {
+    const index = await this.#artifactIndex();
+    if (!index.ok) return [];
+    return index.value.filter((l) => l.event === "sealed").map((l) => ({ id: l.id, version: l.rev }));
+  }
+
+  /** Reads back one sealed version's crop file. */
+  async getSealedCrop(
+    artifactId: string,
+    version: Rev,
+    targetId: string,
+  ): Promise<Outcome<Uint8Array, "not_found">> {
+    assertSafeRelPath(artifactId);
+    assertSafeRelPath(version);
+    assertSafeName(targetId);
+    try {
+      return ok(
+        new Uint8Array(
+          await readFileBytes(join(this.#artifactsDir, artifactId, version, "crops", `${targetId}.png`)),
+        ),
+      );
+    } catch (e) {
+      if (hasCode(e, "ENOENT")) return fail("not_found", `${artifactId} ${version}: ${targetId}.png is missing`);
+      throw e;
+    }
+  }
+
   /** The artifacts store's `sealed` index lines. */
   async #artifactIndex(): Promise<Outcome<IndexLine[], "invalid">> {
     const read = await readJsonLines(join(this.#artifactsDir, "index.jsonl"));

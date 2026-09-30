@@ -305,6 +305,20 @@ export class FakeCandidateStore<F extends Record<string, unknown>, D> implements
     return Promise.resolve(ok(roundTrip(found.artifact)));
   }
 
+  /** Every sealed artifact ID and version. */
+  listSealedArtifacts(): Promise<readonly { id: string; version: Rev }[]> {
+    return Promise.resolve(
+      this.#artifactIndex.filter((l) => l.event === "sealed").map((l) => ({ id: l.id, version: l.rev })),
+    );
+  }
+
+  /** Reads back one sealed version's crop file. */
+  getSealedCrop(artifactId: string, version: Rev, targetId: string): Promise<Outcome<Uint8Array, "not_found">> {
+    const bytes = this.#sealed.get(`${artifactId}@${version}`)?.crops.get(targetId);
+    if (bytes === undefined) return Promise.resolve(fail("not_found", `${artifactId} ${version}: ${targetId}.png is missing`));
+    return Promise.resolve(ok(bytes));
+  }
+
   /** Test hook: reads back what `seal` wrote for one artifact version, or `null`. */
   sealed(
     artifactId: string,

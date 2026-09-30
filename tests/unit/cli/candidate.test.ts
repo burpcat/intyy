@@ -1,7 +1,7 @@
 // Proves `candidate new | list | show | issues | decide | review`, and that `discover` records
 // a candidate at the end of a successful run. Design section 9 §8.1, §8.2; section 6 §14, §15.
 // Synthetic values only. No canary member.
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, test } from "vitest";
@@ -518,5 +518,92 @@ describe("candidate second-look and seal, through the CLI", () => {
     expect(existsSync(join(dir, "screen.png"))).toBe(false);
     const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as { missing: string[] };
     expect([...meta.missing].sort()).toEqual(["dom.html", "screen.png"]);
+  });
+});
+
+/** Seals a fresh `sign_in` candidate as `1.0.0` and returns its root and library artifact path. */
+async function sealSignIn(): Promise<{ r: string; policy: FakeDocumentStore<Policy>; artifactDir: string }> {
+  const r = await root();
+  const policy = await sealedPolicyStore([GLOBAL_LAYER, SEAL_APP_LAYER, TENANT_LAYER]);
+  const id = await newCandidate(r);
+  await resolveBasics(r, id, "idempotent");
+  const sealed = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy);
+  if (sealed.code !== EXIT.ok) throw new Error(`test setup: seal failed: ${sealed.stderr}`);
+  return { r, policy, artifactDir: join(r, "library", "artifacts", "kvfcu", "sign_in", "1.0.0") };
+}
+
+describe("artifact list, show, and verify", () => {
+  test("list and show read back the sealed sign_in artifact", async () => {
+    const { r } = await sealSignIn();
+    const listed = await cli(r, "op_017", ["artifact", "list", "--json"]);
+    expect(listed.code).toBe(EXIT.ok);
+    expect(
+      (JSON.parse(listed.stdout) as { artifacts: { app: string; capability: string; version: string }[] })
+        .artifacts,
+    ).toEqual([{ app: "kvfcu", capability: "sign_in", version: "1.0.0" }]);
+
+    const shown = await cli(r, "op_017", ["artifact", "show", "kvfcu/sign_in@1.0.0", "--json"]);
+    expect(shown.code).toBe(EXIT.ok);
+    const artifact = (JSON.parse(shown.stdout) as { artifact: { identity: { version: string } } }).artifact;
+    expect(artifact.identity.version).toBe("1.0.0");
+  });
+
+  test("verify passes on a freshly sealed artifact", async () => {
+    const { r, policy } = await sealSignIn();
+    const got = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    expect(got.code).toBe(EXIT.ok);
+    expect((JSON.parse(got.stdout) as { ok: boolean }).ok).toBe(true);
+  });
+
+  test("verify fails on a tampered artifact.json", async () => {
+    const { r, policy, artifactDir } = await sealSignIn();
+    const path = join(artifactDir, "artifact.json");
+    const doc = JSON.parse(readFileSync(path, "utf8")) as { about: { summary: string } };
+    doc.about.summary = "Tampered by hand.";
+    writeFileSync(path, JSON.stringify(doc, null, 2));
+
+    const got = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    expect(got.code).toBe(EXIT.invalid);
+    const data = JSON.parse(got.stdout) as { ok: boolean; problems: { code: string }[] };
+    expect(data.ok).toBe(false);
+    expect(data.problems.some((p) => p.code === "invalid")).toBe(true);
+  });
+
+  test("verify fails when a target's crop file is missing", async () => {
+    const { r, policy, artifactDir } = await sealSignIn();
+    const cropPath = join(artifactDir, "crops", "login_button.png");
+    expect(existsSync(cropPath)).toBe(true);
+    rmSync(cropPath);
+
+    const got = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    expect(got.code).toBe(EXIT.invalid);
+    const data = JSON.parse(got.stdout) as { ok: boolean; problems: { code: string; message: string }[] };
+    expect(data.ok).toBe(false);
+    expect(data.problems.some((p) => p.code === "missing_crop" && p.message.includes("login_button"))).toBe(
+      true,
+    );
+  });
+});
+
+describe("capability list and describe", () => {
+  test("list and describe read the sealed sign_in artifact, draft state until M10", async () => {
+    const { r } = await sealSignIn();
+    const listed = await cli(r, "op_017", ["capability", "list", "--json"]);
+    expect(listed.code).toBe(EXIT.ok);
+    expect(
+      (JSON.parse(listed.stdout) as { capabilities: { app: string; capability: string; major: number; state: string }[] })
+        .capabilities,
+    ).toEqual([{ app: "kvfcu", capability: "sign_in", major: 1, effect: "read_only", state: "draft" }]);
+  });
+
+  test("--format tool matches the committed golden file", async () => {
+    const { r } = await sealSignIn();
+    const got = await cli(r, "op_017", ["capability", "describe", "kvfcu/sign_in@1", "--format", "tool", "--json"]);
+    expect(got.code).toBe(EXIT.ok);
+    const tool = JSON.parse(got.stdout) as unknown;
+    const golden = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../fixtures/golden/sign_in.tool.json", import.meta.url)), "utf8"),
+    ) as unknown;
+    expect(tool).toEqual(golden);
   });
 });

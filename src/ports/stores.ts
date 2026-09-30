@@ -133,6 +133,16 @@ export interface CandidateStore<F extends Record<string, unknown>, D> {
     version: Rev,
     signal?: AbortSignal,
   ): Promise<Outcome<unknown, "not_found" | "invalid">>;
+  /** Every sealed artifact ID and version, in index order. For `artifact list` and `capability
+   * list` (section 9 §11). */
+  listSealedArtifacts(signal?: AbortSignal): Promise<readonly { id: string; version: Rev }[]>;
+  /** Reads back one sealed version's crop file. For `artifact verify` (section 2 §13.2, §19). */
+  getSealedCrop(
+    artifactId: string,
+    version: Rev,
+    targetId: string,
+    signal?: AbortSignal,
+  ): Promise<Outcome<Uint8Array, "not_found">>;
 }
 
 /**

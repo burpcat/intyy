@@ -19,6 +19,7 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--app": "an app ID",
   "--candidate": "a candidate ID",
   "--version": "a semver version to seal, like 1.0.0",
+  "--format": "the one choice: tool",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

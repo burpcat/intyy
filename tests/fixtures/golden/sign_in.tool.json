@@ -1,0 +1,9 @@
+{
+  "name": "kvfcu__sign_in__v1",
+  "description": "Sign in as the operator and reach the home page.\n\nSign the operator in first.\n\n1. An unknown outcome code is a generic business outcome. Show its description.\n2. An unknown failure code is a generic failure. Trust its transient and safe_to_retry flags.\n3. An unknown warning code is ignored.\n4. An unknown result field is ignored.",
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  }
+}

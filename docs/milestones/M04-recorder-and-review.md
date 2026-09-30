@@ -66,7 +66,7 @@ The real `sign_in` run becomes a reviewed, sealed, versioned artifact: `kvfcu/si
 - [x] 9. Write the golden test: a saved masked log plus decisions give the same artifact bytes.
 - [x] 10. Write the candidate commands and the guided review walk.
 - [x] 11. Write sealing and the second look. Test: sealing fails without it; passes with another staff ID; a disagreement records `irreversible`.
-- [ ] 12. Write the artifact and capability commands.
+- [x] 12. Write the artifact and capability commands.
 - [ ] 13. Record the A1 run as a candidate. Stop. Ask the owner to review and seal `sign_in@1.0.0`.
 
 ## Test gate

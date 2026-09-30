@@ -129,6 +129,28 @@ export function candidateStoreContract(
         failure: "not_found",
       });
     });
+
+    test("listSealedArtifacts and getSealedCrop read back what seal wrote", async () => {
+      const { store } = await make();
+      const crop = Uint8Array.from([137, 80, 78, 71]);
+      await store.seal("kvfcu/sign_in/c1", "1.0.0", "op_017", { a: 1 }, { search_button: crop });
+      await store.seal("kvfcu/other/c1", "1.0.0", "op_017", { a: 2 }, {});
+
+      expect(await store.listSealedArtifacts()).toEqual(
+        expect.arrayContaining([
+          { id: "kvfcu/sign_in", version: "1.0.0" },
+          { id: "kvfcu/other", version: "1.0.0" },
+        ]),
+      );
+      expect(await store.getSealedCrop("kvfcu/sign_in", "1.0.0", "search_button")).toEqual({
+        ok: true,
+        value: crop,
+      });
+      expect(await store.getSealedCrop("kvfcu/sign_in", "1.0.0", "no_such_target")).toMatchObject({
+        ok: false,
+        failure: "not_found",
+      });
+    });
   });
 }
 

@@ -121,8 +121,9 @@ function writeDraftsAndFixtures(
   }
 }
 
-/** The merged global+app policy's checks a strict artifact load needs (section 2 §19.6). */
-async function sealCheckContext(ctx: Ctx, app: string): Promise<ArtifactCheckContext> {
+/** The merged global+app policy's checks a strict artifact load needs (section 2 §19.6). Shared
+ * with `artifact verify`, which runs the same strict check. */
+export async function sealCheckContext(ctx: Ctx, app: string): Promise<ArtifactCheckContext> {
   const policy = await effectivePolicy(ctx, app);
   return {
     pathAllowed: (pattern) => policy.effective.paths.allow.includes(pattern),

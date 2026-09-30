@@ -5,6 +5,7 @@
 // section 9 §6.2 names (this module never imports `node:fs`). Every failure is an `Outcome`.
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { RunFolder } from "../../ports/stores.js";
+import { newestVersion } from "../catalog/artifacts.js";
 import { Artifact } from "../model/artifact.js";
 import { checkArtifact, type ArtifactCheckContext } from "../model/artifact-checks.js";
 import type { Contract } from "../model/artifact/contract.js";
@@ -133,22 +134,6 @@ function actualBump(prev: string, next: string): Bump | null {
   if (n[1] !== p[1]) return "minor";
   if (n[2] !== p[2]) return "patch";
   return null;
-}
-
-/** `-1`, `0`, or `1`, comparing two semver strings numerically (never as plain text). */
-function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < 3; i += 1) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff > 0 ? 1 : -1;
-  }
-  return 0;
-}
-
-/** The newest of a list of sealed semver strings. Throws on an empty list: the caller checks first. */
-export function newestVersion(versions: readonly string[]): string {
-  return versions.reduce((best, v) => (compareSemver(v, best) > 0 ? v : best));
 }
 
 /**
