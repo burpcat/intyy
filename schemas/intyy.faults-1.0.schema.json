@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.faults/1.0"
+    },
+    "app": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "revision": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "session_expire",
+              "known_popup",
+              "unknown_popup",
+              "supervisor_required",
+              "server_error",
+              "maintenance",
+              "drop_after_confirm"
+            ]
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "@commit_point"
+              },
+              {
+                "type": "string",
+                "const": "@each_request_step"
+              },
+              {
+                "type": "string",
+                "pattern": "^@step:[a-z][a-z0-9_]*$"
+              }
+            ]
+          },
+          "expect_commit": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "recovers"
+              },
+              {
+                "type": "string",
+                "const": "recovers_or_escalates"
+              },
+              {
+                "type": "string",
+                "const": "reconciles_found"
+              },
+              {
+                "type": "string",
+                "const": "reconciles_absent"
+              },
+              {
+                "type": "string",
+                "pattern": "^fails:[a-z][a-z0-9_]*$"
+              }
+            ]
+          },
+          "expect_window": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "recovers"
+              },
+              {
+                "type": "string",
+                "const": "recovers_or_escalates"
+              },
+              {
+                "type": "string",
+                "const": "reconciles_found"
+              },
+              {
+                "type": "string",
+                "const": "reconciles_absent"
+              },
+              {
+                "type": "string",
+                "pattern": "^fails:[a-z][a-z0-9_]*$"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "at",
+          "expect_commit"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "approved": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": [
+        "by",
+        "at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "app",
+    "revision",
+    "profiles"
+  ],
+  "additionalProperties": false
+}

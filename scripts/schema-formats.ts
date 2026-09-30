@@ -9,6 +9,7 @@ import { CandidateRuns } from "../src/core/model/candidate-runs.js";
 import { Cassette } from "../src/core/model/cassette.js";
 import { Config } from "../src/core/model/config.js";
 import { EffectUpdate } from "../src/core/model/effect-update.js";
+import { Faults } from "../src/core/model/faults.js";
 import { Fixture } from "../src/core/model/fixture.js";
 import { LockFile } from "../src/core/model/lock.js";
 import { HandlerDraft } from "../src/core/model/handler-draft.js";
@@ -23,6 +24,8 @@ import { RunSpec } from "../src/core/model/runspec.js";
 import { Settings } from "../src/core/model/settings.js";
 import { StaffFile } from "../src/core/model/staff.js";
 import { IndexLine } from "../src/core/model/store-index.js";
+import { Suite } from "../src/core/model/suite.js";
+import { Testdata } from "../src/core/model/testdata.js";
 
 /** Every file format, by its schema name (its `schema` literal, with `/` written as `-`). */
 export const formats: Record<string, z.ZodType> = {
@@ -49,4 +52,7 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.request-1.0": Request,
   "intyy.result-1.0": Result,
   "intyy.effect_update-1.0": EffectUpdate,
+  "intyy.suite-1.0": Suite,
+  "intyy.testdata-1.0": Testdata,
+  "intyy.faults-1.0": Faults,
 };

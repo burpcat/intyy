@@ -1,8 +1,10 @@
 // The canary scan reads the pack store and the fixture library too (design section 5 §13.6,
-// section 4 §14 update). Reads the real, checked-in `library/packs/` and `library/fixtures/`
-// folders read-only; never probes anything else (CLAUDE.md). `library/packs/` does not exist
-// yet at M06 task 1 (no pack is sealed until task 11); an empty folder scans clean, not an
-// error. M06 task 1.
+// section 4 §14 update), plus the testdata and faults stores added in M06 task 7 (M06 gate:
+// "Canary scan: no canary value in the pack store or fixtures"). Reads the real, checked-in
+// `library/packs/`, `library/fixtures/`, `library/testdata/`, and `library/faults/` folders
+// read-only; never probes anything else (CLAUDE.md). `library/packs/` does not exist yet at M06
+// task 1 (no pack is sealed until task 11); an empty folder scans clean, not an error. M06 tasks
+// 1 and 7.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -26,6 +28,16 @@ describe("canary scan: the pack store and the fixture library (section 5 §13.6)
     const files = [
       ...(await filesUnder(join(ROOT, "library", "packs"))),
       ...(await filesUnder(join(ROOT, "library", "fixtures"))),
+    ];
+    expect(scanForCanaries(files, config.canary_members)).toEqual([]);
+  });
+});
+
+describe("canary scan: the testdata and faults stores (M06 gate)", () => {
+  test("no canary member appears anywhere in library/testdata or library/faults", async () => {
+    const files = [
+      ...(await filesUnder(join(ROOT, "library", "testdata"))),
+      ...(await filesUnder(join(ROOT, "library", "faults"))),
     ];
     expect(scanForCanaries(files, config.canary_members)).toEqual([]);
   });

@@ -5,6 +5,7 @@ import { registerArtifact } from "./artifact.js";
 import { registerCandidate } from "./candidate.js";
 import { registerCapability } from "./capability.js";
 import { registerDiscover } from "./discover.js";
+import { registerFaults } from "./faults.js";
 import { registerFixture } from "./fixture.js";
 import { registerOperator } from "./operator.js";
 import { registerPack } from "./pack.js";
@@ -15,6 +16,8 @@ import { registerRun } from "./run.js";
 import { registerSettings } from "./settings.js";
 import { registerSpec } from "./spec.js";
 import { registerStaff } from "./staff.js";
+import { registerSuite } from "./suite.js";
+import { registerTestdata } from "./testdata.js";
 
 /** The real command list. `main.ts` passes it to `run`. */
 export const commands: readonly Register[] = [
@@ -22,6 +25,7 @@ export const commands: readonly Register[] = [
   registerCandidate,
   registerCapability,
   registerDiscover,
+  registerFaults,
   registerFixture,
   registerOperator,
   registerPack,
@@ -32,4 +36,6 @@ export const commands: readonly Register[] = [
   registerSettings,
   registerSpec,
   registerStaff,
+  registerSuite,
+  registerTestdata,
 ];

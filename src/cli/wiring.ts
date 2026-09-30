@@ -19,12 +19,15 @@ import { CandidateDecision } from "../core/model/candidate-decision.js";
 import { CandidateIssues } from "../core/model/candidate-issues.js";
 import { CandidateRuns } from "../core/model/candidate-runs.js";
 import type { Config } from "../core/model/config.js";
-import { packKind, policyKind, settingsKind } from "../core/model/kinds.js";
+import type { Faults } from "../core/model/faults.js";
+import { faultsKind, packKind, policyKind, settingsKind, suiteKind, testdataKind } from "../core/model/kinds.js";
 import type { Pack } from "../core/model/pack.js";
 import type { Policy } from "../core/model/policy.js";
 import type { CandidateFiles } from "../core/recorder/candidates.js";
 import { RequestIndexLine } from "../core/model/request-index.js";
 import type { Settings } from "../core/model/settings.js";
+import type { Suite } from "../core/model/suite.js";
+import type { Testdata } from "../core/model/testdata.js";
 import { LockManager } from "../core/locks/manager.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Locks } from "../ports/locks.js";
@@ -43,6 +46,10 @@ export type Wiring = {
   policy: DocumentStore<Policy>;
   settings: DocumentStore<Settings>;
   packs: DocumentStore<Pack>;
+  /** Certify inputs: suites, test data, and fault profiles (section 8 §6.1 to §6.3). */
+  suites: DocumentStore<Suite>;
+  testdata: DocumentStore<Testdata>;
+  faults: DocumentStore<Faults>;
   locks: Locks;
   evidence: EvidenceStore;
   candidates: CandidateStore<CandidateFiles, CandidateDecision>;
@@ -85,6 +92,9 @@ export function wire(
       clock,
     ),
     packs: new FileDocumentStore(packKind, { dir: join(library, "packs"), tmpDir }, clock),
+    suites: new FileDocumentStore(suiteKind, { dir: join(library, "suites"), tmpDir }, clock),
+    testdata: new FileDocumentStore(testdataKind, { dir: join(library, "testdata"), tmpDir }, clock),
+    faults: new FileDocumentStore(faultsKind, { dir: join(library, "faults"), tmpDir }, clock),
     locks: new LockManager(new FileLockSlots(join(state, "var", "locks")), clock, systemLockEnv()),
     evidence: new FileEvidenceStore({ root: join(state, "evidence"), tmpDir }),
     candidates: new FileCandidateStore<CandidateFiles, CandidateDecision>(
