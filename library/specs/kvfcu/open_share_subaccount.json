@@ -1,0 +1,18 @@
+{
+  "schema": "intyy.runspec/1.0",
+  "kind": "discovery",
+  "caller": {
+    "tenant": "keystone",
+    "agent_id": "op_017"
+  },
+  "app": "kvfcu",
+  "capability": "open_share_subaccount",
+  "goal": "",
+  "inputs": [],
+  "outputs": [],
+  "expected_effect": "read_only",
+  "session": "kvfcu/sign_in@1",
+  "entry": "/",
+  "model": "claude-sonnet-5",
+  "prompt": "discovery@1.0"
+}
