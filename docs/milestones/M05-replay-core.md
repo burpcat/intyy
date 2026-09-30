@@ -85,7 +85,7 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 - [x] 10. Write the sweep for crashed replays.
 - [x] 11. Make `discover` start with the prelude. Write the five spec skeletons.
 - [ ] 12. Stop. Ask the owner to run the discoveries in the order below.
-- [ ] 13. Write the demo files. Write the live demo test and the member canary test.
+- [x] 13. Write the demo files. Write the live demo test and the member canary test.
 
 **Discovery order for the owner.** The check needs an account with a known reference. The first run makes one.
 
