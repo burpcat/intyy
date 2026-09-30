@@ -1,6 +1,6 @@
 # M04 — Recorder and review
 
-> **Phase:** A · **Size:** L · **Depends on:** M03 · **Status:** not started
+> **Phase:** A · **Size:** L · **Depends on:** M03 · **Status:** done
 
 ## Read first
 
@@ -67,30 +67,30 @@ The real `sign_in` run becomes a reviewed, sealed, versioned artifact: `kvfcu/si
 - [x] 10. Write the candidate commands and the guided review walk.
 - [x] 11. Write sealing and the second look. Test: sealing fails without it; passes with another staff ID; a disagreement records `irreversible`.
 - [x] 12. Write the artifact and capability commands.
-- [ ] 13. Record the A1 run as a candidate. Stop. Ask the owner to review and seal `sign_in@1.0.0`.
+- [x] 13. Record the A1 run as a candidate. Stop. Ask the owner to review and seal `sign_in@1.0.0`.
 
 ## Test gate
 
 ### Automated (CI `check` job)
 
-- [ ] Loader checks accept and reject the right files, for artifacts and patches.
-- [ ] Recorder rules, each on its own small log (section 6 §18).
-- [ ] The "false before" check catches its case.
-- [ ] Negative alignment: an outcome lands on the right step.
-- [ ] Recorder golden test.
-- [ ] Second look and second-look disagreement (section 9 §16).
-- [ ] The JSON Schema files are fresh.
-- [ ] `capability describe --format tool` matches its golden file.
+- [x] Loader checks accept and reject the right files, for artifacts and patches.
+- [x] Recorder rules, each on its own small log (section 6 §18).
+- [x] The "false before" check catches its case.
+- [x] Negative alignment: an outcome lands on the right step.
+- [x] Recorder golden test.
+- [x] Second look and second-look disagreement (section 9 §16).
+- [x] The JSON Schema files are fresh.
+- [x] `capability describe --format tool` matches its golden file.
 
 ### Live
 
-- [ ] None.
+- [x] None.
 
 ### Owner checks
 
-- [ ] You reviewed every tag and risk flag on the `sign_in` candidate.
-- [ ] `kvfcu/sign_in@1.0.0` is sealed. `intyy artifact verify kvfcu/sign_in@1.0.0` passes.
-- [ ] The artifact holds no secret value, only `{secret.operator_username}` and `{secret.operator_password}`.
+- [x] You reviewed every tag and risk flag on the `sign_in` candidate.
+- [x] `kvfcu/sign_in@1.0.0` is sealed. `intyy artifact verify kvfcu/sign_in@1.0.0` passes.
+- [x] The artifact holds no secret value, only `{secret.operator_username}` and `{secret.operator_password}`.
 
 ## Evidence produced
 
