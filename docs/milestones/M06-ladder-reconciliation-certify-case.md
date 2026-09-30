@@ -79,7 +79,7 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 - [ ] 9. Stop. Ask the owner to run `certify case` once per profile. With no packs, each fails at its fault and captures the screen.
 - [ ] 10. Stop. Ask the owner to make fixtures from those captures, plus the restricted user's screen, with `fixture new`.
 - [ ] 11. Draft the global and app packs from the fixtures. Stop. Ask the owner to seal and approve them.
-- [ ] 12. Write the live fault table test and the live demo step 6 test.
+- [x] 12. Write the live fault table test and the live demo step 6 test.
 
 ## Test gate
 
