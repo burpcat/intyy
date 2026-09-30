@@ -152,6 +152,9 @@ function scoreOf(
 export type VoteFacts = {
   candidates: number;
   winner: string | null;
+  /** The top-scoring candidate, win or not: whose `agreeing`/`differing`/`missing` these are.
+   * Null only when there were no candidates to score (section 3 §6.4, differing clue values). */
+  bestElementId: string | null;
   score: number | null;
   margin: number | null;
   agreeing: readonly string[];
@@ -169,6 +172,7 @@ export type VoteResult =
 const EMPTY_FACTS: VoteFacts = {
   candidates: 0,
   winner: null,
+  bestElementId: null,
   score: null,
   margin: null,
   agreeing: [],
@@ -214,6 +218,7 @@ export function vote(
   const facts: VoteFacts = {
     candidates: scored.length,
     winner: best.score >= 0.7 && best.meetsEvidence ? best.el.id : null,
+    bestElementId: best.el.id,
     score: best.score,
     margin,
     agreeing: best.agreeing,
