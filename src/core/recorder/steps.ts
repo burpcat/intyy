@@ -11,9 +11,9 @@ import {
   elementStateCheck,
   elementVisibleCheck,
   fieldValueCheck,
-  findProofText,
   locationCheck,
   newLandmarks,
+  proofChecks,
   textVisibleCheck,
   type NestedLeaf,
 } from "./conditions.js";
@@ -202,17 +202,18 @@ function checkFalseBefore(
 }
 
 /** The last step's checkpoint, from `done.proof` (section 6 §14.5). `null` when there is no
- * `done` call to build from, so the caller falls back to the plain after-location. Adds a
- * blocking issue only when a `done` call exists but its proof text cannot be found. */
+ * `done` call to build from, or every id's text was unusable (not found, an ellipsis cut with
+ * no word boundary left, a swapped-safe character, or nothing once stabilized), so the caller
+ * falls back to the plain after-location. Adds a blocking issue only in the latter case. */
 function lastCheckpointFromProof(
   a: TaggedAction,
   snapshots: Snapshots,
+  targets: readonly Target[],
   issues: RecorderIssue[],
 ): NestedLeaf | null {
   if (snapshots.proof === null) return null;
-  const listText = snapshots.proofElementListText;
-  const texts = listText === null ? [] : snapshots.proof.ids.map((id) => findProofText(listText, id));
-  if (listText === null || texts.some((t) => t === null)) {
+  const checks = proofChecks(snapshots.proofElementListText, snapshots.proof.ids, targets);
+  if (checks === null) {
     issues.push({
       level: "blocking",
       code: "no_proof_text",
@@ -221,7 +222,7 @@ function lastCheckpointFromProof(
     });
     return null;
   }
-  return allOf(texts.map((t): NestedLeaf => textVisibleCheck(t ?? "")));
+  return allOf(checks);
 }
 
 /** What {@link buildSteps} returns. */
@@ -309,10 +310,14 @@ export function buildSteps(
     // `entry` for the observed location; `beforeLocation` already is that location for every
     // step, including the first. With no prior fill on this page, `fillsSincePageChange` is
     // empty, so `allOf` below degrades to the location check alone.
+    // Why the target-visible leaf on click/press too (section 6 §14.5): its "screen condition"
+    // is the same as any other step's, location plus the target visible; `press` has no target
+    // to add (its action names a key, not a control).
     const precondition: NestedLeaf = isFill
       ? allOf([locationCheck(toPathPattern(a.beforeLocation)), elementVisibleCheck(must(targetId))])
       : allOf([
           locationCheck(toPathPattern(a.beforeLocation)),
+          ...(targetId === null ? [] : [elementVisibleCheck(targetId)]),
           ...fillsSincePageChange.map((ref): NestedLeaf => ({ ref })),
         ]);
     const preconditionId = registry.intern(
@@ -331,7 +336,7 @@ export function buildSteps(
       checkpoint = elementStateCheck(must(targetId), a.checked === true ? "checked" : "unchecked");
     } else {
       const isLast = i === finalActions.length - 1;
-      const fromProof = isLast ? lastCheckpointFromProof(a, snapshots, issues) : null;
+      const fromProof = isLast ? lastCheckpointFromProof(a, snapshots, targets, issues) : null;
       if (fromProof !== null) {
         checkpoint = fromProof;
       } else {

@@ -61,6 +61,10 @@
             "pattern": "/login.do"
           },
           {
+            "check": "element_visible",
+            "target": "login_button"
+          },
+          {
             "ref": "type_user_id_checkpoint"
           },
           {
@@ -138,7 +142,7 @@
           "goal": "Sign in as the operator and reach the home page.",
           "kind": "discovery",
           "model": "claude-sonnet-5",
-          "recorder_version": "0.1.0",
+          "recorder_version": "0.2.0",
           "run_id": "run_2026-09-24_g01den0001"
         }
       ],

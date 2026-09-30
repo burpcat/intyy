@@ -43,6 +43,7 @@ describe("buildSteps", () => {
       check: "all_of",
       checks: [
         { check: "location", pattern: "/login.do" },
+        { check: "element_visible", target: "login_button" },
         { ref: steps[0]?.checkpoint },
         { ref: steps[1]?.checkpoint },
       ],
@@ -57,6 +58,14 @@ describe("buildSteps", () => {
     const { steps } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
     expect(steps.map((s) => s.id)).toEqual(["type_member_id", "click_search"]);
     expect(steps[0]?.action).toMatchObject({ value: "{input.member_id}" });
+  });
+
+  test("a click's precondition includes its own target visible, section 6 §14.5's screen condition", () => {
+    const { steps, conditions } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
+    const click = steps.find((s) => s.id === "click_search");
+    const precondition = conditions.find((c) => c.id === click?.precondition);
+    if (precondition?.check !== "all_of") throw new Error("expected an all_of precondition");
+    expect(precondition.checks).toContainEqual({ check: "element_visible", target: "search_button" });
   });
 
   test("with no approval hint and no gate risk line, risk drafts irreversible and is flagged", () => {

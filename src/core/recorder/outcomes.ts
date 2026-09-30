@@ -5,13 +5,7 @@ import type { Step, StepAction } from "../model/artifact/steps.js";
 import type { Target } from "../model/artifact/targets.js";
 import type { RunSpec } from "../model/runspec.js";
 import { sameClue } from "../targets/text.js";
-import {
-  allOf,
-  ConditionRegistry,
-  findProofText,
-  textVisibleCheck,
-  type NestedLeaf,
-} from "./conditions.js";
+import { allOf, ConditionRegistry, proofChecks, type NestedLeaf } from "./conditions.js";
 import type { RecorderIssue } from "./issues.js";
 import type { Fingerprint } from "./log-lines.js";
 import type { Snapshots } from "./steps.js";
@@ -72,6 +66,7 @@ export function buildOutcome(
   snapshots: Snapshots,
   registry: ConditionRegistry,
   issues: RecorderIssue[],
+  targets: readonly Target[] = [],
 ): { stepId: string; outcome: ContractOutcome } | null {
   if (alignedStepId === null) {
     issues.push({
@@ -90,12 +85,8 @@ export function buildOutcome(
     return null;
   }
   const { code, description } = spec.expected_outcome;
-  const listText = snapshots.proofElementListText;
-  const texts =
-    snapshots.proof === null || listText === null
-      ? []
-      : snapshots.proof.ids.map((id) => findProofText(listText, id));
-  if (snapshots.proof === null || listText === null || texts.length === 0 || texts.some((t) => t === null)) {
+  const checks = snapshots.proof === null ? null : proofChecks(snapshots.proofElementListText, snapshots.proof.ids, targets);
+  if (checks === null) {
     issues.push({
       level: "blocking",
       code: "no_outcome_proof",
@@ -104,7 +95,7 @@ export function buildOutcome(
     });
     return null;
   }
-  const check: NestedLeaf = allOf(texts.map((t): NestedLeaf => textVisibleCheck(t ?? "")));
+  const check: NestedLeaf = allOf(checks);
   const conditionId = registry.intern(check, `${code}_shown`, description);
   return { stepId: alignedStepId, outcome: { code, description, condition: conditionId } };
 }

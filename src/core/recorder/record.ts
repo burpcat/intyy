@@ -120,7 +120,7 @@ export function record(input: RecorderInput): RecorderOutput {
     const negTagged = applyTags(negRaw, decisions);
     const negKept = keptActions(negTagged);
     const aligned = alignNegativeRun(negKept, steps, stepsResult.targets);
-    const built = buildOutcome(neg.spec, aligned, negSnapshots, registry, issues);
+    const built = buildOutcome(neg.spec, aligned, negSnapshots, registry, issues, stepsResult.targets);
     if (built !== null) {
       steps = attachOutcome(steps, built.stepId, built.outcome.code);
       outcomes.push(built.outcome);
