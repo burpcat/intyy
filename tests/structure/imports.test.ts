@@ -40,6 +40,7 @@ test("each import rule reports its own fixture, and nothing else", async () => {
     "adapters-only-from-wiring <- src/fakes/bad-adapter.ts",
     "core-no-world <- src/core/bad-world.ts",
     "hands-port-only-gate <- src/core/replay/bad-hands.ts",
+    "harness-port-only-certify <- src/core/orchestrator/bad-harness.ts",
     "harness-port-only-certify <- src/core/replay/bad-harness.ts",
   ]);
 });

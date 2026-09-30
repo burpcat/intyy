@@ -7,6 +7,7 @@ import { FileDocumentStore } from "../adapters/files/document-store.js";
 import { FileLockSlots, systemLockEnv } from "../adapters/files/locks.js";
 import { FileEvidenceStore, FileLogStore } from "../adapters/files/other-stores.js";
 import { ClaudePlanner } from "../adapters/claude/planner.js";
+import { KvfcuHarness, type KvfcuHarnessConfig } from "../adapters/kvfcu-harness/harness.js";
 import { MailboxDesk, MailboxOperator } from "../adapters/mailbox/mailbox.js";
 import { PlaywrightMarker } from "../adapters/playwright/marker.js";
 import { playwrightFactory } from "../adapters/playwright/session.js";
@@ -57,6 +58,8 @@ export type Wiring = {
   /** The request index's keyed-hash log, one per tenant key (section 3 §4.4, section 4 §8.11).
    * Replay is the only reader; `runReplay` never touches `node:fs` itself. */
   requestIndexStore: LogStore<RequestIndexLine, never>;
+  /** The bank app's test-mode controls, for one app's settings (section 8 §6.5). Only certify uses it. */
+  harness: (app: KvfcuHarnessConfig) => KvfcuHarness;
   /** Staging for atomic writes and edit buffers: `<state>/var/tmp`. */
   tmpDir: string;
 };
@@ -104,6 +107,7 @@ export function wire(
       { line: RequestIndexLine, record: z.never() },
       { dir: join(state, "request-index"), tmpDir },
     ),
+    harness: (app) => new KvfcuHarness(app),
     tmpDir,
   };
 }

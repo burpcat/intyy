@@ -73,7 +73,7 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 - [x] 3. Test "known screen, no progress": it fails with the underlying code and does not climb.
 - [x] 4. Write rung 4 requests and the `operator decide` answers for retry and reconciliation.
 - [x] 5. Write reconciliation, commit retry, and manual reconcile.
-- [ ] 6. Write the harness port, the kvfcu adapter, and the fake. Add the harness boundary test.
+- [x] 6. Write the harness port, the kvfcu adapter, and the fake. Add the harness boundary test.
 - [ ] 7. Write the suite, test data, and fault schemas and commands. Draft the three files. Stop. Ask the owner to seal and approve them.
 - [ ] 8. Write the route map, `certify case | rerun | report`, the scripted operator, truth checks, and verdicts.
 - [ ] 9. Stop. Ask the owner to run `certify case` once per profile. With no packs, each fails at its fault and captures the screen.

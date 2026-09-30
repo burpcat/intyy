@@ -21,8 +21,9 @@ export class Secret {
   }
 
   /**
-   * Returns the raw value. Only the hands adapter, the keyed-hash function, and the redactor
-   * may call this (section 9 §5.1; docs/decisions.md, M03). Never log, store, or print the result.
+   * Returns the raw value. Only the hands adapter, the keyed-hash function, the redactor, and
+   * the kvfcu harness adapter and fake (`oracle`, section 8 §6.5) may call this
+   * (section 9 §5.1; docs/decisions.md, M03, M06). Never log, store, or print the result.
    */
   static open(secret: Secret): string {
     return secret.#value;
