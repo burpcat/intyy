@@ -98,7 +98,10 @@ function evalElementState(
 }
 
 /** `field_value` (section 2 §14.3, section 7 §6.7). No observed value gives `unknown`, an
- * owner decision (docs/decisions.md): a secret-filled or unread field cannot be judged either way. */
+ * owner decision (docs/decisions.md): an unread field cannot be judged either way. A secret-filled
+ * field (`filled`, no value; section 4 §8.6) answers only the secret checkpoint `*` (section 6
+ * §14.5, "Secrets: `*` only"): `true`, meaning "filled". Any other expected value is `unknown`:
+ * intyy never reads or guesses a secret. A known empty field never matches `*`. */
 function evalFieldValue(
   check: {
     target: string;
@@ -117,10 +120,17 @@ function evalFieldValue(
   }
   if (v.kind === "not_found") return "false";
   const el = elementOf(screen, v.elementId);
+  const anyValue = check.value === "*" && check.match === "wildcard";
+  if (el?.filled === true) {
+    if (anyValue) return "true";
+    pushTrace(trace, "value not observable");
+    return "unknown";
+  }
   if (el?.fieldValue === undefined) {
     pushTrace(trace, "value not observable");
     return "unknown";
   }
+  if (anyValue && el.fieldValue === "") return "false";
   const expected = resolveRefs(check.value, ctx.refs);
   return matchText(el.fieldValue, expected, check.match, check.case_sensitive) ? "true" : "false";
 }

@@ -175,6 +175,39 @@ describe("checkFalseBefore: unknown gives a warning", () => {
     expect(issues.some((i) => i.level === "blocking")).toBe(false);
   });
 
+  test("a secret type step with a `*` checkpoint still warns checkpoint_unknown_before, never blocks", () => {
+    const a = action({
+      turn: 1,
+      tool: "type",
+      target: "e2",
+      value: "{secret.operator_password}",
+      fingerprint: {
+        role: "textbox",
+        name: null,
+        label: "Password",
+        text: null,
+        region: null,
+        crop: null,
+        crop_dropped: "no_crop_rule",
+        path: "form > input[2]",
+        within: null,
+        max_length: null,
+        field_kind: "password",
+        uniqueness: 1,
+      },
+    });
+    const snapshots: Snapshots = {
+      a11yByTurn: new Map([[1, '- textbox "Password"']]),
+      proof: null,
+      proofElementListText: null,
+    };
+    const { conditions, issues } = buildSteps([a], snapshots);
+    // Why: pins that the checkpoint under test is the `*` wildcard (section 6 §14.5).
+    expect(conditions).toContainEqual(expect.objectContaining({ check: "field_value", value: "*", match: "wildcard" }));
+    expect(issues).toMatchObject([{ level: "warning", code: "checkpoint_unknown_before" }]);
+    expect(issues.some((i) => i.level === "blocking")).toBe(false);
+  });
+
   test("with no saved snapshot for the turn, the check is silent", () => {
     const a = action({ turn: 1, tool: "type", target: "e2", value: "{input.x}" });
     const { issues } = buildSteps([a], EMPTY);

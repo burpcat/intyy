@@ -30,6 +30,11 @@ export type ScreenElement = {
    * field never reports one). In memory only. A caller must never log, print, or write it.
    */
   fieldValue?: string;
+  /**
+   * True when the field holds a secret the eyes saw but never read (section 4 §8.6). Absent when
+   * the capture does not say (an a11y snapshot). `fieldValue` is then absent too.
+   */
+  filled?: true;
 };
 
 /** One screen the voter and evaluator read (section 7 §6, section 2 §14). */
@@ -74,6 +79,7 @@ export function fromObservation(o: Observation): ScreenView {
     // ponytail: only "check" fields carry a checked flag today; "selected" (an option or row
     // marked current) has no port field yet. Add a clue when the port reports aria-selected.
     if (el.field?.kind === "check") out.checked = el.field.checked === true;
+    if (el.field?.filled === true) out.filled = true;
     if (el.field !== undefined && el.field.filled !== true && el.field.value !== undefined) {
       out.fieldValue = el.field.value;
     }

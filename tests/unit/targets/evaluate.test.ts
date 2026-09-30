@@ -5,7 +5,8 @@ import { describe, expect, test } from "vitest";
 import type { Condition } from "../../../src/core/model/artifact/conditions.js";
 import type { Target } from "../../../src/core/model/artifact/targets.js";
 import { evaluate, type AnyCheck, type EvalCtx, type EvalTrace } from "../../../src/core/targets/evaluate.js";
-import type { ScreenElement, ScreenView } from "../../../src/core/targets/screen.js";
+import { fromObservation, type ScreenElement, type ScreenView } from "../../../src/core/targets/screen.js";
+import { el, screen } from "../discovery/kit.js";
 
 /** One screen element with defaults, for a hand-built {@link ScreenView}. */
 function elem(id: string, extra: Partial<ScreenElement> = {}): ScreenElement {
@@ -127,6 +128,43 @@ describe("element_visible, element_state, field_value (section 7 §6.7)", () => 
       ),
     ).toBe("unknown");
     expect(trace).toEqual(["value not observable"]);
+  });
+});
+
+describe("field_value on a secret-filled field (section 6 §14.5: secrets check `*` only)", () => {
+  const t = target("box", { role: "textbox", label: "Password" });
+  const wildcard: AnyCheck = { check: "field_value", target: "box", value: "*", match: "wildcard" };
+
+  test("fromObservation copies filled:true and sets no fieldValue; `*` on it is true", () => {
+    const seen = fromObservation(
+      screen([el("a", { role: "textbox", roleGroup: "text_entry", clues: { path: "a", label: "Password" }, field: { kind: "password", filled: true } })]),
+    );
+    expect(seen.elements[0]?.filled).toBe(true);
+    expect(seen.elements[0]).not.toHaveProperty("fieldValue");
+    expect(evaluate(wildcard, seen, ctxOf(t))).toBe("true");
+  });
+
+  test("the same filled field against an exact value is unknown: a secret is never guessed", () => {
+    const filled = view("/x", [
+      elem("a", { role: "textbox", roleGroup: "text_entry", label: "Password", filled: true }),
+    ]);
+    const trace: EvalTrace = [];
+    expect(
+      evaluate({ check: "field_value", target: "box", value: "abc", match: "exact" }, filled, ctxOf(t), trace),
+    ).toBe("unknown");
+    expect(trace).toEqual(["value not observable"]);
+  });
+
+  test("a known empty value never matches `*`; a known non-empty value does", () => {
+    const withValue = (v: string): ScreenView =>
+      view("/x", [elem("a", { role: "textbox", roleGroup: "text_entry", label: "Password", fieldValue: v })]);
+    expect(evaluate(wildcard, withValue(""), ctxOf(t))).toBe("false");
+    expect(evaluate(wildcard, withValue("x"), ctxOf(t))).toBe("true");
+  });
+
+  test("no value and not filled is unknown, even for `*`", () => {
+    const none = view("/x", [elem("a", { role: "textbox", roleGroup: "text_entry", label: "Password" })]);
+    expect(evaluate(wildcard, none, ctxOf(t))).toBe("unknown");
   });
 });
 
