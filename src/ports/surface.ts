@@ -125,7 +125,15 @@ export type SessionConfig = {
  */
 export type SurfaceEvent =
   | { kind: "navigation_started" | "navigation_done"; url: string }
-  | { kind: "request_started" | "request_done"; url: string }
+  | {
+      kind: "request_started" | "request_done";
+      url: string;
+      /**
+       * `static`: an image, stylesheet, font, or media file. It never counts toward network
+       * quiet (section 7 §5.1; docs/decisions.md, M05). `data`: everything else.
+       */
+      resource: "static" | "data";
+    }
   | { kind: "page_changed" }
   | { kind: "dialog_opened"; dialog: NativeDialog }
   | { kind: "dialog_closed" }

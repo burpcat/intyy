@@ -8,7 +8,7 @@ export const FAKE_ORIGIN = "http://127.0.0.1:9180";
 
 /** Paths the suite's allowlist allows. `/__test__/*` is denied, as in the kvfcu app layer. */
 export const SITE_PATHS = {
-  allow: ["/", "/members", "/lookup", "/frame"],
+  allow: ["/", "/members", "/lookup", "/frame", "/pixel.gif", "/data.json"],
   deny: ["/__test__/*"],
   irreversible: [],
   case_sensitive: true,
@@ -162,6 +162,11 @@ export function fixtureSite(origin: string): FakeSite {
       "/members": {
         elements: [
           { id: "title", role: "heading", roleGroup: "container", text: "Members", box: box(16) },
+        ],
+        // Why: section 7 §5.1, a fixed case for the static/data resource tag.
+        requests: [
+          { url: `${origin}/pixel.gif`, resource: "static" },
+          { url: `${origin}/data.json`, resource: "data" },
         ],
       },
       "/lookup": {

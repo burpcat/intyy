@@ -17,8 +17,16 @@ import { PlaywrightEyes } from "./eyes.js";
 import { PlaywrightHands } from "./hands.js";
 import { BrowserState, STEP_TIMEOUT_MS } from "./state.js";
 
-/** Resource types that count as static files. They raise no request events (section 9 §5.2). */
-const STATIC = new Set(["image", "stylesheet", "font", "script", "media", "manifest"]);
+/**
+ * Playwright resource types that are static files: they never count toward network quiet
+ * (section 7 §5.1; docs/decisions.md, M05). Every other non-navigation request is `data`.
+ */
+const STATIC = new Set(["image", "stylesheet", "font", "media"]);
+
+/** The `resource` tag for one Playwright resource type (section 7 §5.1). */
+function resourceKind(resourceType: string): "static" | "data" {
+  return STATIC.has(resourceType) ? "static" : "data";
+}
 
 /**
  * Why: the dev runner may wrap functions with a `__name` helper. Page functions run in the
@@ -72,8 +80,8 @@ function watchPage(s: BrowserState, page: Page): void {
   page.on("request", (r) => {
     if (r.isNavigationRequest() && r.frame() === page.mainFrame()) {
       hub.emit({ kind: "navigation_started", url: r.url() });
-    } else if (!STATIC.has(r.resourceType())) {
-      hub.emit({ kind: "request_started", url: r.url() });
+    } else {
+      hub.emit({ kind: "request_started", url: r.url(), resource: resourceKind(r.resourceType()) });
     }
   });
   const requestDone = (r: {
@@ -81,8 +89,8 @@ function watchPage(s: BrowserState, page: Page): void {
     resourceType(): string;
     isNavigationRequest(): boolean;
   }): void => {
-    if (!r.isNavigationRequest() && !STATIC.has(r.resourceType())) {
-      hub.emit({ kind: "request_done", url: r.url() });
+    if (!r.isNavigationRequest()) {
+      hub.emit({ kind: "request_done", url: r.url(), resource: resourceKind(r.resourceType()) });
     }
   };
   page.on("requestfinished", requestDone);

@@ -237,6 +237,18 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
         expect(a11y).not.toContain("100107");
       });
 
+      test("request events carry a static or data resource kind", async () => {
+        const g = await start();
+        const events = g.eyes.events()[Symbol.asyncIterator]();
+        await act(g, { type: "click", target: find(g.o, "Members").ref });
+        const seen: string[] = [];
+        for (let i = 0; i < 2; i += 1) {
+          const e = await waitEvent(events, "request_started");
+          seen.push(e.kind === "request_started" ? e.resource : "?");
+        }
+        expect(seen.sort()).toEqual(["data", "static"]);
+      });
+
       test("after close the page is gone and events end", async () => {
         const g = await start();
         const events = g.eyes.events();

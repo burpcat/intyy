@@ -61,12 +61,17 @@ export type FakeElement = {
   onClick?: FakeEffect;
 };
 
+/** One request the fake reports as this screen loads (section 7 §5.1, `resource: static | data`). */
+export type FakeRequest = { url: string; resource: "static" | "data" };
+
 /** One scripted screen. `dom` and `a11y` override the generated raw snapshots. */
 export type FakeScreen = {
   elements: readonly FakeElement[];
   title?: string;
   dom?: string;
   a11y?: string;
+  /** Scripted `request_started`/`request_done` events, emitted right after the load settles. */
+  requests?: readonly FakeRequest[];
 };
 
 /** A scripted site: one origin and its screens by path. */
@@ -147,6 +152,10 @@ class FakeBrowser {
     for (const el of screen.elements)
       if (el.field !== undefined) fields.set(el.id, { ...el.field });
     this.hub.emit({ kind: "navigation_done", url });
+    for (const req of screen.requests ?? []) {
+      this.hub.emit({ kind: "request_started", url: req.url, resource: req.resource });
+      this.hub.emit({ kind: "request_done", url: req.url, resource: req.resource });
+    }
     return { url, screen, elements: [...screen.elements], fields };
   }
 

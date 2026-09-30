@@ -33,7 +33,12 @@ const PAGES: Record<string, string> = {
     <button type="button" onclick="document.body.insertAdjacentHTML('afterbegin', '<p>Note added</p>')">Add note</button>`,
   ),
   "/frame": page("Frame", `<button type="button">Help</button>`),
-  "/members": page("Members", `<h1>Members</h1>`),
+  // Why: section 7 §5.1, a real static image and a real fetched resource, for the
+  // static/data resource tag on request events.
+  "/members": page(
+    "Members",
+    `<h1>Members</h1><img src="/pixel.gif" alt=""><script>fetch('/data.json');</script>`,
+  ),
   "/lookup": page("Lookup", `<button type="button" onclick="window.close()">Close</button>`),
 };
 
@@ -54,6 +59,19 @@ export async function startFixtureServer(bank = "http://127.0.0.1:8080"): Promis
       res
         .writeHead(200, { "content-type": "text/html; charset=utf-8" })
         .end(page("Jump", `<p>Jumping</p><script>location.href = ${target};</script>`));
+      return;
+    }
+    if (path === "/pixel.gif") {
+      // Why: a 1x1 transparent GIF, the smallest valid image byte-for-byte.
+      const gif = Buffer.from(
+        "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+        "base64",
+      );
+      res.writeHead(200, { "content-type": "image/gif" }).end(gif);
+      return;
+    }
+    if (path === "/data.json") {
+      res.writeHead(200, { "content-type": "application/json" }).end("{}");
       return;
     }
     const body = PAGES[path];
