@@ -22,6 +22,7 @@ import { buildAllowlist } from "../safety/policy/allowlist.js";
 import type { MergeResult } from "../safety/policy/merge.js";
 import { fact, Redactor, redactionRules } from "../safety/redaction/redactor.js";
 import { startCheck, type SecretSources } from "../safety/secrets/injector.js";
+import { patternNames } from "./prechecks.js";
 import { RunLog } from "./run-log.js";
 
 /** The browser window size for discovery. Fixed, so boxes and crops stay comparable. */
@@ -70,16 +71,6 @@ export type DiscoveryResult = {
 
 /** One pre-run check's result, as the `precheck` line records it. */
 type Check = { check: string; passed: boolean; detail?: string };
-
-/** True when a capability pattern like `kvfcu/*@1` names this app and capability, any major. */
-function patternNames(pattern: string, app: string, capability: string): boolean {
-  if (pattern === "*") return true;
-  const [name = ""] = pattern.split("@");
-  const [pa = "", pc = ""] = name.split("/");
-  const part = (p: string, v: string): boolean =>
-    new RegExp(`^${p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`).test(v);
-  return part(pa, app) && part(pc, capability);
-}
 
 /**
  * The pre-run checks for discovery, in order (section 3 §4.8, section 6 §7.2). Checks 1 to 3

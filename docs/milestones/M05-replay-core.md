@@ -74,7 +74,7 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 ## Tasks, in order
 
 - [x] 1. Write the request, result, run spec, and `run.json` schemas.
-- [ ] 2. Write the pre-run checks, test first. Checks 6 to 9 report every problem at once.
+- [x] 2. Write the pre-run checks, test first. Checks 6 to 9 report every problem at once.
 - [ ] 3. Write the minimal resolver and the request index.
 - [ ] 4. Write settle, condition waits, and the outcome race.
 - [ ] 5. Write clue voting. Test that a renamed button fails, ties are ambiguous, and the evidence floor holds.
