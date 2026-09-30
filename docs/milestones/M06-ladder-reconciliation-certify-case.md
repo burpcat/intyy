@@ -69,8 +69,8 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 ## Tasks, in order
 
 - [x] 1. Write the pack and fixture schemas, loader checks, merge, frozen set, and tie rule. Test first.
-- [ ] 2. Write the ladder, rung 1, on the snapshot surface. Test the helper window matrix, resume rule, rung order, and pre-commit sweep.
-- [ ] 3. Test "known screen, no progress": it fails with the underlying code and does not climb.
+- [x] 2. Write the ladder, rung 1, on the snapshot surface. Test the helper window matrix, resume rule, rung order, and pre-commit sweep.
+- [x] 3. Test "known screen, no progress": it fails with the underlying code and does not climb.
 - [ ] 4. Write rung 4 requests and the `operator decide` answers for retry and reconciliation.
 - [ ] 5. Write reconciliation, commit retry, and manual reconcile.
 - [ ] 6. Write the harness port, the kvfcu adapter, and the fake. Add the harness boundary test.

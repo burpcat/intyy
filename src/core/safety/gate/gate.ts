@@ -48,7 +48,11 @@ export type GateAction =
   | { type: "select"; target: ElementRef; option: string }
   | { type: "set_checked"; target: ElementRef; checked: boolean }
   | { type: "press"; key: string; target: ElementRef | null }
-  | { type: "scroll"; direction: "up" | "down" };
+  | { type: "scroll"; direction: "up" | "down" }
+  /** A handler response's `sign_in` action (section 5 §6.4, §8.13): re-runs the session prelude
+   * in the same browser. No target, and nothing reaches the hands: the caller runs the prelude
+   * itself, whose own steps pass the gate again as actor `engine` (docs/decisions.md, M06). */
+  | { type: "sign_in"; risk: "idempotent" | "reversible" };
 
 /** One proposal: who, with which lease, what, and the facts replay knows about it. */
 export type Proposal = {
@@ -342,6 +346,16 @@ class ActionGate implements Gate {
       if (holder === null || holder !== p.lease) return block("lease.not_holder");
     }
 
+    // `sign_in` (section 5 §8.13, docs/decisions.md M06): a handler-only, target-free action.
+    // Nothing reaches the hands here; the ladder runs the prelude once this is allowed.
+    if (a.type === "sign_in") {
+      if (p.actor !== "handler" || !ACTORS_BY_RUN[run.kind].includes(p.actor)) return block("allowlist.action");
+      if (this.#inFlight) return block("risk.in_flight", a.risk);
+      if (a.risk !== "idempotent") return block("risk.actor", a.risk);
+      this.#lastActor = p.actor;
+      return ok({ ...this.#decide(p, "allowed", "risk.allowed", a.risk, {}), act: { dispatched: true } });
+    }
+
     // Check 2: the action type, for this actor and this run. `engine` in discovery is the
     // prelude only, and only until `endPrelude()` (docs/decisions.md, M05).
     const actorAllowed =
@@ -525,6 +539,9 @@ class ActionGate implements Gate {
         );
         return { type: "press", key: a.key, submit: submit === undefined ? null : click(submit) };
       }
+      case "sign_in":
+        // Why: `act()` answers a `sign_in` proposal before this is ever reached.
+        throw new Error("#riskInput: sign_in never reaches risk classification");
       default:
         return { type: a.type };
     }
@@ -600,6 +617,9 @@ class ActionGate implements Gate {
         // Why: secrets go through #typeSecret, which fetches the value at act time.
         if (a.value.kind === "secret") throw new Error("a secret must go through #typeSecret");
         return { type: "type", target: a.target, text: a.value.text };
+      case "sign_in":
+        // Why: `act()` answers a `sign_in` proposal on its own, before `#go` ever calls this.
+        throw new Error("#resolve: sign_in never reaches the hands");
       default:
         return a;
     }

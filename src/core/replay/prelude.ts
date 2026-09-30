@@ -4,7 +4,7 @@
 // In this milestone, any unexpected screen is a hard failure: no ladder, no retries (M06).
 import type { Clock } from "../../ports/clock.js";
 import type { Masked } from "../../ports/masked.js";
-import type { Eyes, LeaseToken } from "../../ports/surface.js";
+import type { Eyes, LeaseToken, SurfaceEvent } from "../../ports/surface.js";
 import { actStep, type ActContext } from "./act.js";
 import type { Artifact } from "../model/artifact.js";
 import type { ContractOutcome, ContractOutput } from "../model/artifact/contract.js";
@@ -40,8 +40,48 @@ export type StepRunnerContext = {
   signal?: AbortSignal;
 };
 
-/** Why a step failed hard: a code and phase for the result's `failure` block, and the log line. */
-export type StepFailure = { code: FailureCode; phase: string; message: string };
+/** A transport failure the surface reports (section 7 §7.3): the server closed the connection,
+ * the browser showed its own error page, or a page load outlived the step timeout. Picks
+ * `retry.transport` over `retry.idempotent` at the ladder's retry step (docs/decisions.md, M06). */
+export type TransportSignal = "connection_closed" | "browser_error_page" | "navigation_timeout";
+
+/** Watches one step's own event stream for a transport signal, without taking it from anyone
+ * else: {@link watchTransport} passes every event through unchanged, so `settleAfterAction`
+ * still sees them all; this only records the last transport-shaped one it saw. */
+class TransportWatch {
+  seen: TransportSignal | null = null;
+  #navStarted = false;
+  #navDone = false;
+
+  see(e: SurfaceEvent): void {
+    if (e.kind === "connection_closed") this.seen ??= "connection_closed";
+    else if (e.kind === "browser_error_page") this.seen ??= "browser_error_page";
+    else if (e.kind === "navigation_started") {
+      this.#navStarted = true;
+      this.#navDone = false;
+    } else if (e.kind === "navigation_done") this.#navDone = true;
+  }
+
+  /** Call once the action's own wait is over: a navigation that started but never finished in
+   * that window is a timeout (section 7 §7.3), unless a sharper signal already explains it. */
+  finish(): void {
+    if (this.seen === null && this.#navStarted && !this.#navDone) this.seen = "navigation_timeout";
+  }
+}
+
+/** Wraps `events` so {@link TransportWatch} sees every event too, with no change to what the
+ * real consumer (`settleAfterAction`) reads or when. */
+async function* watchTransport(events: AsyncIterable<SurfaceEvent>, watch: TransportWatch): AsyncIterable<SurfaceEvent> {
+  for await (const e of events) {
+    watch.see(e);
+    yield e;
+  }
+}
+
+/** Why a step failed hard: a code and phase for the result's `failure` block, and the log line.
+ * `transportEvent` is set only after a real dispatch, for the checkpoint phase (section 7 §7.3);
+ * `undefined` or `null` elsewhere. */
+export type StepFailure = { code: FailureCode; phase: string; message: string; transportEvent?: TransportSignal | null };
 
 /** One step's outcome (section 7 §4 point 7): it passed, a declared outcome fired, or it failed
  * hard. A `read` step's value rides along on `ok`. */
@@ -127,7 +167,8 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
     return { kind: "failed", failure: { code: "session_lost", phase: "target", message: "the screen went away before acting" } };
   }
   // Why no settle for `read`: nothing was dispatched, so nothing settles (section 9 §5.2).
-  const events = step.action.type === "read" ? null : ctx.eyes.events(ctx.signal);
+  const transport = new TransportWatch();
+  const events = step.action.type === "read" ? null : watchTransport(ctx.eyes.events(ctx.signal), transport);
   const targetId = targetIdOf(step.action);
   const target = targetId === null ? null : (ctx.targets.get(targetId) ?? null);
   const actCtx: ActContext = {
@@ -165,7 +206,12 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
   }
   if (events !== null) await settleAfterAction(events, ctx.clock, step.timeout_ms, ctx.signal);
   ctx.gate.settled();
-  return raceStep(step, ctx);
+  transport.finish();
+  const raced = await raceStep(step, ctx);
+  if (raced.kind === "failed" && transport.seen !== null) {
+    return { kind: "failed", failure: { ...raced.failure, transportEvent: transport.seen } };
+  }
+  return raced;
 }
 
 /** What one prelude run needs, on top of a step's own context (built once, reused per step). */

@@ -14,10 +14,12 @@ import type { Eyes, LeaseToken, SurfaceFactory, Viewport } from "../../ports/sur
 import { sha256Hex } from "../model/canonical.js";
 import type { Artifact } from "../model/artifact.js";
 import type { ContractOutput } from "../model/artifact/contract.js";
+import type { Step } from "../model/artifact/steps.js";
 import type { ContractValue } from "../model/common.js";
 import { Request } from "../model/request.js";
 import { Result, type EffectBlock } from "../model/result.js";
 import { RunJson } from "../model/run.js";
+import type { FrozenSet } from "../packs/merge.js";
 import type { MergeResult } from "../safety/policy/merge.js";
 import { buildAllowlist } from "../safety/policy/allowlist.js";
 import type { Settings } from "../model/settings.js";
@@ -30,9 +32,33 @@ import { RunLog } from "../orchestrator/run-log.js";
 import { commitStep, type CommitApproval, type CommitContext } from "./commit.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
 import { capture } from "../capture/capture.js";
+import { matchDetectors, runLadder, type LadderStep } from "./ladder.js";
 import { PRECONDITION_TIMEOUT_MS, runPrelude, runStep, type StepFailure, type StepRunnerContext } from "./prelude.js";
 import { waitForCondition } from "./wait.js";
 import type { EvalCtx } from "../targets/evaluate.js";
+import { fromObservation } from "../targets/screen.js";
+
+/** No pack files anywhere for this run (docs/decisions.md, M06): the frozen set is empty, not
+ * an error. `runReplay` uses this whenever `ReplayInput.frozenSet` is not supplied. */
+const EMPTY_FROZEN_SET: FrozenSet = {
+  targets: [],
+  conditions: [],
+  handlers: [],
+  handlerScope: new Map(),
+  runStart: { ids: [], packs: {}, from: {}, hash: `sha256:${sha256Hex("")}` },
+  warnings: [],
+};
+
+/** `{system.last_good_path}` (docs/decisions.md, M06): the top-level page's path and query. */
+function pathAndQuery(url: string): string {
+  if (!URL.canParse(url)) return url;
+  const u = new URL(url);
+  return `${u.pathname}${u.search}`;
+}
+
+/** One `result.recoveries[]` entry (section 3 §5.10). Rung is always `1` in M06: rungs 2 and 3
+ * are off (docs/decisions.md). */
+type RecoveryLine = { step: string; rung: 1; via: "handler" | "retry"; ref: string; resumed_at: string; at: string };
 
 /** The browser window size for replay. Fixed, so boxes and crops stay comparable. */
 export const REPLAY_VIEWPORT: Viewport = { width: 1280, height: 800 };
@@ -54,6 +80,10 @@ export type ReplayInput = {
   outputsRevealed: boolean;
   /** Show the browser window. Tests run headless. */
   visible: boolean;
+  /** The merged handler set for this run (section 5 §7.4). Loading packs from `library/` is not
+   * this module's job (docs/decisions.md, M06); a caller with none may omit this, and gets an
+   * empty frozen set (not an error). */
+  frozenSet?: FrozenSet;
 };
 
 /** The ports one replay run uses. */
@@ -143,6 +173,9 @@ function frozenFacts(input: ReplayInput, artifact: Artifact | null, session: Art
       timeouts_from: null,
       // Why draft: check 7 is thin until the score store exists (M10; section 3 §4.8 check 7).
       approval: { state: "draft", batch: null, record: null },
+      // Why both false: rungs 2 and 3 do not exist until M09; a frozen fact must be true
+      // (docs/decisions.md, M06). A climb goes straight to rung 4.
+      ladder: { jev: false, reviewer: false },
     },
     fault_profile: null,
     outputs_revealed: input.outputsRevealed,
@@ -543,7 +576,44 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       if (got.ok) captureFiles.push(...got.value.files);
     };
 
-    // The prelude (section 7 §10), if the artifact links a session capability.
+    /** Every ladder start saves the masked accessibility snapshot beside the screenshot
+     * (docs/decisions.md, M06): no DOM (section 3 §7.5's table names none for this moment). */
+    const captureLadderStart = async (name: string): Promise<string[]> => {
+      if (evidenceLevel === "minimal") return [];
+      const got = await capture(
+        eyes,
+        r,
+        folder,
+        { seq: log.nextSeq, name: name.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") },
+        { screenshot: true, dom: false, a11y: true },
+        deps.signal,
+      );
+      if (!got.ok) return [];
+      captureFiles.push(...got.value.files);
+      return got.value.files;
+    };
+
+    // The prelude (section 7 §10), if the artifact links a session capability. `runPreludeAgain`
+    // is kept for a `sign_in` handler response later, during the task (section 7 §10, "`sign_in`
+    // during the task": "the engine repeats steps 1 to 4 in the same browser").
+    const runPreludeAgain = async (signal?: AbortSignal): Promise<boolean> => {
+      if (sessionArtifact === null) throw new Error("runLadder: a sign_in response with no session artifact");
+      const preludeCtx = {
+        eyes,
+        gate,
+        targets: new Map(sessionArtifact.targets.map((t) => [t.id, t])),
+        conditions: new Map(sessionArtifact.conditions.map((c) => [c.id, c])),
+        outputs: new Map<string, ContractOutput>(),
+        contractOutcomes: sessionArtifact.contract.outcomes,
+        refs: undefined,
+        redactor: r,
+        lease,
+        clock: deps.clock,
+        ...(signal === undefined ? {} : { signal }),
+      };
+      const result = await runPrelude(sessionArtifact, preludeCtx);
+      return result.kind === "ok";
+    };
     if (sessionArtifact !== null) {
       const preludeCtx = {
         eyes,
@@ -639,7 +709,166 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     }
 
     const outputsOut = new Map<string, { raw: string; type: ContractOutput["type"] }>();
-    for (const step of artifact.steps) {
+
+    // The error ladder (section 5 §8), rung 1. `frozenSet` is the merged handler set for this
+    // run (section 5 §7.4); a run with none behaves as an empty set, not an error
+    // (docs/decisions.md, M06). Claiming a takeover (rung 4 for real) is task 4's own work: a
+    // `climb` or `needs_human` verdict here falls back to the pre-M06 hard failure, so this
+    // seam is a one-line change away from a real rung 4 (docs/decisions.md, M06).
+    const frozen = input.frozenSet ?? EMPTY_FROZEN_SET;
+    const packCtx: EvalCtx = {
+      targets: new Map(frozen.targets.map((t) => [t.id, t])),
+      conditions: new Map(frozen.conditions.map((c) => [c.id, c])),
+    };
+    const packTargets = new Map(frozen.targets.map((t) => [t.id, t]));
+    const ladderSteps: LadderStep[] = artifact.steps.map((s) => ({
+      id: s.id,
+      precondition: s.precondition,
+      checkpoint: s.checkpoint,
+      risk: s.risk,
+    }));
+    const retriesUsedByStep = new Map<string, number>();
+    const handlerAttemptsByStep = new Map<string, Record<string, number>>();
+    let handlerAttemptsRun = 0;
+    let signInRunsUsed = 0;
+    let ladderEntriesUsed = 0;
+    let rewindsUsed = 0;
+    let lastGoodPath = pathAndQuery(artifact.runs_on.entry);
+    const recoveries: RecoveryLine[] = [];
+
+    /** One `runLadder` call for `step`'s trouble, and the counters that go with it. `stepIndex`
+     * is the failed step's own index in `artifact.steps` (section 5 §8.6's search range). */
+    const attemptLadder = async (
+      stepIndex: number,
+      step: Step,
+      failure: StepFailure,
+    ): Promise<{ kind: "resume"; index: number } | { kind: "end"; outcome: ReplayOutcome }> => {
+      const startFiles = await captureLadderStart(`${step.id}_ladder`);
+      const dispatched = failure.phase === "checkpoint";
+      const ladderResult = await runLadder(
+        {
+          stepId: step.id,
+          stepIndex,
+          steps: ladderSteps,
+          floorIndex: 0,
+          trouble: {
+            code: failure.code,
+            message: failure.message,
+            // Why the cast: the caller already checked `failure.phase` is one of these three
+            // before calling `attemptLadder` (section 5 §8.1: a gate or extract failure never
+            // reaches here).
+            phase: failure.phase as "precondition" | "target" | "checkpoint",
+            risk: step.risk,
+            dispatched,
+            // Section 7 §7.3: only a real dispatch (checkpoint phase) can carry one.
+            transportEvent: dispatched ? (failure.transportEvent ?? null) : null,
+            ambiguous: failure.code === "target_ambiguous",
+          },
+          captureFiles: startFiles,
+          stepOutcomes: artifact.contract.outcomes.filter((o) => step.outcomes.includes(o.code)),
+          limits: {
+            retriesUsedThisStep: retriesUsedByStep.get(step.id) ?? 0,
+            handlerAttemptsThisStep: handlerAttemptsByStep.get(step.id) ?? {},
+            handlerAttemptsThisRun: handlerAttemptsRun,
+            signInRunsUsed,
+            ladderEntriesUsed,
+            rewindsUsed,
+          },
+        },
+        {
+          eyes,
+          gate,
+          clock: deps.clock,
+          redactor: r,
+          lease,
+          log: (line) => void log.append(line),
+          taskCtx: { targets, conditions, refs },
+          packCtx,
+          frozen,
+          packTargets,
+          lastGoodPath,
+          runPrelude: runPreludeAgain,
+          ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+        },
+      );
+      ladderEntriesUsed += 1;
+
+      if (ladderResult.kind === "business_outcome") {
+        const declared = artifact.contract.outcomes.find((o) => o.code === ladderResult.code);
+        const endedAt = deps.clock.now().toISOString();
+        const result = Result.parse({
+          schema: "intyy.result/1.0",
+          run_id: runId,
+          request_id: input.request.request_id,
+          capability: capabilityBlock,
+          warnings: [],
+          recoveries,
+          interventions: [],
+          timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
+          evidence: `runs/${runId}`,
+          status: "business_outcome",
+          outcome: { code: ladderResult.code, description: declared?.description ?? ladderResult.code, step: step.id, decided_by: "code", set_by: null },
+          ...(effect === null ? {} : { effect }),
+        });
+        return { kind: "end", outcome: await endRun("business_outcome", ladderResult.code, result, step.id) };
+      }
+
+      if (ladderResult.kind === "hard_failure") {
+        await captureOnFailure(`${step.id}_failed`);
+        const endedAt = deps.clock.now().toISOString();
+        const result = failedResult(
+          runId,
+          capabilityBlock,
+          step.id,
+          { code: ladderResult.code as StepFailure["code"], phase: failure.phase, message: ladderResult.message },
+          await currentLocation(eyes),
+          true,
+          captureFiles,
+          startedAt,
+          endedAt,
+          effect,
+        );
+        if (result.status === "failed") {
+          result.failure.ladder = { rung: 1, verdict: "hard_failure", ref: ladderResult.ladderRef };
+          result.failure.transient = ladderResult.transient;
+          result.recoveries = recoveries;
+        }
+        return { kind: "end", outcome: await endRun("failed", ladderResult.code, result, step.id) };
+      }
+
+      if (ladderResult.kind === "climb" || ladderResult.kind === "needs_human") {
+        // Rung 4 is a stub in M06 (docs/decisions.md): fall back to the pre-M06 behavior.
+        await captureOnFailure(`${step.id}_failed`);
+        return { kind: "end", outcome: await failEnd(step.id, failure, await currentLocation(eyes), true) };
+      }
+
+      // ladderResult.kind === "recovered"
+      if (ladderResult.recovery.via === "retry") {
+        retriesUsedByStep.set(step.id, (retriesUsedByStep.get(step.id) ?? 0) + 1);
+      } else {
+        const handlerId = ladderResult.recovery.ref;
+        const perStep = handlerAttemptsByStep.get(step.id) ?? {};
+        handlerAttemptsByStep.set(step.id, { ...perStep, [handlerId]: (perStep[handlerId] ?? 0) + 1 });
+        handlerAttemptsRun += 1;
+        const used = frozen.handlers.find((h) => h.id === handlerId);
+        if (used?.class === "recoverable" && used.response.some((a) => a.type === "sign_in")) signInRunsUsed += 1;
+      }
+      if (ladderResult.index !== stepIndex) rewindsUsed += 1;
+      recoveries.push({
+        step: step.id,
+        rung: 1,
+        via: ladderResult.recovery.via,
+        ref: ladderResult.recovery.ref,
+        resumed_at: ladderResult.log.resume_at ?? step.id,
+        at: deps.clock.now().toISOString(),
+      });
+      return { kind: "resume", index: ladderResult.index };
+    };
+
+    let stepIndex = 0;
+    while (stepIndex < artifact.steps.length) {
+      const step = artifact.steps[stepIndex];
+      if (step === undefined) break;
       if (isAborted(deps.signal)) {
         return await failEnd(null, { code: "ended_by_operator", phase: "run", message: "the operator ended the run" }, await currentLocation(eyes), true);
       }
@@ -662,8 +891,15 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         };
         const outcome = await runStep(step, stepCtx);
         if (outcome.kind === "failed") {
-          await captureOnFailure(`${step.id}_failed`);
-          return await failEnd(step.id, outcome.failure, await currentLocation(eyes), true);
+          if (outcome.failure.phase !== "precondition" && outcome.failure.phase !== "target" && outcome.failure.phase !== "checkpoint") {
+            // Section 5 §8.1: a gate block or an extract failure never starts the ladder.
+            await captureOnFailure(`${step.id}_failed`);
+            return await failEnd(step.id, outcome.failure, await currentLocation(eyes), true);
+          }
+          const attempted = await attemptLadder(stepIndex, step, outcome.failure);
+          if (attempted.kind === "end") return attempted.outcome;
+          stepIndex = attempted.index;
+          continue;
         }
         if (outcome.kind === "outcome") {
           const declared = artifact.contract.outcomes.find((o) => o.code === outcome.code);
@@ -674,7 +910,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
             request_id: input.request.request_id,
             capability: capabilityBlock,
             warnings: [],
-            recoveries: [],
+            recoveries,
             interventions: [],
             timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
             evidence: `runs/${runId}`,
@@ -688,6 +924,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           const out = outputs.get(outcome.read.output);
           if (out !== undefined) outputsOut.set(outcome.read.output, { raw: outcome.read.raw, type: out.type });
         }
+        const loc = await currentLocation(eyes);
+        if (loc !== "") lastGoodPath = pathAndQuery(loc);
+        stepIndex += 1;
         continue;
       }
 
@@ -703,6 +942,27 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         await captureOnFailure(`${step.id}_failed`);
         return await failEnd(step.id, { code: "session_lost", phase: "target", message: "the screen went away just before the commit" }, "", true);
       }
+
+      // The pre-commit sweep (section 5 §8.3): just before the commit action, every frozen
+      // detector runs once on the live screen. Nothing is in flight yet, so the window is open;
+      // a match goes through the same ladder as an ordinary step's trouble, at phase
+      // `precondition` (a business outcome here ends with the commit still `not_sent`, since
+      // `effect` has not changed yet).
+      const sweepMatched = matchDetectors(frozen.handlers, fromObservation(observed.value), packCtx);
+      if (sweepMatched.length > 0) {
+        for (const id of sweepMatched) {
+          void log.append({ event: "check", step: step.id, by: "engine", data: { condition: id, role: "sweep", passed: true } });
+        }
+        const swept = await attemptLadder(stepIndex, step, {
+          code: "precondition_failed",
+          phase: "precondition",
+          message: "the pre-commit sweep found a known interruption",
+        });
+        if (swept.kind === "end") return swept.outcome;
+        stepIndex = swept.index;
+        continue;
+      }
+
       const approval: CommitApproval = {
         ask: (ask, signal) =>
           new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
@@ -749,7 +1009,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           request_id: input.request.request_id,
           capability: capabilityBlock,
           warnings: [],
-          recoveries: [],
+          recoveries,
           interventions: [],
           timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
           evidence: `runs/${runId}`,
@@ -793,6 +1053,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         });
         return await endRun("failed", "ended_by_operator", result, step.id);
       }
+      const loc = await currentLocation(eyes);
+      if (loc !== "") lastGoodPath = pathAndQuery(loc);
+      stepIndex += 1;
     }
 
     const endedAt = deps.clock.now().toISOString();
@@ -806,7 +1069,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       request_id: input.request.request_id,
       capability: capabilityBlock,
       warnings: [],
-      recoveries: [],
+      recoveries,
       interventions: [],
       timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
       evidence: `runs/${runId}`,
