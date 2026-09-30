@@ -4,8 +4,9 @@
 // `src/cli/commands/capability.ts` calls this; every failure is a value.
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { Artifact } from "../model/artifact.js";
+import { matchesAnyPattern } from "../model/artifact-checks-shared.js";
 import type { ContractInput } from "../model/artifact/contract.js";
-import { listArtifacts, newestVersion, readArtifact, type ArtifactStore } from "./artifacts.js";
+import { compareSemver, listArtifacts, newestVersion, readArtifact, type ArtifactStore } from "./artifacts.js";
 
 /** The major version segment of a semver string, like `1` from `1.2.0`. */
 function majorOf(version: string): number {
@@ -47,19 +48,34 @@ export async function listCapabilities(store: ArtifactStore): Promise<Outcome<Ca
   return ok(out);
 }
 
-/** Resolves `<app>/<capability>@<major>` to the newest sealed version of that major
- * (section 9 §7.2). */
+/**
+ * Resolves `<app>/<capability>@<major>` to a sealed version of that major (section 9 §7.2).
+ * With no `appVersion`, the newest sealed version wins, as `capability describe` always
+ * wanted. With one, this is the M05 resolver (section 3 §4.8 checks 4 and 5): the newest
+ * sealed version of the major whose `runs_on.app_versions` fits it, checking versions newest
+ * first so an older, fitting version is not shadowed by a newer one that does not fit.
+ */
 export async function resolveMajor(
   store: ArtifactStore,
   app: string,
   capability: string,
   major: number,
+  appVersion?: string,
 ): Promise<Outcome<Artifact, "not_found" | "invalid">> {
   const versions = (await store.listSealedVersions(`${app}/${capability}`)).filter(
     (v) => majorOf(v) === major,
   );
   if (versions.length === 0) return fail("not_found", `${app}/${capability}@${String(major)} is not sealed`);
-  return readArtifact(store, app, capability, newestVersion(versions));
+  if (appVersion === undefined) return readArtifact(store, app, capability, newestVersion(versions));
+  for (const v of versions.sort((a, b) => compareSemver(b, a))) {
+    const read = await readArtifact(store, app, capability, v);
+    if (!read.ok) return read;
+    if (matchesAnyPattern(read.value.runs_on.app_versions, appVersion)) return ok(read.value);
+  }
+  return fail(
+    "not_found",
+    `${app}/${capability}@${String(major)} has no sealed version for app version ${appVersion}`,
+  );
 }
 
 /** `input_schema`'s JSON Schema type for one value type (section 2 §12.3, §12.9). `money` and

@@ -2,15 +2,18 @@
 // every problem they find at once, and that the first failing check stops the pipeline.
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { ok, type Outcome } from "../../../src/ports/outcome.js";
 import type { Artifact } from "../../../src/core/model/artifact.js";
 import { Artifact as ArtifactSchema } from "../../../src/core/model/artifact.js";
+import { matchesAnyPattern } from "../../../src/core/model/artifact-checks-shared.js";
 import { AppPolicy, GlobalPolicy, TenantPolicy } from "../../../src/core/model/policy.js";
+import type { FailureCode } from "../../../src/core/model/result.js";
 import {
   patternNames,
   runPrechecks,
   type PrecheckInput,
-  type RequestIdLookup,
 } from "../../../src/core/orchestrator/prechecks.js";
+import type { RequestIdLookup } from "../../../src/core/orchestrator/request-index.js";
 import type { EffectivePolicy } from "../../../src/core/safety/policy/merge.js";
 import { mergePolicy } from "../../../src/core/safety/policy/merge.js";
 import type { SecretSources } from "../../../src/core/safety/secrets/injector.js";
@@ -82,13 +85,19 @@ function baseRequest(): Record<string, unknown> {
   };
 }
 
-/** Resolves from a fixed `app/capability@major` map, standing in for Task 3's resolver. */
+/** Resolves from a fixed `app/capability@major` map, standing in for Task 3's real resolver
+ * (`catalogResolve`, tested against `resolveMajor` directly in `capabilities.test.ts`). Mirrors
+ * its app-version fit check, so wiring tests here still exercise that behavior. */
 function resolverFrom(map: Record<string, Artifact>) {
-  return (app: string, capability: string, major: number): Artifact | undefined =>
-    map[`${app}/${capability}@${String(major)}`];
+  return (app: string, capability: string, major: number, appVersion?: string): Promise<Artifact | undefined> => {
+    const found = map[`${app}/${capability}@${String(major)}`];
+    if (found === undefined || appVersion === undefined) return Promise.resolve(found);
+    return Promise.resolve(matchesAnyPattern(found.runs_on.app_versions, appVersion) ? found : undefined);
+  };
 }
 
-const alwaysNew = (): RequestIdLookup => ({ status: "new" });
+const alwaysNew = (): Promise<Outcome<RequestIdLookup, FailureCode>> => Promise.resolve(ok({ status: "new" }));
+const alwaysRecorded = (): Promise<Outcome<void, FailureCode>> => Promise.resolve(ok(undefined));
 
 function baseInput(overrides: Partial<PrecheckInput> = {}): PrecheckInput {
   const policy = basePolicy();
@@ -96,10 +105,12 @@ function baseInput(overrides: Partial<PrecheckInput> = {}): PrecheckInput {
     raw: baseRequest(),
     tenant: "keystone",
     agentId: "agent_teller_01",
+    runId: "run_2026-09-24_7kq2m9x4tb",
     now: new Date("2026-09-24T10:00:00.000Z"),
     appVersion: "8.4",
     policy,
     lookupRequest: alwaysNew,
+    recordRequest: alwaysRecorded,
     resolve: resolverFrom({ [CAP_LINK]: baseArtifact() }),
     secretSources: baseSecretSources(policy),
     ...overrides,
@@ -150,19 +161,35 @@ describe("runPrechecks", () => {
 
   test("check 3: the same request ID reused with different content is rejected", async () => {
     const { results, outcome } = await runPrechecks(
-      baseInput({ lookupRequest: (): RequestIdLookup => ({ status: "reused" }) }),
+      baseInput({ lookupRequest: () => Promise.resolve(ok({ status: "reused" })) }),
     );
     expect(outcome).toMatchObject({ status: "rejected", code: "request_id_reused" });
     expect(results.map((r) => r.check)).toEqual(["format", "request_id"]);
   });
 
-  test("check 3: a true repeat returns the stored result, and stops before check 4", async () => {
-    const stored = { schema: "intyy.result/1.0", status: "success" };
+  test("check 3: a true repeat returns the original run ID, and stops before check 4", async () => {
     const { results, outcome } = await runPrechecks(
-      baseInput({ lookupRequest: (): RequestIdLookup => ({ status: "repeat", result: stored }) }),
+      baseInput({
+        lookupRequest: () =>
+          Promise.resolve(ok({ status: "repeat", runId: "run_2026-09-20_aaaaaaaaaa" })),
+      }),
     );
-    expect(outcome).toEqual({ status: "duplicate", result: stored });
+    expect(outcome).toEqual({ status: "duplicate", runId: "run_2026-09-20_aaaaaaaaaa" });
     expect(results.map((r) => r.check)).toEqual(["format", "request_id"]);
+  });
+
+  test("check 3 to 9 passing, then a failed write to the index, fails the run", async () => {
+    const { outcome } = await runPrechecks(
+      baseInput({ recordRequest: () => Promise.resolve({ ok: false, failure: "evidence_write_failed" }) }),
+    );
+    expect(outcome).toMatchObject({ status: "failed", code: "evidence_write_failed" });
+  });
+
+  test("missing K1 fails the run as secret_unavailable, at the lookup itself", async () => {
+    const { outcome } = await runPrechecks(
+      baseInput({ lookupRequest: () => Promise.resolve({ ok: false, failure: "secret_unavailable" }) }),
+    );
+    expect(outcome).toMatchObject({ status: "failed", code: "secret_unavailable" });
   });
 
   test("check 4: an unresolvable capability is capability_not_found", async () => {

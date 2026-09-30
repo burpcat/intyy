@@ -1,6 +1,7 @@
 // Canonical JSON and SHA-256 hashes: the same content always gives the same hash.
-// Follows design section 4 §4.5 (canonical JSON), §5.5, and section 9 §6.4.
-import { createHash } from "node:crypto";
+// Follows design section 4 §4.5 (canonical JSON), §5.5, §8.11 (the request index's keyed
+// hash), and section 9 §6.4.
+import { createHash, createHmac } from "node:crypto";
 import { z } from "zod";
 
 /** A `sha256:` hex digest, lower case (section 9 §6.4, section 3 §7.3 file hashes). */
@@ -29,4 +30,13 @@ export function sha256Hex(data: string | Uint8Array): string {
 /** `sha256:` plus hex, over canonical JSON. The form index lines and run logs record. */
 export function hashJson(value: unknown): string {
   return `sha256:${sha256Hex(canonicalJson(value))}`;
+}
+
+/**
+ * The lowercase hex HMAC-SHA-256 of text or bytes, under `key` (section 4 §8.11). A keyed hash:
+ * unlike `sha256Hex`, nobody without `key` can guess it, even for a small value like a member
+ * ID. The request index is the only caller; `key` never leaves memory.
+ */
+export function hmacSha256Hex(key: string, data: string | Uint8Array): string {
+  return createHmac("sha256", key).update(data).digest("hex");
 }

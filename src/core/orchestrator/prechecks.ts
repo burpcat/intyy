@@ -8,18 +8,23 @@
 // `draft`, so an unattended request is always rejected; a supervised request always passes
 // this check (the start confirmation, and the commit approval, come later).
 //
-// Check 3 (a repeat request ID) and checks 4/5 (a sealed version for this major and app
-// version) take injected functions. Task 3 builds the real request index and resolver; this
-// module only defines the shape they must fill.
+// Check 3 (a repeat request ID) uses the real request index (section 3 §4.4); the entry is
+// written only once checks 1 to 9 pass, just before check 10 (docs/decisions.md, M05). Checks
+// 4 and 5 use the real, app-version-aware resolver (`resolveMajor` in `catalog/capabilities.ts`),
+// injected as a plain function so this module never imports a store port directly.
+import type { ArtifactStore } from "../catalog/artifacts.js";
+import { resolveMajor } from "../catalog/capabilities.js";
 import type { Artifact } from "../model/artifact.js";
-import { matchesAnyPattern, scanRefs } from "../model/artifact-checks-shared.js";
+import { scanRefs } from "../model/artifact-checks-shared.js";
 import type { Contract, ContractInput } from "../model/artifact/contract.js";
 import { ContractValue } from "../model/common.js";
 import { Request } from "../model/request.js";
 import type { Mode } from "../model/request.js";
-import type { RejectionCode } from "../model/result.js";
+import type { FailureCode, RejectionCode } from "../model/result.js";
 import type { EffectivePolicy } from "../safety/policy/merge.js";
+import { requestIndexOps, type RequestIdLookup, type RequestIndexDeps } from "./request-index.js";
 import { startCheck, type SecretSources } from "../safety/secrets/injector.js";
+import { type Outcome } from "../../ports/outcome.js";
 
 /**
  * True when a capability pattern like `kvfcu/*@1` names this app, capability, and (when given)
@@ -55,32 +60,67 @@ export type PrecheckError = { code: RejectionCode; field?: string; reason?: stri
  * ("a rejected request still gets a run ID and a short log", section 3 §4.8). */
 export type PrecheckResult = { check: string; passed: boolean; errors: PrecheckError[] };
 
-/** Check 3's answer: a new request, a true repeat (return the stored result), or the same ID
- * reused with different content. Task 3 wires this to the real request index (section 3 §4.4). */
-export type RequestIdLookup =
-  | { status: "new" }
-  | { status: "repeat"; result: unknown }
-  | { status: "reused" };
+/**
+ * Builds the injected `resolve` function from the real catalog resolver (section 9 §7.2,
+ * section 3 §4.8 checks 4 and 5). With no `appVersion`, only existence matters (check 4); with
+ * one, the newest sealed version that fits it wins, or nothing does (check 5). A store
+ * inconsistency (`"invalid"`) is folded into "not found" too — a known simplification for the
+ * minimal M05 resolver; a corrupted sealed artifact should really surface as `internal_error`.
+ */
+export function catalogResolve(store: ArtifactStore): PrecheckInput["resolve"] {
+  return async (app, capability, major, appVersion) => {
+    const found = await resolveMajor(store, app, capability, major, appVersion);
+    return found.ok ? found.value : undefined;
+  };
+}
 
-/** What one pre-run check pipeline needs. `resolve` and `lookupRequest` are Task 3's ports,
- * stood in here as plain functions so this module does not depend on their real shape yet. */
+/**
+ * Builds the injected `lookupRequest`/`recordRequest` functions from the real request index
+ * (section 3 §4.4). A thin wrapper over {@link requestIndexOps}, so `runPrechecks` reports
+ * either straight through as a `"failed"` outcome.
+ */
+export function catalogRequestIndex(deps: RequestIndexDeps): Pick<PrecheckInput, "lookupRequest" | "recordRequest"> {
+  const ops = requestIndexOps(deps);
+  return { lookupRequest: ops.lookup, recordRequest: ops.record };
+}
+
+/** What one pre-run check pipeline needs. `resolve`, `lookupRequest`, and `recordRequest` are
+ * Task 3's ports, injected as plain functions so this module never imports a store port
+ * directly; {@link catalogResolve} and {@link catalogRequestIndex} wire the real ones. */
 export type PrecheckInput = {
   /** The request body, not yet checked against its schema (check 1). */
   raw: unknown;
   tenant: string;
   agentId: string;
+  /** This request's run ID, made by the caller before any check runs — even a rejected
+   * request gets one (section 3 §4.8). */
+  runId: string;
   now: Date;
   /** The tenant's app version for the request's app, or `undefined` when the app is not
    * configured here (section 3 §4.2: app version comes from bank settings). */
   appVersion: string | undefined;
   /** The merged, approved policy for this tenant and app (section 4). */
   policy: EffectivePolicy;
+  /** Checks 4 and 5, and the session link: a sealed version of one major, filtered to one
+   * that fits `appVersion` only when it is given (check 4 asks with no version; check 5 with
+   * one). See {@link catalogResolve}. */
+  resolve: (app: string, capability: string, major: number, appVersion?: string) => Promise<Artifact | undefined>;
   /** Check 3: is this request ID new, a true repeat, or reused with different content? */
-  lookupRequest: (tenant: string, agentId: string, request: Request) => RequestIdLookup;
-  /** Checks 4 and 5, and the session link: the newest sealed version of one major, with no
-   * app-version filter yet — this module checks that fit itself (§4.8 checks 4 and 5 are kept
-   * distinct even though Task 2's resolver stub cannot tell them apart on its own). */
-  resolve: (app: string, capability: string, major: number) => Artifact | undefined;
+  lookupRequest: (
+    tenant: string,
+    agentId: string,
+    request: Request,
+    signal?: AbortSignal,
+  ) => Promise<Outcome<RequestIdLookup, FailureCode>>;
+  /** Once checks 1 to 9 pass, just before check 10: writes the entry (section 3 §4.4,
+   * docs/decisions.md M05). */
+  recordRequest: (
+    tenant: string,
+    agentId: string,
+    request: Request,
+    runId: string,
+    signal?: AbortSignal,
+  ) => Promise<Outcome<void, FailureCode>>;
   /** Check 10's secret sources: the app's declared secrets and settings' bindings. */
   secretSources: SecretSources;
 };
@@ -88,9 +128,9 @@ export type PrecheckInput = {
 /** The pipeline's final answer, once every check that ran has passed or the first failure. */
 export type PrecheckOutcome =
   | { status: "ok"; artifact: Artifact; sessionArtifact: Artifact | null }
-  | { status: "duplicate"; result: unknown }
+  | { status: "duplicate"; runId: string }
   | { status: "rejected"; code: RejectionCode; errors: PrecheckError[] }
-  | { status: "failed"; code: "secret_unavailable"; detail: string };
+  | { status: "failed"; code: FailureCode; detail: string };
 
 /** Secret names a `type` step fills with `{secret.name}`, whole or joined (section 4 §8.2). */
 function secretNamesOf(artifact: Artifact): Set<string> {
@@ -305,44 +345,48 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
   results.push({ check: "format", passed: true, errors: [] });
   const request = parsed.data;
 
-  // Check 3: the request ID is new, or a true repeat.
+  // Check 3: the request ID is new, or a true repeat (section 3 §4.4).
   if (request.request_id !== null) {
-    const lookup = input.lookupRequest(input.tenant, input.agentId, request);
-    if (lookup.status === "repeat") {
-      results.push({ check: "request_id", passed: true, errors: [] });
-      return { results, outcome: { status: "duplicate", result: lookup.result } };
+    const lookup = await input.lookupRequest(input.tenant, input.agentId, request, signal);
+    if (!lookup.ok) {
+      return { results, outcome: { status: "failed", code: lookup.failure, detail: lookup.detail ?? lookup.failure } };
     }
-    if (lookup.status === "reused") {
+    if (lookup.value.status === "repeat") {
+      results.push({ check: "request_id", passed: true, errors: [] });
+      return { results, outcome: { status: "duplicate", runId: lookup.value.runId } };
+    }
+    if (lookup.value.status === "reused") {
       const errors: PrecheckError[] = [{ code: "request_id_reused", message: "the same request ID was sent with different content" }];
       return { results, outcome: stop("request_id", "request_id_reused", errors) };
     }
   }
   results.push({ check: "request_id", passed: true, errors: [] });
 
-  // Checks 4 and 5: the capability and major exist, and a sealed version fits this app version.
+  // Check 4: the capability and major exist (no app-version filter yet).
   const { app, capability, major } = splitCapabilityLink(request.capability);
-  const found = input.resolve(app, capability, major);
+  const found = await input.resolve(app, capability, major);
   if (found === undefined) {
     const errors: PrecheckError[] = [{ code: "capability_not_found", message: `${request.capability} has no sealed version here` }];
     return { results, outcome: stop("capability", "capability_not_found", errors) };
   }
   results.push({ check: "capability", passed: true, errors: [] });
 
-  const fits = input.appVersion !== undefined && matchesAnyPattern(found.runs_on.app_versions, input.appVersion);
-  if (!fits) {
+  // Check 5: a sealed version fits this bank's app version.
+  if (input.appVersion === undefined) {
+    const errors: PrecheckError[] = [{ code: "no_version_for_context", message: `${app} is not configured for this tenant` }];
+    return { results, outcome: stop("version", "no_version_for_context", errors) };
+  }
+  const versioned = await input.resolve(app, capability, major, input.appVersion);
+  if (versioned === undefined) {
     const errors: PrecheckError[] = [{ code: "no_version_for_context", message: `${request.capability} has no sealed version for this app version` }];
     return { results, outcome: stop("version", "no_version_for_context", errors) };
   }
   let sessionArtifact: Artifact | null = null;
-  const sessionLink = found.runs_on.session;
+  const sessionLink = versioned.runs_on.session;
   if (sessionLink !== null) {
     const s = splitCapabilityLink(sessionLink);
-    const sessionFound = input.resolve(s.app, s.capability, s.major);
-    const sessionFits =
-      sessionFound !== undefined &&
-      input.appVersion !== undefined &&
-      matchesAnyPattern(sessionFound.runs_on.app_versions, input.appVersion);
-    if (!sessionFits) {
+    const sessionFound = await input.resolve(s.app, s.capability, s.major, input.appVersion);
+    if (sessionFound === undefined) {
       // Why: owner decision, 2026-09-29 — a session link that cannot resolve gives
       // `no_version_for_context`, with the message naming the link.
       const errors: PrecheckError[] = [{ code: "no_version_for_context", message: `the session capability ${sessionLink} has no sealed version for this app version` }];
@@ -353,7 +397,7 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
   results.push({ check: "version", passed: true, errors: [] });
 
   // Check 6: every input matches the contract.
-  const inputErrors = checkInputs(found.contract.inputs, request.inputs);
+  const inputErrors = checkInputs(versioned.contract.inputs, request.inputs);
   if (inputErrors.length > 0) return { results, outcome: stop("inputs", "invalid_input", inputErrors) };
   results.push({ check: "inputs", passed: true, errors: [] });
 
@@ -363,23 +407,33 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
   results.push({ check: "approval", passed: true, errors: [] });
 
   // Check 8: authorization is well formed and valid.
-  const authErrors = checkAuthorization(request, found.contract.effect, input.policy.authorization.max_lifetime_minutes, input.now);
+  const authErrors = checkAuthorization(request, versioned.contract.effect, input.policy.authorization.max_lifetime_minutes, input.now);
   if (authErrors.length > 0) return { results, outcome: stop("authorization", "authorization_invalid", authErrors) };
   results.push({ check: "authorization", passed: true, errors: [] });
 
   // Check 9: bank policy allows this capability and its paths.
-  const policyErrors = checkPolicy(input.policy, app, capability, major, found, sessionArtifact);
+  const policyErrors = checkPolicy(input.policy, app, capability, major, versioned, sessionArtifact);
   if (policyErrors.length > 0) return { results, outcome: stop("policy", "policy_denied", policyErrors) };
   results.push({ check: "policy", passed: true, errors: [] });
 
+  // The request enters the index only now, once checks 1 to 9 pass, just before check 10
+  // (docs/decisions.md, M05). A validation rejection above stores nothing, so a fixed retry
+  // with the same ID still runs.
+  if (request.request_id !== null) {
+    const recorded = await input.recordRequest(input.tenant, input.agentId, request, input.runId, signal);
+    if (!recorded.ok) {
+      return { results, outcome: { status: "failed", code: recorded.failure, detail: recorded.detail ?? recorded.failure } };
+    }
+  }
+
   // Check 10: every required secret has a value source. Not a rejection: a failure here
   // fails the run instead (section 3 §4.8: "intyy's setup problem, not the caller's").
-  const required = new Set([...secretNamesOf(found), ...(sessionArtifact === null ? [] : secretNamesOf(sessionArtifact))]);
+  const required = new Set([...secretNamesOf(versioned), ...(sessionArtifact === null ? [] : secretNamesOf(sessionArtifact))]);
   const secretResult = await startCheck([...required], input.secretSources, signal);
   results.push({ check: "secrets", passed: secretResult.ok, errors: [] });
   if (!secretResult.ok) {
     return { results, outcome: { status: "failed", code: "secret_unavailable", detail: secretResult.detail ?? "a secret has no value" } };
   }
 
-  return { results, outcome: { status: "ok", artifact: found, sessionArtifact } };
+  return { results, outcome: { status: "ok", artifact: versioned, sessionArtifact } };
 }
