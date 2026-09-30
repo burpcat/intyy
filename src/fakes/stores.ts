@@ -432,9 +432,15 @@ class FakeRunFolder implements RunFolder {
     return Promise.resolve(ok(undefined));
   }
 
-  /** Reads one file already in the folder. Read-only: never touches the folder. */
+  /** Reads one file already in the folder. Read-only: never touches the folder.
+   * `events.jsonl` is synthesized from the appended lines, as the real adapter's file would
+   * read (section 3 §7.3 lists it first in `run.json.files`). */
   readFile(path: string): Promise<Outcome<Uint8Array, "not_found">> {
     assertSafeRelPath(path);
+    if (path === "events.jsonl") {
+      const text = this.#run.events.map((e) => JSON.stringify(e)).join("\n") + (this.#run.events.length > 0 ? "\n" : "");
+      return Promise.resolve(ok(new TextEncoder().encode(text)));
+    }
     const bytes = this.#run.files.get(path);
     if (bytes === undefined) return Promise.resolve(fail("not_found", path));
     return Promise.resolve(

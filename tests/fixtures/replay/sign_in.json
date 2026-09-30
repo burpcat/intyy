@@ -1,0 +1,84 @@
+{
+  "schema": "intyy.artifact/1.0",
+
+  "identity": {
+    "app": "kvfcu",
+    "capability": "sign_in",
+    "version": "1.0.0"
+  },
+
+  "runs_on": {
+    "surface": "web",
+    "app_versions": ["8.*"],
+    "viewport": { "width": 1280, "height": 800, "scale": 1 },
+    "entry": "/",
+    "paths": ["/", "/home"],
+    "session": null
+  },
+
+  "about": {
+    "title": "Sign in",
+    "summary": "Signs in to the bank app.",
+    "when_to_use": "Use as the shared session for every task.",
+    "limits": "Signs in only. It does no task work."
+  },
+
+  "contract": {
+    "inputs": [],
+    "outputs": [],
+    "outcomes": [],
+    "effect": "read_only"
+  },
+
+  "targets": [
+    {
+      "id": "login_button",
+      "description": "The Login button on the start page",
+      "clues": { "role": "button", "name": "Login", "text": "Login" }
+    }
+  ],
+
+  "conditions": [
+    {
+      "id": "start_shown",
+      "check": "location",
+      "description": "The start page is showing",
+      "pattern": "/"
+    },
+    {
+      "id": "home_shown",
+      "check": "location",
+      "description": "The home page is showing",
+      "pattern": "/home"
+    }
+  ],
+
+  "steps": [
+    {
+      "id": "click_login",
+      "intent": "Log in",
+      "action": { "type": "click", "target": "login_button" },
+      "precondition": "start_shown",
+      "checkpoint": "home_shown",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    }
+  ],
+
+  "provenance": {
+    "runs": [
+      {
+        "run_id": "run_2026-01-15_1000000001",
+        "kind": "discovery",
+        "goal": "Sign in to the bank app.",
+        "model": "claude-sonnet-5",
+        "recorder_version": "0.1.0"
+      }
+    ],
+    "derived_from": null,
+    "actions": [],
+    "decisions": [],
+    "sealed": null
+  }
+}
