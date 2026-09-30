@@ -81,7 +81,7 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 - [x] 6. Write acting, the dispatch check, dialogs, and pop-ups.
 - [x] 7. Write the commit path: live re-check, durable `commit_intent`, the effect block.
 - [x] 8. Write the executor and the prelude. Run the full path on the snapshot surface.
-- [ ] 9. Write the `replay` and `run` commands, the start confirmation, Ctrl-C, and `--reveal-outputs`.
+- [x] 9. Write the `replay` and `run` commands, the start confirmation, Ctrl-C, and `--reveal-outputs`.
 - [ ] 10. Write the sweep for crashed replays.
 - [ ] 11. Make `discover` start with the prelude. Write the five spec skeletons.
 - [ ] 12. Stop. Ask the owner to run the discoveries in the order below.

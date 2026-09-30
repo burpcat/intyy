@@ -21,10 +21,13 @@ export const Intervention = z
     run_id: RunId,
     tenant: TenantId,
     capability: z.string().min(1),
-    kind: z.enum(["approval", "takeover"]),
+    // Why `start_confirmation`: docs/decisions.md, M05. Section 7 §4 step 6, replay's own
+    // supervised-mode pause: the run waits at this same mailbox before its first task step.
+    kind: z.enum(["approval", "takeover", "start_confirmation"]),
     // Why `no_authorization`: docs/decisions.md, M05. A supervised replay commit with no valid
     // authorization opens this same mailbox, answered `approved` or `declined` (section 3 §5.7).
-    reason: z.enum(["discovery_irreversible", "stuck", "no_authorization"]),
+    // Why `supervised_mode`: the one reason a `start_confirmation` ever opens (section 3 §5.7).
+    reason: z.enum(["discovery_irreversible", "stuck", "no_authorization", "supervised_mode"]),
     step: z.object({ id: z.string().min(1), intent: z.string().nullable() }).strict(),
     trouble: z.object({ phase: z.string(), detail: z.string() }).strict().nullable(),
     ladder: z.array(z.unknown()),

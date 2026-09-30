@@ -23,8 +23,8 @@ export class FakeOperator implements OperatorPort {
     return Promise.resolve(ok(String(this.requests.length - 1) as unknown as Handle));
   }
 
-  next(_h: Handle, signal?: AbortSignal): Promise<Outcome<OperatorEvent, "closed">> {
-    const a = this.answers[this.#next] ?? { staff: "op_017", decision: "end_run" };
+  next(h: Handle, signal?: AbortSignal): Promise<Outcome<OperatorEvent, "closed">> {
+    const a = this.answers[this.#next] ?? this.#fallback(h);
     this.#next += 1;
     if (a !== "silent") return Promise.resolve(ok({ kind: "decided", ...a }));
     return new Promise((resolve) => {
@@ -41,5 +41,14 @@ export class FakeOperator implements OperatorPort {
   close(h: Handle, how: "resolved" | "timed_out" | "run_ended"): Promise<void> {
     this.closed[Number(h)] = how;
     return Promise.resolve();
+  }
+
+  /** Past the end of the script: every kind still ends the run, except a `start_confirmation`
+   * (section 7 §4 step 6, M05), which a test that scripts nothing for it still wants to run, not
+   * decline unscripted. A test that wants a declined or timed-out confirmation scripts it. */
+  #fallback(h: Handle): FakeAnswer {
+    const req = this.requests[Number(h)];
+    if (req?.kind === "start_confirmation") return { staff: "op_017", decision: "approved" };
+    return { staff: "op_017", decision: "end_run" };
   }
 }

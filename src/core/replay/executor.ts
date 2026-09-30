@@ -22,7 +22,7 @@ import type { MergeResult } from "../safety/policy/merge.js";
 import { buildAllowlist } from "../safety/policy/allowlist.js";
 import type { Settings } from "../model/settings.js";
 import { openGate, type GateRun } from "../safety/gate/gate.js";
-import { fact, Redactor, redactionRules, type KnownValue } from "../safety/redaction/redactor.js";
+import { fact, Redactor, redactionRules, type Fact, type KnownValue } from "../safety/redaction/redactor.js";
 import type { SecretSources } from "../safety/secrets/injector.js";
 import type { RequestIndexDeps } from "../orchestrator/request-index.js";
 import { catalogRequestIndex, catalogResolve, runPrechecks } from "../orchestrator/prechecks.js";
@@ -173,7 +173,32 @@ async function fileList(
   return out;
 }
 
-/** Writes `run.json` and the tenant index line for the end state (section 3 §7.3). */
+/** A run-file path that fits a capture-file fact shape (`screens/`, `dom/`, `a11y/`, …). The
+ * bare `events.jsonl` does not, but holds no digit run either, so plain masking leaves it as is. */
+function isCapturePath(path: string): boolean {
+  return /^(screens|dom|a11y|crops|llm|blobs)\//.test(path);
+}
+
+/** An ID string in the run/batch/lease/alert fact shape (section 3 §7.2), the same shape a
+ * default request ID now reuses (docs/decisions.md, M05). Anything else — a caller's own
+ * `--request-id` text — stays plain, since it may hold sensitive text the redactor must still
+ * catch. */
+const ID_FACT_RE = /^(run|batch|lease|alert)_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-tv-z]{10}$/;
+
+/** Wraps `id` as a fact only when it fits that shape. */
+function protectId(id: string | null): string | Fact | null {
+  return id !== null && ID_FACT_RE.test(id) ? fact(id) : id;
+}
+
+/** Writes `run.json` and the tenant index line for the end state (section 3 §7.3).
+ *
+ * Why the extra wrapping below: `run_id`, a fact-shaped `request_id`, and each file's own hash
+ * and capture path are strings intyy made itself, embedded inside `result` and the envelope
+ * that the redactor (§6.7) then masks wholesale for the on-disk copy. Left plain, the digit-run
+ * rule (§9.9) can mangle a hash or a random ID's digits, breaking `run.json` on the next read —
+ * a real incident the M05 test gate caught. `Fact` (§6.7) is exactly for this; `RunJson.parse`
+ * runs again on the masked bytes actually being written, so a broken shape here throws at once
+ * instead of silently landing on disk. */
 async function finish(
   folder: RunFolder,
   deps: ReplayDeps,
@@ -187,25 +212,32 @@ async function finish(
 ): Promise<void> {
   const at = deps.clock.now().toISOString();
   const nowMs = deps.clock.now().getTime();
-  const runJson = RunJson.parse({
+  const fileEntries = await fileList(folder, [...files, "events.jsonl"], deps.signal);
+  const raw = {
     schema: "intyy.run/1.0",
-    run_id: folder.runId,
+    run_id: fact(folder.runId),
     tenant: input.tenant,
     kind: "replay",
     capability,
     parent_run_id: null,
     batch_id: null,
-    request_id: input.request.request_id,
+    request_id: protectId(input.request.request_id),
     status,
-    result,
+    result: { ...(result as unknown as Record<string, unknown>), run_id: fact(result.run_id), request_id: protectId(result.request_id) },
     frozen: JSON.parse(JSON.stringify(r.value(frozenFacts(input, null, null)))) as Record<string, unknown>,
-    files: await fileList(folder, [...files, "events.jsonl"], deps.signal),
+    files: fileEntries.map((f) => ({
+      path: isCapturePath(f.path) ? fact(f.path) : f.path,
+      sha256: fact(f.sha256),
+      bytes: f.bytes,
+    })),
     retention: {
       debug_until: isoDate(nowMs + 30 * MS_PER_DAY),
       audit_until: isoDate(nowMs + 365 * MS_PER_DAY),
     },
-  });
-  await folder.writeRunJson(r.value(runJson), deps.signal);
+  };
+  const masked = r.value(raw);
+  RunJson.parse(masked);
+  await folder.writeRunJson(masked, deps.signal);
   await deps.evidence.appendIndex(
     input.tenant,
     r.value({ run_id: fact(folder.runId), at: fact(at), status, code, kind: "replay", capability }),
@@ -540,6 +572,60 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           await currentLocation(eyes),
           true,
         );
+      }
+    }
+
+    // Step 6 (section 7 §4): supervised mode pauses here, after the prelude and before the
+    // task's own steps, for a start confirmation. Unattended never reaches this point (check 7
+    // always rejects it, above), but the mode check stays so the step reads on its own.
+    if (input.request.mode === "supervised") {
+      const opening = deps.clock.now().toISOString();
+      await log.append({
+        event: "escalation",
+        step: null,
+        by: "engine",
+        data: { kind: "start_confirmation", reason: "supervised_mode", state: "open" },
+      });
+      // Why an index line: `operator list` finds an open request by the tenant index's last
+      // status (section 9 §10.4), the same way discovery already marks itself escalated.
+      await deps.evidence.appendIndex(
+        input.tenant,
+        r.value({ run_id: fact(runId), at: fact(opening), status: "escalated", code: null, kind: "replay", capability: capabilityStr }),
+        deps.signal,
+      );
+      const confirmation = new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
+        runId,
+        tenant: input.tenant,
+        capability: capabilityStr,
+        // Why a fallback of 15: section 7 §13.3's own default for this deadline.
+        deadlineMinutes: input.policy.effective.escalation.start_confirmation_minutes ?? 15,
+      });
+      const confirmed = await confirmation.startConfirmation(deps.signal);
+      await log.append({
+        event: "escalation",
+        step: null,
+        by: confirmed.kind === "approved" || confirmed.kind === "declined" ? "human" : "engine",
+        data: {
+          kind: "start_confirmation",
+          reason: "supervised_mode",
+          state: confirmed.kind === "timed_out" ? "timed_out" : confirmed.kind === "run_ended" ? "run_ended" : "resolved",
+          decision: confirmed.kind === "approved" ? "approved" : confirmed.kind === "declined" ? "declined" : null,
+          ...("staff" in confirmed ? { staff_id: confirmed.staff } : {}),
+        },
+      });
+      await deps.evidence.appendIndex(
+        input.tenant,
+        r.value({ run_id: fact(runId), at: fact(deps.clock.now().toISOString()), status: "running", code: null, kind: "replay", capability: capabilityStr }),
+        deps.signal,
+      );
+      if (confirmed.kind !== "approved") {
+        await captureOnFailure("start_confirmation_failed");
+        const code = confirmed.kind === "timed_out" ? "escalation_timeout" : "ended_by_operator";
+        const message =
+          confirmed.kind === "timed_out"
+            ? "the start confirmation timed out"
+            : "the operator declined to start the run";
+        return await failEnd(null, { code, phase: "escalation", message }, await currentLocation(eyes), true);
       }
     }
 

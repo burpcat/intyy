@@ -20,6 +20,16 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--candidate": "a candidate ID",
   "--version": "a semver version to seal, like 1.0.0",
   "--format": "the one choice: tool",
+  // M05 task 9: `replay`'s own flags. Every one names a place, a choice, or an ID of intyy's
+  // own making — never a value read from the request body.
+  "--mode": "one of two choices: supervised or unattended",
+  "--inputs": "a file path, or - for standard input; the values live in that file, never on the flag",
+  "--authorization": "a file path holding the authorization block; not a value itself",
+  "--request": "a file path holding a whole intyy.request/1.0 file; not a value itself",
+  "--request-id": "the caller's own idempotency key, not member data (default: cli-<staff>-<time>)",
+  "--agent": "the calling agent's own ID, not member data",
+  "--pin": "a trust key's name, refused until M10; not member data",
+  "--wait": "a poll ceiling in milliseconds, not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */
@@ -45,9 +55,11 @@ describe("no inputs on flags", () => {
   test("the check itself catches an input flag", () => {
     const program = commandTree([
       (p) => {
-        p.command("replay").option("--member <number>").option("--mode <mode>").option("--dry-run");
+        // Why not `--mode`: M05 task 9 adds it to the real allow list (a place/choice flag on
+        // the real `replay`), so it can no longer stand in for an unlisted input flag here.
+        p.command("replay").option("--member <number>").option("--amount <money>").option("--dry-run");
       },
     ]);
-    expect(inputFlags(program)).toEqual(["replay --member", "replay --mode"]);
+    expect(inputFlags(program)).toEqual(["replay --member", "replay --amount"]);
   });
 });

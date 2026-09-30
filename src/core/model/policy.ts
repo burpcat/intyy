@@ -162,6 +162,12 @@ export const GlobalPolicy = z
       .optional(),
     capabilities: z.object({ deny: CapPatterns.optional() }).strict().optional(),
     approvals: Approvals.optional(),
+    /** Deadline minutes per escalation kind, each a bounded range (section 4 §4.4, section 7
+     * §13.3). Recognized keys so far: `approval_minutes` (default 30, range 5-120) and
+     * `start_confirmation_minutes` (default 15, range 5-60; docs/decisions.md, M05). A key with
+     * no bound here is a missing setting, not an error: the caller falls back to the design's
+     * own default (section 4 §4.4: a missing block counts as its strictest, here its shortest,
+     * value). The record stays generic, so a future kind needs no schema change. */
     escalation: z.record(z.string(), RangeBound).optional(),
     discovery: z.record(z.string(), Bound).optional(),
     evidence: z

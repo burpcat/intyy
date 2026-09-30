@@ -7,6 +7,8 @@ import { registerCapability } from "./capability.js";
 import { registerDiscover } from "./discover.js";
 import { registerOperator } from "./operator.js";
 import { registerPolicy } from "./policy.js";
+import { registerReplay } from "./replay.js";
+import { registerRun } from "./run.js";
 import { registerSettings } from "./settings.js";
 import { registerSpec } from "./spec.js";
 import { registerStaff } from "./staff.js";
@@ -19,6 +21,8 @@ export const commands: readonly Register[] = [
   registerDiscover,
   registerOperator,
   registerPolicy,
+  registerReplay,
+  registerRun,
   registerSettings,
   registerSpec,
   registerStaff,

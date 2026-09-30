@@ -1,10 +1,11 @@
 // The only place that picks adapters: it wires plain files, env secrets, and the system clock
 // to the ports. Follows design section 9 §2.1 and build plan section 10 §5.3 (row 4).
 import { join } from "node:path";
+import { z } from "zod";
 import { EnvSecrets } from "../adapters/env-secrets/secrets.js";
 import { FileDocumentStore } from "../adapters/files/document-store.js";
 import { FileLockSlots, systemLockEnv } from "../adapters/files/locks.js";
-import { FileEvidenceStore } from "../adapters/files/other-stores.js";
+import { FileEvidenceStore, FileLogStore } from "../adapters/files/other-stores.js";
 import { ClaudePlanner } from "../adapters/claude/planner.js";
 import { MailboxDesk, MailboxOperator } from "../adapters/mailbox/mailbox.js";
 import { PlaywrightMarker } from "../adapters/playwright/marker.js";
@@ -20,6 +21,7 @@ import type { Config } from "../core/model/config.js";
 import { policyKind, settingsKind } from "../core/model/kinds.js";
 import type { Policy } from "../core/model/policy.js";
 import type { CandidateFiles } from "../core/recorder/candidates.js";
+import { RequestIndexLine } from "../core/model/request-index.js";
 import type { Settings } from "../core/model/settings.js";
 import { LockManager } from "../core/locks/manager.js";
 import type { Clock, Ids } from "../ports/clock.js";
@@ -29,7 +31,7 @@ import type { Planner } from "../ports/models.js";
 import type { InterventionDesk, OperatorPort } from "../ports/operator.js";
 import type { SurfaceFactory } from "../ports/surface.js";
 import type { Secrets } from "../ports/secrets.js";
-import type { CandidateStore, DocumentStore, EvidenceStore } from "../ports/stores.js";
+import type { CandidateStore, DocumentStore, EvidenceStore, LogStore } from "../ports/stores.js";
 
 /** Every port a command may use. Commands see ports only, never adapters. */
 export type Wiring = {
@@ -50,6 +52,9 @@ export type Wiring = {
     planner: (apiKey: string) => Planner;
     operator: (run: { tenant: string; runId: string }) => OperatorPort;
   };
+  /** The request index's keyed-hash log, one per tenant key (section 3 §4.4, section 4 §8.11).
+   * Replay is the only reader; `runReplay` never touches `node:fs` itself. */
+  requestIndexStore: LogStore<RequestIndexLine, never>;
   /** Staging for atomic writes and edit buffers: `<state>/var/tmp`. */
   tmpDir: string;
 };
@@ -92,6 +97,10 @@ export function wire(
       operator: (run) =>
         new MailboxOperator({ evidenceRoot: join(state, "evidence"), tmpDir }, run),
     },
+    requestIndexStore: new FileLogStore<RequestIndexLine, never>(
+      { line: RequestIndexLine, record: z.never() },
+      { dir: join(state, "request-index"), tmpDir },
+    ),
     tmpDir,
   };
 }

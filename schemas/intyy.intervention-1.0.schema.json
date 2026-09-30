@@ -22,7 +22,8 @@
       "type": "string",
       "enum": [
         "approval",
-        "takeover"
+        "takeover",
+        "start_confirmation"
       ]
     },
     "reason": {
@@ -30,7 +31,8 @@
       "enum": [
         "discovery_irreversible",
         "stuck",
-        "no_authorization"
+        "no_authorization",
+        "supervised_mode"
       ]
     },
     "step": {

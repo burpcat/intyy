@@ -4,7 +4,9 @@
 /** The streams and environment a command runs with. Tests pass fakes. */
 export type Io = {
   stdout: { write(text: string): unknown; isTTY?: boolean };
-  stderr: { write(text: string): unknown };
+  /** `isTTY` (M05, task 9): the start confirmation prompts in place only when both standard
+   * input and standard error are terminals (section 9 §10.1, docs/decisions.md). */
+  stderr: { write(text: string): unknown; isTTY?: boolean };
   /**
    * Standard input, for `--note` (piped) and the `review` guided walk (a terminal).
    * Follows docs/decisions.md, M04: input values never go on a flag.

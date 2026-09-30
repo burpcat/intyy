@@ -53,6 +53,10 @@ export async function call(
     deps?: RunDeps;
     /** Whether standard input is a terminal (default: false, like a piped call). */
     stdinTty?: boolean;
+    /** Whether standard error is a terminal (default: false). The start confirmation prompts
+     * in place only when both standard input and standard error are terminals (M05 task 9,
+     * docs/decisions.md). */
+    stderrTty?: boolean;
     /** What a piped `readAll()` call returns, such as a `--note`'s text. */
     stdin?: string;
     /** Scripted answers for the `review` walk's `question()` calls, in order. */
@@ -65,7 +69,7 @@ export async function call(
   const answers = [...(opts.answers ?? [])];
   const io: Io = {
     stdout: { write: (t: string) => (stdout += t), isTTY: opts.tty ?? false },
-    stderr: { write: (t: string) => (stderr += t) },
+    stderr: { write: (t: string) => (stderr += t), isTTY: opts.stderrTty ?? false },
     stdin: {
       isTTY: opts.stdinTty ?? false,
       readAll: () => Promise.resolve(opts.stdin ?? ""),

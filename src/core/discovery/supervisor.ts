@@ -76,6 +76,34 @@ export class OperatorSupervisor implements Supervisor {
   }
 
   /**
+   * Asks the supervised-mode start confirmation (section 7 §4 step 6, after the prelude and
+   * before the task's own steps; docs/decisions.md, M05): `approved` or `declined`, on the same
+   * mailbox and deadline machinery as {@link commitApproval}.
+   */
+  async startConfirmation(
+    signal?: AbortSignal,
+  ): Promise<
+    | { kind: "approved"; staff: string }
+    | { kind: "declined" }
+    | { kind: "timed_out" }
+    | { kind: "run_ended" }
+  > {
+    const req = this.#request({
+      kind: "start_confirmation",
+      reason: "supervised_mode",
+      step: { id: "start", intent: null },
+      trouble: null,
+      approval: null,
+      screenshot: null,
+      decisions: ["approved", "declined"],
+      on_handback: null,
+    });
+    const got = await this.#ask(req, signal);
+    if (got.kind !== "decided") return got;
+    return got.decision === "approved" ? { kind: "approved", staff: got.staff } : { kind: "declined" };
+  }
+
+  /**
    * Asks a replay commit approval: `approved` or `declined` (docs/decisions.md, M05). Reuses the
    * same mailbox request and deadline as discovery's `approve` (section 7 §13.1, §13.4), with the
    * two-word decision set section 4 §7.8's "no authorization" pause needs, not the four discovery
@@ -109,8 +137,8 @@ export class OperatorSupervisor implements Supervisor {
 
   /** Builds and checks one request (section 7 §13.1). Every text passes the redactor. */
   #request(p: {
-    kind: "approval" | "takeover";
-    reason: "discovery_irreversible" | "stuck" | "no_authorization";
+    kind: "approval" | "takeover" | "start_confirmation";
+    reason: "discovery_irreversible" | "stuck" | "no_authorization" | "supervised_mode";
     step: { id: string; intent: string | null };
     trouble: { phase: string; detail: string } | null;
     approval: { words: string | null; risk: "irreversible"; authorization: string } | null;
@@ -175,6 +203,10 @@ export class OperatorSupervisor implements Supervisor {
       stop.abort();
     };
     signal?.addEventListener("abort", onRun, { once: true });
+    // Why check here too: an already-aborted signal (Ctrl-C before this call even started)
+    // never fires its "abort" event again, so the listener above alone would miss it and wait
+    // out the full deadline.
+    if (signal?.aborted === true) stop.abort();
     const timer = this.clock.after(this.facts.deadlineMinutes * 60_000, stop.signal).then(
       () => "timeout" as const,
       () => "stopped" as const,
