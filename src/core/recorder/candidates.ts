@@ -16,6 +16,7 @@ import { RunJson } from "../model/run.js";
 import type { RunSpec } from "../model/runspec.js";
 import type { Settings } from "../model/settings.js";
 import { DISCOVERY_VIEWPORT } from "../orchestrator/discovery.js";
+import type { PackHandlerSet } from "./decide.js";
 import { loadRunLines } from "./load.js";
 import { record, type RecorderOutput, type RunContext, type RunLines } from "./record.js";
 
@@ -45,6 +46,10 @@ export type CandidateDeps = {
   ids: Ids;
   clock: Clock;
   specs: SpecLookup;
+  /** The merged pack set for one app, tenant, and app version (section 5 §7.4), for a
+   * `pack:<handler_id>` outcome adoption (section 5 §9.2, `candidate adopt`). Optional: a
+   * caller with no packs to offer leaves any `pack:` decision as a blocking issue instead. */
+  packs?: (tenant: string, app: string, appVersion: string) => Promise<PackHandlerSet | undefined>;
 };
 
 /** Reads and checks one run's `run.json` (section 3 §7.3). */
@@ -127,11 +132,13 @@ export async function regenerateCandidate(
   }
   const context = await recorderContext(deps, runs.positive.tenant, positive.value.spec);
   if (!context.ok) return context;
+  const packs = await deps.packs?.(context.value.tenant, positive.value.spec.app, context.value.appVersion);
   const output = record({
     positive: positive.value,
     negatives,
     decisions: decisions.value,
     context: context.value,
+    packs,
   });
   const wroteRuns = await deps.candidates.putFile(id, "runs.json", runs);
   if (!wroteRuns.ok) return wroteRuns;

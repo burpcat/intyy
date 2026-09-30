@@ -1,13 +1,24 @@
 // Applies every review decision to the recorder's draft, deterministically (section 2 §6.4:
 // the last decision on a subject wins). `record.ts` calls these in section 6 §15's order:
 // risk, sensitivity, outcome_name, waiver/recovery, then edit last of all.
+import type { z } from "zod";
 import { Artifact, Condition, NestedCheck } from "../model/artifact.js";
 import type { Contract, ContractInput, ContractOutcome, ContractOutput } from "../model/artifact/contract.js";
+import type { Target } from "../model/artifact/targets.js";
 import type { Recovery } from "../model/artifact/recovery.js";
 import type { RiskKind, Step } from "../model/artifact/steps.js";
 import type { CandidateDecision, CandidateDecisionWhat } from "../model/candidate-decision.js";
 import { checkArtifact } from "../model/artifact-checks.js";
+import type { Handler, PackCondition, PackTarget } from "../model/pack.js";
+import type { FrozenSet } from "../packs/merge.js";
+import { ConditionRegistry, type NestedLeaf } from "./conditions.js";
 import type { RecorderIssue } from "./issues.js";
+
+/** A nested pack check's shape: no `id`/`description` (same recursive union `checks.ts` uses). */
+type NestedCheckShape = z.infer<typeof NestedCheck>;
+
+/** The merged pack set `applyOutcomeNameDecisions` needs, for a `pack:` adoption. */
+export type PackHandlerSet = Pick<FrozenSet, "targets" | "conditions" | "handlers">;
 
 /** The last decision per subject, for one `what` (section 2 §6.4). Decision order is the
  * append order of `decisions.jsonl`. */
@@ -94,23 +105,155 @@ export function applySensitivityDecisions(
   return { ...contract, inputs, outputs };
 }
 
-/** `outcome_name` decisions rename a drafted outcome's code, everywhere it appears: the
- * contract's own entry, and the step it is attached to. */
+/** Copies one pack target into the artifact's own target list, renaming on an ID clash (the
+ * same numbering rule as {@link ConditionRegistry.intern}). Memoized by `idMap`, so a target
+ * reached more than once — including through a `within` chain — is copied only once. `null`
+ * only when `packId` does not resolve: the pack loader already forbids that (section 5 §5.6). */
+function copyPackTarget(
+  packId: string,
+  packTargetsById: ReadonlyMap<string, PackTarget>,
+  targets: Target[],
+  usedIds: Set<string>,
+  idMap: Map<string, string>,
+): string | null {
+  const already = idMap.get(packId);
+  if (already !== undefined) return already;
+  const packTarget = packTargetsById.get(packId);
+  if (packTarget === undefined) return null;
+  let id = packTarget.id;
+  for (let n = 2; usedIds.has(id); n++) id = `${packTarget.id}_${String(n)}`;
+  usedIds.add(id);
+  idMap.set(packId, id);
+  const within =
+    packTarget.within === undefined ? undefined : copyPackTarget(packTarget.within, packTargetsById, targets, usedIds, idMap);
+  targets.push({ id, description: packTarget.description, clues: packTarget.clues, ...(within === null || within === undefined ? {} : { within }) });
+  return id;
+}
+
+/** Flattens one pack condition into a plain nested check (section 5 §5.3: a pack's targets and
+ * conditions are their own name space, so every `ref` here resolves only in `packConditionsById`,
+ * never the artifact's own conditions). Inlining every `ref` this way, instead of copying it as
+ * its own named condition, needs no second ID-clash pass for condition IDs: only the one final,
+ * flattened check is registered, through {@link ConditionRegistry.intern}'s own content-based
+ * dedup. Every target reference is copied and renamed on clash, section 5 §7.6's targets. */
+function flattenPackCondition(
+  node: PackCondition | NestedCheckShape,
+  packConditionsById: ReadonlyMap<string, PackCondition>,
+  packTargetsById: ReadonlyMap<string, PackTarget>,
+  targets: Target[],
+  usedIds: Set<string>,
+  idMap: Map<string, string>,
+): NestedLeaf {
+  const copyTarget = (id: string): string => copyPackTarget(id, packTargetsById, targets, usedIds, idMap) ?? id;
+  const recurse = (n: PackCondition | NestedCheckShape): NestedLeaf =>
+    flattenPackCondition(n, packConditionsById, packTargetsById, targets, usedIds, idMap);
+  if ("ref" in node) {
+    const next = packConditionsById.get(node.ref);
+    return next === undefined ? { check: "text_visible", text: "*", match: "wildcard" } : recurse(next);
+  }
+  switch (node.check) {
+    case "all_of":
+      return { check: "all_of", checks: node.checks.map(recurse) };
+    case "any_of":
+      return { check: "any_of", checks: node.checks.map(recurse) };
+    case "not":
+      return { check: "not", of: recurse(node.of) };
+    case "element_visible":
+      return { check: "element_visible", target: copyTarget(node.target) };
+    case "element_state":
+      return { check: "element_state", target: copyTarget(node.target), state: node.state };
+    case "field_value":
+      // Unreachable in a sealed pack: the loader forbids `field_value` (section 5 §5.6). Copied
+      // defensively all the same, so a malformed one still yields a valid check, never a throw.
+      return { ...node, target: copyTarget(node.target) };
+    case "count":
+      return { ...node, within: copyTarget(node.within) };
+    case "text_visible":
+      return node.within === undefined ? node : { ...node, within: copyTarget(node.within) };
+    case "location":
+      return node;
+  }
+}
+
+/**
+ * Copies a `business_outcome` pack handler's outcome, code, description, and detector
+ * condition into the artifact (section 5 §9.2: "Adopting copies the code, description, and
+ * condition into the artifact"). `null` when `handler` cannot be adopted: not found, not a
+ * `business_outcome`, or its detector does not resolve — the caller raises a blocking issue.
+ */
+function copyHandlerOutcome(
+  handler: Handler,
+  packs: PackHandlerSet,
+  registry: ConditionRegistry,
+  targets: Target[],
+  usedIds: Set<string>,
+  idMap: Map<string, string>,
+): { code: string; description: string; condition: string } | null {
+  if (handler.class !== "business_outcome") return null;
+  const packConditionsById = new Map(packs.conditions.map((c) => [c.id, c] as const));
+  const packTargetsById = new Map(packs.targets.map((t) => [t.id, t] as const));
+  const detector = packConditionsById.get(handler.detector);
+  if (detector === undefined) return null;
+  const nested = flattenPackCondition(detector, packConditionsById, packTargetsById, targets, usedIds, idMap);
+  const condition = registry.intern(nested, `${handler.outcome.code}_shown`, handler.outcome.description);
+  return { code: handler.outcome.code, description: handler.outcome.description, condition };
+}
+
+/**
+ * `outcome_name` decisions rename a drafted outcome's code, everywhere it appears: the
+ * contract's own entry, and the step it is attached to. A `pack:<handler_id>` value is not a
+ * plain rename (section 5 §9.2, section 2 §17.4): it copies that pack handler's outcome code,
+ * description, and detector condition into the artifact instead, and the decision's own
+ * `pack:<handler_id>` value stays in provenance only, never as the outcome's own code. A
+ * missing or ineligible handler is a blocking issue, never a throw: `packs` may be `undefined`
+ * (a caller with no pack set to offer, such as a test with no `pack:` decisions at all).
+ */
 export function applyOutcomeNameDecisions(
   outcomes: readonly ContractOutcome[],
   steps: readonly Step[],
+  targets: readonly Target[],
+  registry: ConditionRegistry,
   decisions: readonly CandidateDecision[],
-): { outcomes: ContractOutcome[]; steps: Step[] } {
+  packs: PackHandlerSet | undefined,
+  issues: RecorderIssue[],
+): { outcomes: ContractOutcome[]; steps: Step[]; targets: Target[] } {
   const renames = lastBySubject(decisions, "outcome_name");
   const codeMap = new Map<string, string>();
+  const replacements = new Map<string, ContractOutcome>();
+  const nextTargets = [...targets];
+  const usedIds = new Set(nextTargets.map((t) => t.id));
+  const idMap = new Map<string, string>();
   for (const o of outcomes) {
     const d = renames.get(o.code);
-    if (d !== undefined) codeMap.set(o.code, d.value);
+    if (d === undefined) continue;
+    const packMatch = /^pack:([a-z][a-z0-9_]*)$/.exec(d.value);
+    if (packMatch?.[1] === undefined) {
+      codeMap.set(o.code, d.value);
+      continue;
+    }
+    const handlerId = packMatch[1];
+    const handler = packs === undefined ? undefined : packs.handlers.find((h) => h.id === handlerId);
+    const copied =
+      packs === undefined || handler === undefined
+        ? null
+        : copyHandlerOutcome(handler, packs, registry, nextTargets, usedIds, idMap);
+    if (copied === null) {
+      issues.push({
+        level: "blocking",
+        code: "pack_outcome_missing",
+        subject: o.code,
+        message: `${o.code} was adopted from pack handler ${handlerId}, which is not a business_outcome handler in the merged pack set.`,
+      });
+      continue;
+    }
+    codeMap.set(o.code, copied.code);
+    replacements.set(o.code, copied);
   }
-  if (codeMap.size === 0) return { outcomes: [...outcomes], steps: [...steps] };
+  if (codeMap.size === 0) return { outcomes: [...outcomes], steps: [...steps], targets: nextTargets };
   return {
-    outcomes: outcomes.map((o) => ({ ...o, code: codeMap.get(o.code) ?? o.code })),
+    outcomes: outcomes.map((o) => replacements.get(o.code) ?? { ...o, code: codeMap.get(o.code) ?? o.code }),
     steps: steps.map((s) => ({ ...s, outcomes: s.outcomes.map((c) => codeMap.get(c) ?? c) })),
+    targets: nextTargets,
   };
 }
 

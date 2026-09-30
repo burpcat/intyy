@@ -144,6 +144,7 @@ export function candidateDeps(ctx: Ctx): CandidateDeps {
     ids: ctx.wiring.ids,
     clock: ctx.wiring.clock,
     specs: specLookup(ctx),
+    packs: (tenant, app, appVersion) => loadFrozenSetFor(ctx, tenant, app, appVersion),
   };
 }
 

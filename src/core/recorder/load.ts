@@ -40,8 +40,13 @@ function findProofLine(
   return null;
 }
 
-/** The masked turn text an `llm/<seq>_planner_request.json` file's one user message held
- * (section 9 §5.3, section 6 §11.2), or `null` when the bytes do not fit that shape. */
+/** The masked turn text an `llm/<seq>_planner_request.json` file held, in either shape the
+ * recorder may meet: the real Claude adapter's own wire body (`requestBody`'s
+ * `messages[0].content`, one text block), or a fake planner's flat `PlannerTurn` JSON
+ * (`fakeRequestBytes`, a top-level `message` string). The recorder must not depend on one
+ * provider's wire format (a fake-driven run's proof was silently unreadable before this fix);
+ * `null` only when neither shape matches, which stays the caller's own blocking issue, never a
+ * guess (section 9 §5.3, section 6 §11.2). */
 function elementListText(bytes: Uint8Array): string | null {
   let body: unknown;
   try {
@@ -50,18 +55,21 @@ function elementListText(bytes: Uint8Array): string | null {
     return null;
   }
   if (typeof body !== "object" || body === null) return null;
-  const messages: unknown = (body as Record<string, unknown>).messages;
+  const record = body as Record<string, unknown>;
+  const messages: unknown = record.messages;
   const first: unknown = Array.isArray(messages) ? (messages as unknown[])[0] : undefined;
   const content: unknown =
     typeof first === "object" && first !== null ? (first as Record<string, unknown>).content : undefined;
-  if (!Array.isArray(content)) return null;
+  if (!Array.isArray(content)) {
+    return typeof record.message === "string" ? record.message : null;
+  }
   for (const block of content as unknown[]) {
     if (typeof block === "object" && block !== null && (block as Record<string, unknown>).type === "text") {
       const text = (block as Record<string, unknown>).text;
       if (typeof text === "string") return text;
     }
   }
-  return null;
+  return typeof record.message === "string" ? record.message : null;
 }
 
 /** Reads back every snapshot the recorder's step and outcome rules need (section 6 §14.5): each

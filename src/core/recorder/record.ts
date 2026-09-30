@@ -20,6 +20,7 @@ import {
   applyRecoveryDecisions,
   applyRiskDecisions,
   applySensitivityDecisions,
+  type PackHandlerSet,
 } from "./decide.js";
 import { buildDrafts, buildNormalFixtures, type NormalFixture } from "./drafts.js";
 import type { RecorderIssue } from "./issues.js";
@@ -61,6 +62,10 @@ export type RecorderInput = {
    * voter, when this is not `null`.
    */
   previous?: Artifact | null;
+  /** The merged pack set for this run's app, tenant, and app version (section 5 §7.4), for a
+   * `pack:<handler_id>` outcome adoption (section 5 §9.2). Omitted by a caller with no packs to
+   * offer: a `pack:` decision then becomes a blocking issue instead of a copy. */
+  packs?: PackHandlerSet | undefined;
 };
 
 /** What {@link record} returns (section 6 §14.1). */
@@ -136,9 +141,18 @@ export function record(input: RecorderInput): RecorderOutput {
     },
     decisions,
   );
-  const named = applyOutcomeNameDecisions(contract.outcomes, steps, decisions);
+  const named = applyOutcomeNameDecisions(
+    contract.outcomes,
+    steps,
+    stepsResult.targets,
+    registry,
+    decisions,
+    input.packs,
+    issues,
+  );
   contract = { ...contract, outcomes: named.outcomes };
   steps = named.steps;
+  const targets = named.targets;
 
   const commitPoint = pickCommitPoint(steps, effect, issues);
   const recovery = applyRecoveryDecisions(buildRecovery(commitPoint, effect), decisions, issues);
@@ -173,7 +187,7 @@ export function record(input: RecorderInput): RecorderOutput {
     },
     about: buildAbout(positive.spec),
     contract,
-    targets: [...stepsResult.targets],
+    targets: [...targets],
     conditions: [...registry.list()],
     steps: [...steps],
     provenance: {

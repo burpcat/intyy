@@ -11,6 +11,7 @@ import {
   applyRiskDecisions,
   applySensitivityDecisions,
 } from "../../../src/core/recorder/decide.js";
+import { ConditionRegistry } from "../../../src/core/recorder/conditions.js";
 import type { RecorderIssue } from "../../../src/core/recorder/issues.js";
 
 /** One decision line, with sane defaults. */
@@ -118,10 +119,105 @@ describe("applyOutcomeNameDecisions", () => {
   test("renames an outcome's code on the contract and its step", () => {
     const artifact = baseArtifact();
     const decisions = [decision({ what: "outcome_name", subject: "member_not_found", value: "no_such_member" })];
-    const { outcomes, steps } = applyOutcomeNameDecisions(artifact.contract.outcomes, artifact.steps, decisions);
+    const registry = new ConditionRegistry(artifact.conditions);
+    const { outcomes, steps } = applyOutcomeNameDecisions(
+      artifact.contract.outcomes,
+      artifact.steps,
+      artifact.targets,
+      registry,
+      decisions,
+      undefined,
+      [],
+    );
     expect(outcomes.find((o) => o.code === "no_such_member")).toBeDefined();
     const search = steps.find((s) => s.id === "click_search");
     expect(search?.outcomes).toEqual(["no_such_member"]);
+  });
+
+  test("a pack: value copies the handler's outcome code, description, and detector condition", () => {
+    const artifact = baseArtifact();
+    const decisions = [decision({ what: "outcome_name", subject: "member_not_found", value: "pack:member_frozen" })];
+    const registry = new ConditionRegistry(artifact.conditions);
+    const issues: RecorderIssue[] = [];
+    const packTarget = { id: "unfreeze_button", description: "Unfreeze button", clues: { role: "button", name: "Unfreeze" } };
+    const packCondition = {
+      id: "member_frozen_shown",
+      description: "Member is frozen",
+      check: "element_visible" as const,
+      target: "unfreeze_button",
+    };
+    const handler = {
+      id: "member_frozen",
+      description: "The member's account is frozen.",
+      class: "business_outcome" as const,
+      detector: "member_frozen_shown",
+      fixtures: { fire: [], no_fire: [] },
+      outcome: { code: "member_frozen", description: "The member's account is frozen." },
+    };
+    const { outcomes, targets } = applyOutcomeNameDecisions(
+      artifact.contract.outcomes,
+      artifact.steps,
+      artifact.targets,
+      registry,
+      decisions,
+      { targets: [packTarget], conditions: [packCondition], handlers: [handler] },
+      issues,
+    );
+    expect(issues).toEqual([]);
+    const adopted = outcomes.find((o) => o.code === "member_frozen");
+    expect(adopted?.description).toBe("The member's account is frozen.");
+    expect(adopted?.condition).toBeDefined();
+    const condition = registry.list().find((c) => c.id === adopted?.condition);
+    expect(condition).toMatchObject({ check: "element_visible", target: "unfreeze_button" });
+    expect(targets.some((t) => t.id === "unfreeze_button")).toBe(true);
+  });
+
+  test("an unresolvable pack: handler is a blocking issue, and the outcome is left unchanged", () => {
+    const artifact = baseArtifact();
+    const decisions = [decision({ what: "outcome_name", subject: "member_not_found", value: "pack:no_such_handler" })];
+    const registry = new ConditionRegistry(artifact.conditions);
+    const issues: RecorderIssue[] = [];
+    const { outcomes } = applyOutcomeNameDecisions(
+      artifact.contract.outcomes,
+      artifact.steps,
+      artifact.targets,
+      registry,
+      decisions,
+      { targets: [], conditions: [], handlers: [] },
+      issues,
+    );
+    expect(outcomes.find((o) => o.code === "member_not_found")).toBeDefined();
+    expect(issues.map((i) => i.code)).toEqual(["pack_outcome_missing"]);
+  });
+
+  test("a pack: handler of the wrong class is a blocking issue too, never adopted", () => {
+    const artifact = baseArtifact();
+    const decisions = [decision({ what: "outcome_name", subject: "member_not_found", value: "pack:kyc_reminder" })];
+    const registry = new ConditionRegistry(artifact.conditions);
+    const issues: RecorderIssue[] = [];
+    // A real handler, just not `business_outcome`: only that class carries an `outcome` block
+    // to copy (section 5 §9.2).
+    const handler = {
+      id: "kyc_reminder",
+      description: "The app interrupts with a KYC reminder.",
+      class: "recoverable" as const,
+      detector: "kyc_popup_shown",
+      response: [],
+      limits: { per_step: 1, per_run: 1 },
+      on_exhausted: { class: "hard_failure" as const, failure: "app_error" as const },
+      fixtures: { fire: [], no_fire: [] },
+    };
+    const { outcomes } = applyOutcomeNameDecisions(
+      artifact.contract.outcomes,
+      artifact.steps,
+      artifact.targets,
+      registry,
+      decisions,
+      { targets: [], conditions: [], handlers: [handler] },
+      issues,
+    );
+    expect(outcomes.find((o) => o.code === "member_not_found")).toBeDefined();
+    expect(issues.map((i) => i.code)).toEqual(["pack_outcome_missing"]);
   });
 });
 

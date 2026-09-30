@@ -503,23 +503,16 @@ async function candidateWithNegativeRun(env: {
   writeFindMemberSpec(env.root);
   const positive = await discoverCall(env, ["kvfcu/sign_in"], new ScriptedPlanner(SIGN_IN_STEPS), SITE);
   const id = (JSON.parse(positive.stdout) as { candidate: string }).candidate;
+  // Why replay the positive run's first step: `alignNegativeRun` (section 6 §14.8) needs at
+  // least one step in common with the candidate's own steps before the recorder drafts an
+  // outcome at all; with none, it is only a blocking `failed_alignment` issue.
+  const firstStep = SIGN_IN_STEPS[0];
+  if (firstStep === undefined) throw new Error("SIGN_IN_STEPS is empty");
   const negativePlanner = new ScriptedPlanner([
+    firstStep,
     { name: "report_outcome", input: { summary: "No such member.", proof: ["e1"] } },
   ]);
   await discoverCall(env, ["kvfcu/find_member", "--candidate", id], negativePlanner, SITE);
-  // Why hand-patch: `find_member`'s own goal never repeats sign_in's own steps, so
-  // `alignNegativeRun` (section 6 §14.8) never aligns it, and the recorder leaves this as a
-  // blocking `failed_alignment` issue instead of drafting `not_found` into `contract.outcomes`.
-  // That alignment machinery is a separate concern from `candidate adopt` (section 6 §15's
-  // table), which this test exists to prove; adding "not_found" here is exactly the fixture a
-  // reviewer's own `candidate decide outcome_name` work would otherwise leave in place before
-  // ever reaching `adopt`.
-  const candidatePath = join(env.root, "library", "candidates", id, "candidate.json");
-  const artifact = JSON.parse(readFileSync(candidatePath, "utf8")) as {
-    contract: { outcomes: Record<string, unknown>[] };
-  };
-  artifact.contract.outcomes.push({ code: "not_found", description: "No such member.", condition: "not_found_shown" });
-  writeFileSync(candidatePath, JSON.stringify(artifact));
   return id;
 }
 
@@ -562,6 +555,48 @@ async function sealGlobalPack(r: string, handlerId: string, detectorText: string
   await cli(r, "op_031", ["pack", "approve", "global", "--rev", rev]);
 }
 
+/** One global-scope pack with one `business_outcome`-class handler: only that class can be
+ * adopted (section 5 §9.2; `copyHandlerOutcome`, src/core/recorder/decide.ts). No response
+ * action, so no risk decision or second look is needed to seal it. */
+async function sealGlobalOutcomePack(
+  r: string,
+  handlerId: string,
+  detectorText: string,
+  outcome: { code: string; description: string },
+): Promise<void> {
+  const body = {
+    schema: "intyy.pack/1.0",
+    scope: { level: "global" },
+    revision: 1,
+    reason: "Test pack for candidate adopt.",
+    targets: [],
+    conditions: [
+      { id: `${handlerId}_shown`, check: "text_visible", description: "The screen is showing", text: detectorText, match: "contains" },
+    ],
+    handlers: [
+      {
+        id: handlerId,
+        description: "A business_outcome pack handler for the adopt test.",
+        class: "business_outcome",
+        detector: `${handlerId}_shown`,
+        outcome,
+        fixtures: { fire: [`${handlerId}_fire`], no_fire: [`${handlerId}_near_miss`] },
+      },
+    ],
+    provenance: { runs: [], decisions: [], sealed: null },
+  };
+  const editedPath = join(r, `pack-edited-${String(Math.random()).slice(2)}.json`);
+  writeFileSync(editedPath, JSON.stringify(body));
+  await call(["pack", "edit", "global"], {
+    cwd: r,
+    env: { INTYY_STAFF: "op_017", EDITOR: `cp "${editedPath}"` },
+    deps: { commands },
+  });
+  const sealed = await cli(r, "op_022", ["pack", "seal", "global", "--json"]);
+  const rev = (JSON.parse(sealed.stdout) as { rev: string }).rev;
+  await cli(r, "op_031", ["pack", "approve", "global", "--rev", rev]);
+}
+
 describe("candidate adopt (section 6 §15's table)", () => {
   test("an unknown outcome code is rejected", async () => {
     const env = await discoverRoot();
@@ -589,24 +624,41 @@ describe("candidate adopt (section 6 §15's table)", () => {
     expect(got.stderr).toContain("detector does not fire");
   });
 
-  test("the happy path: a firing handler records the adoption decision", async () => {
+  test("the happy path: adopting copies the handler's own code, description, and detector", async () => {
     const env = await discoverRoot();
     const id = await candidateWithNegativeRun(env);
-    await sealGlobalPack(env.root, "sign_in_shown", "Sign In");
-    const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "not_found", "pack:sign_in_shown", "--json"]);
+    // Only a `business_outcome` handler can be adopted (section 5 §9.2): its own `outcome`
+    // block supplies the artifact's new code and description, never the `pack:<id>` value
+    // itself, which stays in provenance only.
+    await sealGlobalOutcomePack(env.root, "member_not_found_handler", "Sign In", {
+      code: "member_not_found",
+      description: "The credit union has no such member.",
+    });
+    const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "not_found", "pack:member_not_found_handler", "--json"]);
     expect(got.code).toBe(EXIT.ok);
-    // Why the raw decisions.jsonl, not `candidate show`: the recorder's own outcome-drafting
-    // pipeline (section 6 §14.8's alignment and proof rules) is a separate concern from adopt's
-    // own checks (known outcome, handler exists, handler fires); `adoptPackOutcome` (src/core/
-    // recorder/candidates.ts) always appends the decision once its own three checks pass.
-    const decisionsPath = join(env.root, "library", "candidates", id, "decisions.jsonl");
-    const lines = readFileSync(decisionsPath, "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    const decision = lines.find((l) => l.what === "outcome_name" && l.subject === "not_found");
-    if (decision === undefined) throw new Error("no outcome_name decision was recorded");
-    expect(decision).toMatchObject({ value: "pack:sign_in_shown", by: "op_017" });
+
+    const shown = await cli(env.root, "op_017", ["candidate", "show", id, "--json"]);
+    expect(shown.code).toBe(EXIT.ok);
+    const artifact = (
+      JSON.parse(shown.stdout) as {
+        artifact: {
+          contract: { outcomes: { code: string; description: string; condition: string }[] };
+          conditions: { id: string; description: string }[];
+          provenance: { decisions: Record<string, unknown>[] };
+        };
+      }
+    ).artifact;
+
+    const outcome = artifact.contract.outcomes.find((o) => o.code === "member_not_found");
+    if (outcome === undefined) throw new Error("member_not_found was not adopted into contract.outcomes");
+    expect(outcome.description).toBe("The credit union has no such member.");
+    // The condition is the handler's own detector, flattened into the artifact's own name
+    // space (section 5 §9.2), never the placeholder `pack:member_not_found_handler` value.
+    expect(artifact.conditions.some((c) => c.id === outcome.condition)).toBe(true);
+
+    const decision = artifact.provenance.decisions.find((d) => d.what === "outcome_name" && d.subject === "not_found");
+    if (decision === undefined) throw new Error("no outcome_name decision in provenance.decisions");
+    expect(decision).toMatchObject({ value: "pack:member_not_found_handler", by: "op_017" });
   });
 });
 
