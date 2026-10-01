@@ -26,8 +26,8 @@ export const ResolvedFault = z
 /** A resolved fault. */
 export type ResolvedFault = z.infer<typeof ResolvedFault>;
 
-/** Which part of a batch a case belongs to (section 8 §7.2). A `twin` repeats the first valid baseline run. */
-export const CaseGroup = z.enum(["baseline", "twin", "matrix", "extra", "drill"]);
+/** Which part of a batch a case belongs to (section 8 §7.2). A `twin` repeats the first valid baseline run. `stability` runs use random faults (§9.3). */
+export const CaseGroup = z.enum(["baseline", "twin", "matrix", "extra", "drill", "stability"]);
 
 /** A case group. */
 export type CaseGroup = z.infer<typeof CaseGroup>;

@@ -1,13 +1,13 @@
 // A `full` certify batch: baseline repeats and a twin, the fault matrix on every request step and
-// the commit step, extra cases, and reconciliation drills. Each case follows section 8 §7.4. No
-// stability runs yet (section 8 §9.3 is a later task), so the report says `stability: null`.
-// Follows design section 8 §7.1 to §7.4, §7.8, §8.3, §9.1, §9.2, §9.4, §9.5, §9.7.
+// the commit step, extra cases, reconciliation drills, and stability runs with twins. Each case
+// follows section 8 §7.4. Without a `stability` setting the report says `stability: null`.
+// Follows design section 8 §7.1 to §7.4, §7.8, §8.3, §8.4, §9.1 to §9.5, §9.7.
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import { resolveMajor } from "../catalog/capabilities.js";
 import type { BatchPlan, BatchPlanCase, CaseGroup } from "../model/batch-plan.js";
 import type { BatchReport, BatchReportCase } from "../model/batch-report.js";
 import type { ExtraCase, SuiteClass } from "../model/suite.js";
-import type { FaultProfile } from "../model/faults.js";
+import type { ExplainedEnding, FaultProfile } from "../model/faults.js";
 import type { BatchScores, Under } from "../model/score.js";
 import { gatePasses, gateRules, type GateCase } from "./gate.js";
 import { isDrill } from "./quick.js";
@@ -29,6 +29,7 @@ import {
   type Prepared,
 } from "./runner.js";
 import { batchScores, fragileSteps, marginSummary, stepTrace, tracesMatch, votesOf, type VoteSample } from "./score.js";
+import { runStabilityCase, stabilityCurve, type StabilityMeta, type StabilityRun } from "./stability.js";
 import { judgeCase, matchesExpectRule } from "./verdicts.js";
 
 /** Baseline repeats per class (section 8 §7.2: "each class × 3 repeats"). */
@@ -52,6 +53,10 @@ export type CertifyFullInput = Omit<CertifyCaseInput, "selection" | "at" | "reru
   drills: number;
   /** The suite's setup runs. */
   setup: readonly SetupSpec[];
+  /** The suite's stability settings (section 8 §9.3). Omitted or `null`: no stability runs. */
+  stability?: { class: string; levels: readonly number[]; seeds: number; twins: boolean } | null;
+  /** The fault profile set's explained endings, for the fault-aware judge (section 8 §8.4). */
+  explainedEndings?: readonly ExplainedEnding[];
   /** The test data set's business date, set at batch start (section 8 §7.4). */
   businessDate?: string;
   declaration?: { by: string; differs: readonly string[] };
@@ -355,6 +360,31 @@ export async function runCertifyFull(
     ));
   }
 
+  // Stability: random faults at each entropy level, seeds from the batch ID, each run twice (section 8 §9.3).
+  const stabilityRuns: StabilityRun[] = [];
+  const stab = input.stability ?? null;
+  const stabClass = stab === null ? undefined : input.classes.find((c) => c.id === stab.class);
+  if (stab !== null && stabClass === undefined) return fail("unknown_class", stab.class);
+  for (const entropy of stab === null ? [] : stab.levels) {
+    for (let n = 1; stab !== null && stabClass !== undefined && n <= stab.seeds; n += 1) {
+      const seed = `${input.batchId}:s${String(entropy)}:${String(n)}`;
+      const inputs = resolveInputs(stabClass.inputs, input.pools, n - 1);
+      for (const twin of stab.twins ? [false, true] : [false]) {
+        const caseId = `stab_${String(entropy)}_${String(n)}${twin ? "_twin" : ""}`;
+        const seen: { meta: StabilityMeta | null } = { meta: null };
+        const ran = await withVoidReruns(base, p, stabClass, caseId, "stability", null, seed, async () => {
+          const got = await runStabilityCase(base, deps, p, stabClass, input.explainedEndings ?? [], { entropy, seed: n, twin }, caseId, seed, inputs);
+          if (!got.ok) return got;
+          seen.meta = got.value.meta;
+          return ok(got.value.run);
+        });
+        add(ran);
+        if (ran.reportCase.verdict === "void") gaps.push(`stability ${caseId}: the case is void (${ran.reportCase.result.detail ?? "void"})`);
+        else if (seen.meta !== null) stabilityRuns.push({ meta: seen.meta, verdict: ran.reportCase.verdict });
+      }
+    }
+  }
+
   const judged: GateCase[] = cases.map((c) => ({ group: c.reportCase.group ?? "baseline", verdict: c.reportCase.verdict }));
   const drill = isDrill(input.declaration) || input.modelsOff === true;
   const rules = gateRules({
@@ -414,10 +444,14 @@ export async function runCertifyFull(
     margin,
     fragile,
     coverage_gaps: gaps,
-    stability: null,
+    stability: stab === null ? null : stabilityCurve(stabilityRuns),
     ...(drill ? { drill: true as const } : {}),
     ...(input.modelsOff === true ? { models_off: true as const } : {}),
   };
-  const failing = cases.filter((c) => c.reportCase.verdict !== "pass" && c.reportCase.run_id !== "none").map((c) => c.reportCase.run_id);
+  // Why stability cases only when wrong or void: `explained` and `unexplained` are expected there (section 9.5).
+  const failing = cases
+    .filter((c) => c.reportCase.run_id !== "none")
+    .filter((c) => (c.reportCase.group === "stability" ? ["wrong", "void"].includes(c.reportCase.verdict) : c.reportCase.verdict !== "pass"))
+    .map((c) => c.reportCase.run_id);
   return ok({ plan, report, scores, under, failing });
 }

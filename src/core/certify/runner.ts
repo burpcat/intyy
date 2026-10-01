@@ -272,7 +272,7 @@ async function routeMapFor(
 /** Writes the case run's own `faults.jsonl` (section 8 §7.4 step 7): one fault log line per
  * line, masked through a fresh redactor built from this batch's policy, like any evidence file
  * (a path or a route may hold a raw member number, and safety never trusts "it's just plumbing"). */
-async function writeFaultsFile(
+export async function writeFaultsFile(
   deps: CertifyDeps,
   tenant: string,
   runId: string,

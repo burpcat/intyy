@@ -64,11 +64,11 @@ describe("certify (full): the batch and its score line", () => {
     expect(r.code).toBe(EXIT.ok);
     expect(r.body.plan.kind).toBe("full");
     expect(r.body.report).toMatchObject({ kind: "full", gate: { passed: true } });
-    // The full shape: baseline repeats, a twin, then the matrix on every request step.
+    // The full shape: baseline repeats, a twin, the matrix on every request step, then the kit's one stability run.
     expect(r.body.plan.cases.map((c) => c.case_id)).toEqual([
-      "baseline", "baseline_valid_2", "baseline_valid_3", "twin", "server_error.click_search", "server_error.click_confirm",
+      "baseline", "baseline_valid_2", "baseline_valid_3", "twin", "server_error.click_search", "server_error.click_confirm", "stab_0.05_1",
     ]);
-    expect(r.body.report.stability).toBeNull();
+    expect(r.body.report.stability).toMatchObject([{ entropy: 0.05, runs: 1, pass: 1 }]);
 
     const [line] = history(env);
     if (line?.event !== "batch") throw new Error("expected a batch line");

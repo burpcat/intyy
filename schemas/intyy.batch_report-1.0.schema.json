@@ -152,7 +152,8 @@
               "twin",
               "matrix",
               "extra",
-              "drill"
+              "drill",
+              "stability"
             ]
           },
           "purpose": {
@@ -460,7 +461,114 @@
       }
     },
     "stability": {
-      "type": "null"
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entropy": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "runs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pass": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "explained": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "assisted": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "unexplained": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "wrong": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "faults": {
+                "type": "number",
+                "minimum": 0
+              },
+              "rungs": {
+                "type": "object",
+                "properties": {
+                  "1": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "2": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "3": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "1",
+                  "2",
+                  "3"
+                ],
+                "additionalProperties": false
+              },
+              "escalations": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "twin_mismatch": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "entropy",
+              "runs",
+              "pass",
+              "explained",
+              "assisted",
+              "unexplained",
+              "wrong",
+              "faults",
+              "rungs",
+              "escalations",
+              "twin_mismatch"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "models_off": {
       "type": "boolean",

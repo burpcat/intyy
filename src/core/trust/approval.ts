@@ -322,6 +322,24 @@ function loweredFlags(decisions: readonly Decision[]): string[] {
     });
 }
 
+/**
+ * The stability line (section 9 §9.3's example): per level the pass share and any unexplained,
+ * assisted, or wrong runs, then the worst twin mismatch. `not run` when the batch had none.
+ */
+function stabilityLine(curve: BatchReport["stability"]): string {
+  if (curve === null || curve === undefined || curve.length === 0) return "not run";
+  const levels = curve.map((l) => {
+    const extra = [
+      l.unexplained > 0 ? `${String(Math.round(l.unexplained * l.runs))} unexplained` : "",
+      l.assisted > 0 ? `${String(Math.round(l.assisted * l.runs))} assisted` : "",
+      l.wrong > 0 ? `${String(l.wrong)} WRONG` : "",
+    ].filter((x) => x !== "");
+    return `${String(l.entropy)}: ${String(Math.round(l.pass * 100))}% pass${extra.map((x) => `, ${x}`).join("")}`;
+  });
+  const worst = curve.reduce((a, b) => (b.twin_mismatch > a.twin_mismatch ? b : a));
+  return `${levels.join("   ")}   twins ${String(worst.twin_mismatch)}${worst.twin_mismatch > 0 ? ` at ${String(worst.entropy)}` : ""}`;
+}
+
 /** Builds the screen's data from the facts. `batchId` falls back to the record's latest full batch. */
 export function buildReview(f: ReviewFacts): Review {
   const move = moveFor(f.record.state);
@@ -363,8 +381,7 @@ export function buildReview(f: ReviewFacts): Review {
       score: targets[step]?.score_low ?? null,
     })),
     gaps: report?.coverage_gaps ?? [],
-    // Why: stability is task 10, a cut candidate. A full batch reports `stability: null` for now.
-    stability: "not run",
+    stability: stabilityLine(report?.stability),
     // Why: no batch records the timeouts it ran with yet, so approval installs the defaults (section 8 §9.6).
     timeouts: "installs defaults; no candidates",
     lowered: loweredFlags(f.decisions),

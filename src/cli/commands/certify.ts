@@ -347,6 +347,7 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
         `matrix: ${String(profiles)} profiles on every request step and the commit step; the count is known after the baseline`,
         `extra: ${String(suite.extra.length)} cases`,
         `drills: ${String(suite.drills.count)}`,
+        `stability: ${String(suite.stability.levels.length)} levels x ${String(suite.stability.seeds)} seeds${suite.stability.twins ? " x 2 twins" : ""} = ${String(suite.stability.levels.length * suite.stability.seeds * (suite.stability.twins ? 2 : 1))} runs`,
         `setup runs: ${String(suite.setup.length)} before each case`,
         `instance: ${instanceLine(instance)}`,
         declaration === undefined
@@ -406,6 +407,8 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
           extra: suite.extra,
           drills: suite.drills.count,
           setup: await loadSetups(ctx, suite),
+          stability: suite.stability,
+          ...(faults.explained_endings === undefined ? {} : { explainedEndings: faults.explained_endings }),
           businessDate: testdata.business_date,
           modelsOff,
           ...(declaration === undefined ? {} : { declaration }),

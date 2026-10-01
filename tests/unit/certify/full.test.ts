@@ -7,13 +7,19 @@
 // failing makes the case void after three attempts and fails rule 6; an extra that names a
 // missing step is void at once; a setup failure fails the batch or the case; the reviewer in
 // `deps.models` reaches the replay; `under` names the session version. M10 task 3.
+// M10 task 10 adds the stability runs (section 8 §7.2, §8.4, §9.3, build decisions of task 10):
+// levels x seeds x twins cases after the drills, twins share seed and inputs, the report holds the
+// curve (null with no setting), the harness gets entropy and seed, a wrong run fails `no_wrong`
+// only, a void run `no_void` only, an unexplained run neither the gate nor the outcome score, and
+// a listed ending for a style that fired is `explained`.
 import { describe, expect, test } from "vitest";
 import { matrixCells, runCertifyFull, VOID_RERUNS, type CertifyFullInput } from "../../../src/core/certify/full.js";
 import { BatchPlan } from "../../../src/core/model/batch-plan.js";
 import { BatchReport } from "../../../src/core/model/batch-report.js";
 import { TableReviewer, type ReviewerScript } from "../../../src/fakes/table-reviewer.js";
+import { ExplainedEnding } from "../../../src/core/model/faults.js";
 import type { FakeElement, FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
-import type { Harness, HarnessFailure, NamedFault } from "../../../src/ports/harness.js";
+import type { FaultLogEntry, Harness, HarnessFailure, NamedFault } from "../../../src/ports/harness.js";
 import { fail, type Outcome } from "../../../src/ports/outcome.js";
 import type { ReviewerInput } from "../../../src/ports/models.js";
 import { ORIGIN, TENANT, fixtureSite } from "../replay/executor-harness.js";
@@ -444,5 +450,206 @@ describe("runCertifyFull: the models in deps reach the replay", () => {
     const off = await fullDeps(boxSite(), { models: { reviewer: idle } });
     await runCertifyFull(fullInput(off.ids.batchId(), { profiles: [], modelsOff: true }), off.deps);
     expect(idle.seen).toEqual([]);
+  });
+});
+
+/** A site whose Confirm result follows `mode`: the stability tests flip it while entropy is on. */
+function modeSite(mode: { value: "found" | "not_found" | "stuck" }): FakeSite {
+  const sites = { found: fixtureSite(), not_found: fixtureSite({ result: "not_found" }), stuck: fixtureSite({ confirm: "stuck" }) };
+  return {
+    ...sites.found,
+    screens: {
+      ...sites.found.screens,
+      get "/result"() {
+        const screen = sites[mode.value].screens["/result"];
+        if (screen === undefined) throw new Error("test setup: no /result screen");
+        return screen;
+      },
+    },
+  };
+}
+
+const entropyEntry = (style: string): FaultLogEntry => ({
+  seq: 1, time: "2026-01-15T09:00:00.000Z", method: "POST", path: "/confirm", route_count: 1,
+  decision: "entropy", fault_kind: "server_error", block_point: "none", style, named_id: null, delay_ms: 0,
+});
+
+/** Wraps the harness: records `setChaos`, tells the site its mode while entropy is on, can fail
+ * `setChaos` at entropy above 0, and can add fired entropy faults to the fault log. */
+class ChaosHarness implements Harness {
+  chaos: { entropy?: number; seed?: string }[] = [];
+  entropy = 0;
+  failChaos = false;
+  fire: string[] = [];
+  constructor(private readonly inner: RouteMappingHarness, private readonly mode: { value: "found" | "not_found" | "stuck" }, private readonly onMode: "found" | "not_found" | "stuck") {}
+  features() { return this.inner.features(); }
+  reset() { return this.inner.reset(); }
+  setChaos(c: { entropy?: number; seed?: string }): Promise<Outcome<void, HarnessFailure>> {
+    this.chaos.push(c);
+    if (this.failChaos && (c.entropy ?? 0) > 0) return Promise.resolve(fail("unreachable", "chaos refused"));
+    this.entropy = c.entropy ?? 0;
+    this.mode.value = this.entropy > 0 ? this.onMode : "found";
+    return this.inner.setChaos(c);
+  }
+  addFaults(f: NamedFault[]) { return this.inner.addFaults(f); }
+  clearFaults() { return this.inner.clearFaults(); }
+  async faultLog() {
+    const log = await this.inner.faultLog();
+    return log.ok && this.entropy > 0 ? { ...log, value: [...log.value, ...this.fire.map(entropyEntry)] } : log;
+  }
+  oracle(notes: Parameters<Harness["oracle"]>[0]) { return this.inner.oracle(notes); }
+  setClock(date: string | null) { return this.inner.setClock(date); }
+}
+
+const STAB = { class: "valid", levels: [0.05, 0.3], seeds: 2, twins: true };
+
+/** A stability batch on the mode site. `setup` tunes the wrapper before the run. */
+async function stabilityBatch(
+  onMode: "found" | "not_found" | "stuck",
+  over: Partial<CertifyFullInput> = {},
+  setup: (h: ChaosHarness) => void = () => undefined,
+) {
+  const mode: { value: "found" | "not_found" | "stuck" } = { value: "found" };
+  let chaos: ChaosHarness | undefined;
+  const { deps, ids } = await fullDeps(modeSite(mode), {}, (h) => {
+    chaos = new ChaosHarness(h, mode, onMode);
+    setup(chaos);
+    return chaos;
+  });
+  const r = await runCertifyFull(fullInput(ids.batchId(), { profiles: [], stability: STAB, ...over }), deps);
+  if (!r.ok) throw new Error(`full batch failed: ${r.failure}${r.detail === undefined ? "" : ` ${r.detail}`}`);
+  return { ...r.value, chaos: chaos?.chaos ?? [] };
+}
+
+const stabCases = <T extends { group?: string | undefined }>(cases: T[]): T[] => cases.filter((c) => c.group === "stability");
+
+describe("runCertifyFull: stability runs (section 8 §7.2, §9.3)", () => {
+  test("levels x seeds x twins cases run after the drills, in level, seed, twin order", async () => {
+    const reconciling = profile("reply_lost", "@commit_point", "reconciles_found");
+    const b = await batchOf((id) => fullInput(id, { profiles: [reconciling], drills: 1, stability: STAB }));
+    expect(caseIds(b).slice(-9)).toEqual([
+      "drill_1",
+      "stab_0.05_1", "stab_0.05_1_twin", "stab_0.05_2", "stab_0.05_2_twin",
+      "stab_0.3_1", "stab_0.3_1_twin", "stab_0.3_2", "stab_0.3_2_twin",
+    ]);
+    expect(stabCases(b.report.cases)).toHaveLength(8);
+    expect(stabCases(b.plan.cases)).toHaveLength(8);
+    expect(stabCases(b.plan.cases).every((c) => c.class === "valid" && c.profile === null && c.faults.length === 0)).toBe(true);
+    expect(BatchPlan.safeParse(b.plan).success).toBe(true);
+    expect(BatchReport.safeParse(b.report).success).toBe(true);
+  });
+
+  test("a twin shares its first run's seed and inputs; seeds and pool values differ per seed number", async () => {
+    const pools = { "members.valid": ["700114", "700115", "700116"] };
+    const b = await batchOf((id) => fullInput(id, { pools, profiles: [], stability: STAB }));
+    const byId = new Map(b.plan.cases.map((c) => [c.case_id, c]));
+    for (const level of ["0.05", "0.3"]) {
+      for (const n of [1, 2]) {
+        const first = byId.get(`stab_${level}_${String(n)}`);
+        const twin = byId.get(`stab_${level}_${String(n)}_twin`);
+        expect(twin?.seed).toBe(first?.seed);
+        expect(twin?.inputs).toEqual(first?.inputs);
+        expect(first?.seed).toBe(`${b.plan.batch_id}:s${level}:${String(n)}`);
+        expect(first?.inputs).toEqual({ member_id: n === 1 ? "700114" : "700115" });
+      }
+    }
+    expect(new Set(stabCases(b.plan.cases).map((c) => c.run_id)).size).toBe(8);
+  });
+
+  test("the report's curve has a row per level, with four judged runs each, and a clean app passes them all", async () => {
+    const b = await batchOf((id) => fullInput(id, { profiles: [], stability: STAB }));
+    expect(b.report.stability).toHaveLength(2);
+    expect(b.report.stability?.map((l) => [l.entropy, l.runs, l.pass, l.wrong, l.twin_mismatch])).toEqual([
+      [0.05, 4, 1, 0, 0],
+      [0.3, 4, 1, 0, 0],
+    ]);
+    expect(b.report.gate.passed).toBe(true);
+  });
+
+  test("twins:false halves the runs", async () => {
+    const b = await batchOf((id) => fullInput(id, { profiles: [], stability: { ...STAB, twins: false } }));
+    expect(caseIds(b).filter((c) => c.startsWith("stab_"))).toEqual(["stab_0.05_1", "stab_0.05_2", "stab_0.3_1", "stab_0.3_2"]);
+    expect(b.report.stability?.map((l) => l.runs)).toEqual([2, 2]);
+  });
+
+  test("with no stability setting no stability case runs and the curve is null", async () => {
+    for (const stability of [undefined, null]) {
+      const b = await batchOf((id) => fullInput(id, { profiles: [], ...(stability === undefined ? {} : { stability }) }));
+      expect(caseIds(b).some((c) => c.startsWith("stab_"))).toBe(false);
+      expect(b.report.stability).toBeNull();
+    }
+  });
+
+  test("a stability class the suite does not define stops the batch with unknown_class", async () => {
+    const { deps, ids } = await fullDeps();
+    const r = await runCertifyFull(fullInput(ids.batchId(), { profiles: [], stability: { ...STAB, class: "nope" } }), deps);
+    expect(r).toMatchObject({ ok: false, failure: "unknown_class" });
+  });
+
+  test("the harness gets the level as entropy and the case's seed, and entropy 0 after each run", async () => {
+    const b = await stabilityBatch("found");
+    const seen = b.chaos.filter((c) => (c.entropy ?? 0) > 0);
+    const planned = stabCases(b.plan.cases).map((c) => ({ entropy: Number(c.case_id.split("_")[1]), seed: c.seed }));
+    expect(seen).toEqual(planned);
+    expect(b.chaos.filter((c) => c.entropy === 0).length).toBeGreaterThanOrEqual(planned.length);
+  });
+
+  test("a wrong stability verdict fails no_wrong only, and the run is listed in `failing`", async () => {
+    // Why wrong: while entropy is on the member is missing, but the class expects success (a failed outcome truth check).
+    const b = await stabilityBatch("not_found");
+    const stab = stabCases(b.report.cases);
+    expect(stab.map((c) => c.verdict)).toEqual(Array(8).fill("wrong"));
+    expect(b.report.gate.rules).toEqual({ complete: true, no_wrong: false, baseline: true, matrix: true, extra: true, no_void: true });
+    expect(b.report.gate.passed).toBe(false);
+    expect(b.report.stability?.map((l) => l.wrong)).toEqual([4, 4]);
+    expect(b.failing).toEqual(stab.map((c) => c.run_id));
+    expect(b.scores.outcome_score).toBe(1);
+  });
+
+  test("a void stability case fails no_void only, and the curve leaves it out", async () => {
+    const b = await stabilityBatch("found", {}, (h) => { h.failChaos = true; });
+    const stab = stabCases(b.report.cases);
+    expect(stab).toHaveLength(8);
+    expect(stab.every((c) => c.verdict === "void" && c.run_id === "none")).toBe(true);
+    expect(b.report.gate.rules).toEqual({ complete: true, no_wrong: true, baseline: true, matrix: true, extra: true, no_void: false });
+    expect(b.report.gate.passed).toBe(false);
+    expect(b.report.stability?.every((l) => l.runs === 0)).toBe(true);
+    expect(b.report.coverage_gaps?.filter((g) => g.includes("stab_")).length).toBe(8);
+  });
+
+  test("an unexplained stability run leaves the gate passing and the outcome score untouched", async () => {
+    // Confirm does nothing while entropy is on, and no rule explains the ending.
+    const b = await stabilityBatch("stuck");
+    const stab = stabCases(b.report.cases);
+    expect(stab.map((c) => c.verdict)).toEqual(Array(8).fill("unexplained"));
+    expect(b.report.gate.passed).toBe(true);
+    expect(b.report.gate.rules).toEqual({ complete: true, no_wrong: true, baseline: true, matrix: true, extra: true, no_void: true });
+    expect(b.scores.outcome_score).toBe(1);
+    expect(b.report.outcome_score).toBe(1);
+    expect(b.failing).toEqual([]);
+    expect(b.report.stability?.map((l) => [l.runs, l.unexplained, l.pass, l.twin_mismatch])).toEqual([[4, 1, 0, 0], [4, 1, 0, 0]]);
+  });
+
+  test("a listed ending for a style that fired is explained; without the style or the table it is not", async () => {
+    const plain = await stabilityBatch("stuck");
+    const result = stabCases(plain.report.cases)[0]?.result;
+    const detail = result?.detail;
+    if (result === undefined || detail === null || detail === undefined) throw new Error("expected a failing stability run");
+    const rule = (styles: string[]) =>
+      ExplainedEnding.parse(
+        result.status === "failed"
+          ? { styles, status: "failed", endings: [detail] }
+          : { styles, status: "escalated", endings: [detail.split("/").slice(0, 2).join("/")] },
+      );
+
+    const hit = await stabilityBatch("stuck", { explainedEndings: [rule(["maintenance"])] }, (h) => { h.fire = ["maintenance"]; });
+    expect(stabCases(hit.report.cases).map((c) => c.verdict)).toEqual(Array(8).fill("explained"));
+    expect(hit.report.stability?.map((l) => [l.explained, l.faults])).toEqual([[1, 1], [1, 1]]);
+    expect(hit.report.gate.passed).toBe(true);
+
+    const otherStyle = await stabilityBatch("stuck", { explainedEndings: [rule(["maintenance"])] }, (h) => { h.fire = ["hang"]; });
+    expect(stabCases(otherStyle.report.cases).every((c) => c.verdict === "unexplained")).toBe(true);
+    const noTable = await stabilityBatch("stuck", {}, (h) => { h.fire = ["maintenance"]; });
+    expect(stabCases(noTable.report.cases).every((c) => c.verdict === "unexplained")).toBe(true);
   });
 });

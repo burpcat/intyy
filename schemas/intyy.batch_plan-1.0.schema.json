@@ -127,7 +127,8 @@
               "twin",
               "matrix",
               "extra",
-              "drill"
+              "drill",
+              "stability"
             ]
           },
           "purpose": {

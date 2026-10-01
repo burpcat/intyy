@@ -1,6 +1,6 @@
 // The certify batch report (`intyy.batch_report/1.0`), written after the last run.
-// Follows design section 8 §7.8, §8.1 to §8.3. Thin (docs/decisions.md, M06: "No score store"):
-// no scores, stability, coverage, or jev table yet.
+// Follows design section 8 §7.8, §8.1 to §8.3, §9.3 (stability curve). A quick batch leaves the
+// full batch's optional fields out; no jev table yet.
 import { z } from "zod";
 import { AppId, TenantId } from "./common.js";
 import { CaseGroup } from "./batch-plan.js";
@@ -60,6 +60,32 @@ export const BatchReportCase = z
 
 /** A report case. */
 export type BatchReportCase = z.infer<typeof BatchReportCase>;
+
+/** One entropy level of the stability curve (section 8 §9.3). Rates are over the level's judged runs. */
+export const StabilityLevel = z
+  .object({
+    entropy: z.number().min(0).max(1),
+    /** Judged runs at this level (twins count; `void` runs do not). */
+    runs: z.number().int().nonnegative(),
+    pass: z.number().min(0).max(1),
+    explained: z.number().min(0).max(1),
+    assisted: z.number().min(0).max(1),
+    unexplained: z.number().min(0).max(1),
+    /** A count, not a rate. It must be 0. */
+    wrong: z.number().int().nonnegative(),
+    /** Mean faults fired per run. */
+    faults: z.number().nonnegative(),
+    /** Recoveries by ladder rung. */
+    rungs: z.object({ "1": z.number().int().nonnegative(), "2": z.number().int().nonnegative(), "3": z.number().int().nonnegative() }).strict(),
+    /** Escalations by reason. */
+    escalations: z.record(z.string(), z.number().int().positive()),
+    /** Share of twin pairs whose step traces differ. */
+    twin_mismatch: z.number().min(0).max(1),
+  })
+  .strict();
+
+/** One stability level. */
+export type StabilityLevel = z.infer<typeof StabilityLevel>;
 
 /** The six gate rules (section 8 §9.5). Each is true or false on its own, so a failed gate says which. */
 export const GateRules = z
@@ -132,8 +158,8 @@ export const BatchReport = z
     fragile: z.array(z.string().min(1)).optional(),
     /** Faults planned that never fired, and cases the harness could not run (section 8 §9.4). */
     coverage_gaps: z.array(z.string().min(1)).optional(),
-    /** The stability curve. `null`: not run (section 8 §9.3 is a later task). */
-    stability: z.null().optional(),
+    /** The stability curve, one entry per entropy level (section 8 §9.3). `null`: no stability runs. */
+    stability: z.array(StabilityLevel).nullable().optional(),
     /** `true` when the batch ran with `--models off`: a drill (section 8 §7.1). */
     models_off: z.literal(true).optional(),
     /** `true` for a drill batch (section 8 §7.1): the plan's instance facts differ from the test

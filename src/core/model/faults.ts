@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { AppId } from "./common.js";
 import { SnakeId } from "./artifact/shared.js";
+import { CommitState } from "./result.js";
 import { Approval } from "./store-index.js";
 
 /**
@@ -84,9 +85,31 @@ export const FaultProfile = z
 export type FaultProfile = z.infer<typeof FaultProfile>;
 
 /**
- * The fault profile set for one app (section 8 §6.3). The two judge tables of section 8 §8.4 and
- * §8.5 (explained endings, jev truth) are optional in 1.0 (docs/decisions.md, M06) and are not
- * modeled here: their own design sections are outside this milestone's reading.
+ * One explained ending (section 8 §8.4): a failure or escalation that a fault style honestly causes.
+ * The judge calls a stability run `explained` when a style listed here fired and the run ended this
+ * way. The data is the app's, so the code names no bank style.
+ */
+export const ExplainedEnding = z
+  .object({
+    /** Fault styles (CONTRACT §6.1 names) of which at least one fired. `*` means any fired fault. */
+    styles: z.array(z.string().min(1)).min(1),
+    /** At least this many faults fired in the run (default 1). "Three or more faults": 3. */
+    min_faults: z.number().int().positive().optional(),
+    status: z.enum(["failed", "escalated"]),
+    /** `failed`: failure codes. `escalated`: `<kind>/<reason>`, like `takeover/stuck`. */
+    endings: z.array(z.string().min(1)).min(1),
+    /** The run's commit state must be this one too (section 8 §8.4, reconciliation children). */
+    commit: CommitState.optional(),
+  })
+  .strict();
+
+/** One explained ending. */
+export type ExplainedEnding = z.infer<typeof ExplainedEnding>;
+
+/**
+ * The fault profile set for one app (section 8 §6.3). `explained_endings` is the fault-aware
+ * judge's table (section 8 §8.4); without it no stability run is `explained`. The jev truth table
+ * (section 8 §8.5) is not modeled here yet.
  */
 export const Faults = z
   .object({
@@ -94,6 +117,7 @@ export const Faults = z
     app: AppId,
     revision: z.number().int().positive(),
     profiles: z.array(FaultProfile),
+    explained_endings: z.array(ExplainedEnding).optional(),
     approved: Approval.optional(),
   })
   .strict();
