@@ -127,9 +127,13 @@ export type OpenSubRun = {
  * tests/live/cassette.test.ts. A fresh temp root holds this run's own evidence and
  * request-index files. A `FakeOperator` approves both the start confirmation and any
  * commit-point approval, so no human answers a prompt (each fresh `FakeOperator` instance
- * answers its own first request "approved": src/fakes/operator.ts).
+ * answers its own first request "approved": src/fakes/operator.ts), unless `opts.operator` gives
+ * another one.
  */
-export async function runOpenSub(inputs: Record<string, unknown>): Promise<OpenSubRun> {
+export async function runOpenSub(
+  inputs: Record<string, unknown>,
+  opts: { operator?: ReplayDeps["operator"] } = {},
+): Promise<OpenSubRun> {
   const lib = join(ROOT, config.library);
   const tmp = await tempRoot("intyy-replay-demo-");
   const tmpDir = join(tmp.root, "tmp");
@@ -181,7 +185,8 @@ export async function runOpenSub(inputs: Record<string, unknown>): Promise<OpenS
     surface: playwrightFactory(),
     artifacts: realCandidateStore(tmpDir),
     requestIndex: { store: requestIndexStore, clock, secrets: new EnvSecrets(env), keys },
-    operator: () => new FakeOperator([{ staff: "op_bank_ops", decision: "approved" }]),
+    // Why `opts.operator`: the handoff live test (M07) scripts a person who takes over.
+    operator: opts.operator ?? (() => new FakeOperator([{ staff: "op_bank_ops", decision: "approved" }])),
   };
   const outcome = await runReplay(input, deps);
   const ev = await evidence.events(config.default_tenant, outcome.runId);
