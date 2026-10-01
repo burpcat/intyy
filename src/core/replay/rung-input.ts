@@ -80,7 +80,7 @@ export type TroubleFacts = {
 };
 
 /** The masked screen both models read: location, an element list, and the IDs behind the list. */
-function screenOf(o: Observation, r: Redactor) {
+export function screenOf(o: Observation, r: Redactor) {
   const view = buildScreen(o, r);
   const kids = childrenOf(o.elements);
   const list = [...view.elements].map(([id, el]) => ({

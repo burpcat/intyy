@@ -5,7 +5,7 @@
 // points"), section 2 §16.6 (commit states). Handlers, packs, retries, and reconciliation are
 // M06; in this milestone any unexpected screen is a hard `failed`. Core stays pure: only ports.
 import type { Clock, Ids } from "../../ports/clock.js";
-import type { Classifier, Reviewer } from "../../ports/models.js";
+import type { CallRecorder, Classifier, Reviewer } from "../../ports/models.js";
 import type { Outcome } from "../../ports/outcome.js";
 import type { OperatorPort } from "../../ports/operator.js";
 import type { Secrets } from "../../ports/secrets.js";
@@ -30,7 +30,7 @@ import { fact, Redactor, redactionRules, type Fact, type KnownValue } from "../s
 import type { SecretSources } from "../safety/secrets/injector.js";
 import type { RequestIndexDeps } from "../orchestrator/request-index.js";
 import { catalogRequestIndex, catalogResolve, runPrechecks } from "../orchestrator/prechecks.js";
-import { RunLog } from "../orchestrator/run-log.js";
+import { RunLog, type LogLine } from "../orchestrator/run-log.js";
 import { loadRecordedPictures } from "../targets/picture.js";
 import { commitStep, type CommitApproval, type CommitContext } from "./commit.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
@@ -44,8 +44,8 @@ import { DEFAULT_CUTOFFS } from "../model/thresholds.js";
 import { wireBytes } from "../safety/redaction/compose.js";
 import type { Cutoffs } from "./jev-verdict.js";
 import { matchDetectors, resumeSearch, runLadder, type LadderStep } from "./ladder.js";
-import type { RungDeps, StepFacts } from "./rung-input.js";
-import { runReconciliationCheck, type ReconciliationVerdict } from "./reconciliation.js";
+import { screenOf, type RungDeps, type StepFacts } from "./rung-input.js";
+import { reconcileInput, reconcileWithModels, runReconciliationCheck, type CheckFacts, type ReconciliationVerdict } from "./reconciliation.js";
 import { PRECONDITION_TIMEOUT_MS, runPrelude, runStep, type StepFailure, type StepRunnerContext } from "./prelude.js";
 import { waitForCondition } from "./wait.js";
 import type { EvalCtx } from "../targets/evaluate.js";
@@ -1301,6 +1301,60 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     const humanInputTakeover = (stepId: string): Promise<TakeoverEnd> =>
       attemptTakeover(stepId, "unexpected_human_input", null, null, null);
 
+    /** Opens one model call's files in `llm/`: request first, then reply, named by the next
+     * run-log number and the caller (docs/decisions.md, M09). `request` is the path a log line names. */
+    const llmRecorder = (who: "jev" | "reviewer"): { record: CallRecorder; request: string } => {
+      const base = `llm/${String(log.nextSeq).padStart(5, "0")}_${who}`;
+      return {
+        request: `${base}_request.json`,
+        record: async (part, bytes) => {
+          const path = `${base}_${part}.json`;
+          const w = await folder.writeFile(path, wireBytes(bytes), deps.signal);
+          if (w.ok) captureFiles.push(path);
+          return w.ok;
+        },
+      };
+    };
+
+    /** Appends a model line. Why `fact`: the digit rule would mask `llm/00031_jev_request.json`
+     * in the log. The path is intyy's own, in the run-file shape (section 3 §7.2). */
+    const appendModelLine = (line: LogLine): void => {
+      const data = line.data as { input?: unknown };
+      void log.append(typeof data.input === "string" && data.input.startsWith("llm/") ? { ...line, data: { ...data, input: fact(data.input) } } : line);
+    };
+
+    /** Anything else the check said, ask jev and then the reviewer (section 5 §10.5, §10.6).
+     * `found` only when both agree; every other case, or a rung that is off, is a human's. */
+    const modelReconciliation = async (stepId: string, check: CheckFacts): Promise<"found" | "human"> => {
+      const flags = rungFlags(input.policy, deps.models);
+      if (!flags.jev) return "human";
+      const seen = await eyes.observe(deps.signal);
+      if (!seen.ok) return "human";
+      const screen = screenOf(seen.value, r);
+      const commitStep = artifact.steps.find((s2) => s2.id === stepId);
+      const asked = reconcileInput(
+        r,
+        {
+          capability: capabilityStr,
+          commitStep: { id: stepId, intent: commitStep?.intent ?? "" },
+          // Why: the correlation note is the run ID typed into the app (section 5 §10.5).
+          correlation: artifact.steps.some((s2) => s2.action.type === "type" && s2.action.value.includes("{system.run_id}")) ? "notes" : "none",
+          screen: { location: screen.location, elements: screen.list.map((e) => ({ role: e.role, name: e.name })) },
+        },
+        check,
+      );
+      return reconcileWithModels({
+        jev: deps.models?.classifier ?? null,
+        reviewer: flags.reviewer ? (deps.models?.reviewer ?? null) : null,
+        min: (deps.models?.cutoffs ?? DEFAULT_CUTOFFS).reconciliation_min,
+        input: asked,
+        step: stepId,
+        recorder: llmRecorder,
+        log: appendModelLine,
+        ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+      });
+    };
+
     /** Section 3 §5.10's `via: "reconciliation"` recovery entry (section 7 §11.1: "`recoveries`
      * lists `via: reconciliation`"). `rung` is `null`: not a ladder rung. */
     const reconciliationRecovery = (stepId: string, checkRunId: string | null): RecoveryLine => ({
@@ -1317,7 +1371,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
      * ever ran at all (a waiver, or no linked check). */
     const checkInfo = (
       checkRunId: string | null,
-      decidedBy: "code" | "human",
+      decidedBy: "code" | "jev" | "human",
       staffId: string | null,
     ): EffectBlock["check"] | undefined =>
       checkRunId === null ? undefined : { run_id: checkRunId, decided_by: decidedBy, staff_id: staffId };
@@ -1355,7 +1409,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     const endFoundNoOutputs = async (
       stepId: string,
       checkRunId: string | null,
-      decidedBy: "code" | "human",
+      decidedBy: "code" | "jev" | "human",
       staffId: string | null,
     ): Promise<ReplayOutcome> => {
       const info = checkInfo(checkRunId, decidedBy, staffId);
@@ -1511,7 +1565,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
      * to a human, `reconciliation_decision`. "Human `found`" (docs/decisions.md, M06) still ends
      * `outputs_unavailable`: a human's eyes carry no structured outputs. "Human `not_found`"
      * joins the same `absent_by_check` path a plain-code answer would. */
-    const askHumanReconciliation = async (stepId: string): Promise<ReplayOutcome> => {
+    const askHumanReconciliation = async (stepId: string, checkRunId: string | null): Promise<ReplayOutcome> => {
       const opening = deps.clock.now().toISOString();
       // Why: section 3 §5.7. A waiver has no check, so the reason is `reconciliation_waived`.
       const reason = artifact.recovery?.reconciliation?.waiver !== undefined ? "reconciliation_waived" : "reconciliation_unclear";
@@ -1542,8 +1596,8 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ...(decidedByHuman ? { staff_id: got.staff } : {}),
         },
       });
-      if (got.kind === "found") return endFoundNoOutputs(stepId, null, "human", got.staff);
-      if (got.kind === "not_found") return settleAbsent(stepId, null, "human", got.staff);
+      if (got.kind === "found") return endFoundNoOutputs(stepId, checkRunId, "human", got.staff);
+      if (got.kind === "not_found") return settleAbsent(stepId, checkRunId, "human", got.staff);
       // Unanswered (section 7 §13.3, "the worst case in section 3 §5.12"): commit stays
       // `uncertain`; nobody knows yet.
       await captureOnFailure(`${stepId}_unclear`);
@@ -1570,7 +1624,14 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       if (verdict.kind === "found") return endFound(stepId, verdict.outputs, childRunId, "code", null);
       if (verdict.kind === "found_outputs_unavailable") return endFoundNoOutputs(stepId, childRunId, "code", null);
       if (verdict.kind === "absent") return settleAbsent(stepId, childRunId, "code", null);
-      return askHumanReconciliation(stepId);
+      // Plain code could not tell (section 7 §11.1, "Anything else"): jev, then the second
+      // opinion. Both sure and agreeing: accept `found`, with no outputs (a model reads no
+      // structured outputs). Otherwise a human decides (section 5 §10.6).
+      if (verdict.check !== undefined && (await modelReconciliation(stepId, verdict.check)) === "found") {
+        return endFoundNoOutputs(stepId, childRunId, "jev", null);
+      }
+      // Why the child ID: section 3 §5.8, `effect.check` is absent only when no check ran.
+      return askHumanReconciliation(stepId, childRunId);
     };
 
     /** What rungs 2 and 3 read for `stepId`'s ladder, or `undefined` when neither rung is on
@@ -1593,18 +1654,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         jev: flags.jev ? (deps.models?.classifier ?? null) : null,
         reviewer: flags.reviewer ? (deps.models?.reviewer ?? null) : null,
         cutoffs: deps.models?.cutoffs ?? DEFAULT_CUTOFFS,
-        recorder: (who) => {
-          const base = `llm/${String(log.nextSeq).padStart(5, "0")}_${who}`;
-          return {
-            request: `${base}_request.json`,
-            record: async (part, bytes) => {
-              const path = `${base}_${part}.json`;
-              const w = await folder.writeFile(path, wireBytes(bytes), deps.signal);
-              if (w.ok) captureFiles.push(path);
-              return w.ok;
-            },
-          };
-        },
+        recorder: llmRecorder,
         sendScreenshots: input.policy.effective.llm.send_screenshots,
         steps: stepFacts,
         inputs: inputFacts,
@@ -1675,14 +1725,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           // Why: every rung's `ladder` line joins the takeover request's trail (section 7 §13.1).
           log: (line) => {
             if (line.event === "ladder") ladderTrail.push(line.data);
-            // Why `fact`: the digit rule would mask `llm/00031_jev_request.json` in the log. The
-            // path is intyy's own, in the run-file shape (section 3 §7.2).
-            const data = line.data as { input?: unknown };
-            void log.append(
-              line.event === "ladder" && typeof data.input === "string"
-                ? { ...line, data: { ...data, input: fact(data.input) } }
-                : line,
-            );
+            appendModelLine(line);
           },
           taskCtx: { targets, conditions, refs },
           packCtx,

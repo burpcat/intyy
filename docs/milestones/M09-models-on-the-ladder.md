@@ -59,7 +59,7 @@ Trouble that plain code cannot sort goes to jev, then to a one-step reviewer, be
 - [ ] 3. Write the jev adapter and the threshold loader.
 - [x] 4. Write the reviewer adapter. Test: allowed action, blocked action, give up, no landing.
 - [x] 5. Wire rungs 2 and 3 into the ladder. Test that helpers never act while the window is closed.
-- [ ] 6. Wire jev and the second opinion into reconciliation. Test disagreement goes to a human.
+- [x] 6. Wire jev and the second opinion into reconciliation. Test disagreement goes to a human.
 - [ ] 7. Extend the LLM view test to jev and reviewer inputs.
 - [ ] 8. Write `jev report` and `thresholds show`. Draft the threshold record. Stop. Ask the owner to seal and approve it.
 - [ ] 9. Stop. Ask the owner to run the unknown pop-up case below.
@@ -75,7 +75,7 @@ Trouble that plain code cannot sort goes to jev, then to a one-step reviewer, be
 
 - [x] jev paths and reviewer paths (section 5 §16), with the table fakes.
 - [x] Helpers never act while the helper window is closed.
-- [ ] Reconciliation: code first, then jev, then the second opinion; disagreement reaches a human.
+- [x] Reconciliation: code first, then jev, then the second opinion; disagreement reaches a human.
 - [ ] Model call order for jev and the reviewer.
 - [ ] `--models off` freezes rungs 2 and 3 off in `ladder`.
 - [ ] LLM view: no canary value in any stored jev or reviewer input.
