@@ -44,16 +44,21 @@ describe("the demo path: steps 4 and 5 (section 9 §13.2)", () => {
     expect(outcome.result.outputs.account_number).toBeTruthy();
 
     // The prelude's own steps, then the task's navigate to its entry, then the task's own
-    // steps: exactly the order section 7 §10 lays out.
+    // steps: exactly the order section 7 §10 lays out. Why the entry is optional: the engine
+    // skips that navigate when sign-in already lands on the entry (kvfcu lands on /main.do).
     const gateSteps = events.filter((e) => e.event === "gate").map((e) => e.step as string | null);
     const firstSession = gateSteps.findIndex((s) => s?.startsWith("session:") === true);
+    const lastSession = gateSteps.findLastIndex((s) => s?.startsWith("session:") === true);
     const entryAt = gateSteps.indexOf("entry");
     expect(firstSession).toBeGreaterThanOrEqual(0);
-    expect(entryAt).toBeGreaterThan(firstSession);
     const firstTaskStep = gateSteps.findIndex(
-      (s, i) => i > entryAt && s !== null && s !== "entry" && !s.startsWith("session:"),
+      (s, i) => i > lastSession && s !== null && s !== "entry" && !s.startsWith("session:"),
     );
-    expect(firstTaskStep).toBeGreaterThan(entryAt);
+    expect(firstTaskStep).toBeGreaterThan(lastSession);
+    if (entryAt >= 0) {
+      expect(entryAt).toBeGreaterThan(lastSession);
+      expect(entryAt).toBeLessThan(firstTaskStep);
+    }
   });
 
   test("demo/missing.json: business_outcome member_not_found, exit 2", async () => {
