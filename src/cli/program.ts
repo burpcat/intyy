@@ -118,6 +118,7 @@ function buildProgram(io: Io, deps: RunDeps, setCtx: (c: Ctx) => void, ctxOf: ()
         locks: ctx.wiring.locks,
         clock: ctx.wiring.clock,
         artifacts: ctx.wiring.candidates,
+        desk: ctx.wiring.desk,
       });
     reportSweep(io, await sweep(ctx.tenant));
   });

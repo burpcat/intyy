@@ -80,6 +80,17 @@ export interface InterventionDesk {
     release: Masked<unknown>,
     signal?: AbortSignal,
   ): Promise<Outcome<void, "already_released" | "write_failed">>;
+  /**
+   * Writes `closed.json` for one request, `how: run_ended`, so no one can answer it after the run
+   * is gone (section 7 §17, section 9 §10.5). Never fails on an already-closed request.
+   */
+  closeRequest(
+    tenant: string,
+    runId: string,
+    folder: string,
+    closed: Masked<unknown>,
+    signal?: AbortSignal,
+  ): Promise<Outcome<void, "write_failed">>;
   /** Adds one line to `dialogs.jsonl`, written atomically (section 9 §10.5). */
   dialog(
     tenant: string,

@@ -205,6 +205,7 @@ export const registerRun: Register = (program: Command, ctxOf) => {
             locks: ctx.wiring.locks,
             clock: ctx.wiring.clock,
             artifacts: ctx.wiring.candidates,
+            desk: ctx.wiring.desk,
           },
           ctx.tenant,
         );

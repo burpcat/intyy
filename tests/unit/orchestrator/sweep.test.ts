@@ -3,109 +3,11 @@
 // artifact the sweep cannot resolve (effect included, with a note), a discovery crash (the
 // thin shape), a live run left untouched, and an already-finished run skipped. M05 task 10.
 import { describe, expect, test } from "vitest";
-import { LockManager, type LockEnv } from "../../../src/core/locks/manager.js";
-import { Artifact as ArtifactSchema } from "../../../src/core/model/artifact.js";
-import { CandidateDecision } from "../../../src/core/model/candidate-decision.js";
-import { CandidateIssues } from "../../../src/core/model/candidate-issues.js";
-import { CandidateRuns } from "../../../src/core/model/candidate-runs.js";
 import { RunJson } from "../../../src/core/model/run.js";
-import { runSweep, type SweepDeps } from "../../../src/core/orchestrator/sweep.js";
-import type { Masked } from "../../../src/ports/masked.js";
-import { ManualClock } from "../../../src/fakes/clock.js";
-import { MemoryLockSlots } from "../../../src/fakes/locks.js";
-import { FakeCandidateStore, FakeEvidenceStore } from "../../../src/fakes/stores.js";
+import { runSweep } from "../../../src/core/orchestrator/sweep.js";
 import { runReplay } from "../../../src/core/replay/executor.js";
-import {
-  OPEN_SUB,
-  SIGN_IN,
-  buildHarness,
-  fixtureSite,
-  replayInputOf,
-  requestOf,
-} from "../replay/executor-harness.js";
-
-const TENANT = "keystone";
-
-function maskedCast<T>(v: T): Masked<T> {
-  return v as Masked<T>;
-}
-
-/** One `events.jsonl` line, hand-built (the sweep reads only seq/at/step/event/data). */
-function line(seq: number, at: string, step: string | null, event: string, data: unknown): unknown {
-  return { seq, at, run_id: "unused", step, by: "engine", event, data };
-}
-
-/** `run_start`'s own `data`, freezing one artifact reference. */
-function runStartData(artifactId: string, requestId: string): unknown {
-  return {
-    frozen: { artifact: { id: artifactId, hash: `sha256:${"a".repeat(64)}` } },
-    request_id: requestId,
-  };
-}
-
-/** A fresh evidence store, a lock manager over its own memory slots, a clock, and both fixture
- * artifacts sealed (`kvfcu/sign_in@1.0.0`, read_only; `kvfcu/open_sub@1.0.0`, commits). */
-async function harness(): Promise<SweepDeps> {
-  const clock = new ManualClock("2026-01-15T09:00:00.000Z");
-  const env: LockEnv = { host: "test-host", pid: 1, isAlive: () => true };
-  const store = new FakeCandidateStore(
-    {
-      files: {
-        "runs.json": CandidateRuns,
-        "candidate.json": ArtifactSchema,
-        "issues.json": CandidateIssues,
-      },
-      decision: CandidateDecision,
-    },
-    clock,
-  );
-  await store.seal("kvfcu/sign_in/cand_2026-01-15_1000000001", "1.0.0", "op_017", SIGN_IN, {});
-  await store.seal("kvfcu/open_sub/cand_2026-01-15_1000000002", "1.0.0", "op_017", OPEN_SUB, {});
-  return {
-    evidence: new FakeEvidenceStore(),
-    locks: new LockManager(new MemoryLockSlots(), clock, env),
-    clock,
-    artifacts: store,
-  };
-}
-
-/** Writes a crash candidate: a run folder with `events`, and a tenant-index line naming it
- * `running` (or `escalated`), but never a `run.json` and never a held "run" lock — exactly
- * what the sweep looks for. */
-async function seedCrashedRun(
-  deps: SweepDeps,
-  runId: string,
-  opts: {
-    kind: "discovery" | "replay";
-    capability: string;
-    status?: "running" | "escalated";
-    events: unknown[];
-  },
-): Promise<void> {
-  const created = await deps.evidence.createRun(TENANT, runId);
-  if (!created.ok) throw new Error("test setup: createRun failed");
-  for (const e of opts.events) await created.value.appendEvent(maskedCast(e));
-  await deps.evidence.appendIndex(
-    TENANT,
-    maskedCast({
-      run_id: runId,
-      at: "2026-01-15T09:00:00.000Z",
-      status: opts.status ?? "running",
-      code: null,
-      kind: opts.kind,
-      capability: opts.capability,
-    }),
-  );
-}
-
-/** Reads back `run.json`, or fails the test. */
-async function readBack(deps: SweepDeps, runId: string): Promise<Record<string, unknown>> {
-  const read = await deps.evidence.readRunJson(TENANT, runId);
-  if (!read.ok) throw new Error(`readRunJson failed: ${read.failure}`);
-  const parsed = RunJson.safeParse(read.value);
-  if (!parsed.success) throw new Error(`run.json does not fit its schema: ${parsed.error.message}`);
-  return parsed.data;
-}
+import { buildHarness, fixtureSite, replayInputOf, requestOf } from "../replay/executor-harness.js";
+import { TENANT, harness, line, maskedCast, readBack, runStartData, seedCrashedRun } from "./sweep-kit.js";
 
 describe("runSweep: the design's own commit-state table (section 7 §17)", () => {
   test("no commit_intent: failed, internal_error, commit not_sent, safe_to_retry true", async () => {
@@ -146,7 +48,7 @@ describe("runSweep: the design's own commit-state table (section 7 §17)", () =>
     });
   });
 
-  test("commit_intent, then a later different step's own line: commit confirmed", async () => {
+  test("commit_intent, then an allowed engine gate line on a later step: commit confirmed", async () => {
     const deps = await harness();
     const runId = "run_2026-01-15_1000000011";
     await seedCrashedRun(deps, runId, {
@@ -161,7 +63,7 @@ describe("runSweep: the design's own commit-state table (section 7 §17)", () =>
           runStartData("kvfcu/open_sub@1.0.0", runId),
         ),
         line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
-        line(3, "2026-01-15T09:00:02.000Z", "read_account_number", "gate", {}),
+        line(3, "2026-01-15T09:00:02.000Z", "read_account_number", "gate", { actor: "engine", decision: "allowed" }),
       ],
     });
 
@@ -172,6 +74,34 @@ describe("runSweep: the design's own commit-state table (section 7 §17)", () =>
     const result = runJson.result as Record<string, unknown>;
     expect((result.failure as Record<string, unknown>).safe_to_retry).toBe(false);
     expect(result.effect).toMatchObject({ commit: "confirmed", performed_by: "bot" });
+  });
+
+  // Why: only a step after the commit step, reached through the executor's own loop, proves the
+  // checkpoint passed. A warning, an escalation, a human line, or an empty gate line proves nothing
+  // (section 7 §17: "a passed commit checkpoint").
+  test.each<[string, string, string, unknown]>([
+    ["a gate line with empty data", "read_account_number", "gate", {}],
+    ["a warning on a later step", "read_account_number", "warning", { code: "anything" }],
+    ["an escalation on a later step", "read_account_number", "escalation", { kind: "takeover", state: "open" }],
+    ["a human action line on a later step", "read_account_number", "action", { type: "click" }],
+    ["an allowed engine gate line on a step before the commit", "type_member_id", "gate", { actor: "engine", decision: "allowed" }],
+    ["a blocked engine gate line on a later step", "read_account_number", "gate", { actor: "engine", decision: "blocked" }],
+    ["an allowed human gate line on a later step", "read_account_number", "gate", { actor: "human", decision: "allowed" }],
+  ])("commit_intent, then %s: commit uncertain", async (_name, step, event, data) => {
+    const deps = await harness();
+    const runId = "run_2026-01-15_1000000019";
+    await seedCrashedRun(deps, runId, {
+      kind: "replay",
+      capability: "kvfcu/open_sub",
+      events: [
+        line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/open_sub@1.0.0", runId)),
+        line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
+        { ...(line(3, "2026-01-15T09:00:02.000Z", step, event, data) as object), by: event === "action" ? "human" : "engine" },
+      ],
+    });
+    const report = await runSweep(deps, TENANT);
+    expect(report.runs?.[0]).toMatchObject({ runId, commit: "uncertain" });
+    expect(report.manual).toBe(1);
   });
 
   test("commit_intent, nothing after: commit uncertain, safe_to_retry false, a manual case", async () => {

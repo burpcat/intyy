@@ -308,6 +308,19 @@ export class MailboxDesk implements InterventionDesk {
     return w.ok ? w : fail(w.failure === "exists" ? "already_released" : "write_failed");
   }
 
+  async closeRequest(
+    tenant: string,
+    runId: string,
+    folder: string,
+    closed: Masked<unknown>,
+  ): Promise<Outcome<void, "write_failed">> {
+    const box = join(runDir(this.dirs, tenant, runId), "mailbox", folder);
+    // Why exclusive: a request that closed on its own (a timeout just before the crash) keeps its
+    // own `closed.json`, and the openRequest listing skips it either way.
+    const w = await writeOnce(this.dirs.tmpDir, join(box, "closed.json"), closed);
+    return w.ok || w.failure === "exists" ? ok(undefined) : fail("write_failed");
+  }
+
   async dialog(
     tenant: string,
     runId: string,

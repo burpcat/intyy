@@ -6,11 +6,15 @@
 // table: no `commit_intent` is `not_sent`; `commit_intent` with nothing else after it is
 // `uncertain`; `commit_intent` followed by a later, *different* step's own line proves
 // `confirmed` — the executor's own loop (section 7 §4 point 7) only ever reaches a step after
-// the commit step once that commit is confirmed, so no separate checkpoint line is needed to
-// prove it. A crashed discovery gets the thin shape: `failed`, `internal_error`, no effect block
+// the commit step once that commit is confirmed. So does a later passed `check` line on the
+// commit step's checkpoint, whether the run (role `checkpoint`) or a watcher (role `watch`,
+// section 7 §15) wrote it. M07 adds three more rows: open mailbox requests close as `run_ended`,
+// a `lease` line moves the lease to `nobody` (reason `run_end`), and a person who sent the commit
+// (a `human_irreversible_action` warning with `commit: true`) is `performed_by: human`. A crashed discovery gets the thin shape: `failed`, `internal_error`, no effect block
 // (owner decision, 2026-09-29).
 import type { Clock } from "../../ports/clock.js";
 import type { Locks } from "../../ports/locks.js";
+import type { InterventionDesk } from "../../ports/operator.js";
 import type { EvidenceStore, RunFolder } from "../../ports/stores.js";
 import { readArtifact, type ArtifactStore } from "../catalog/artifacts.js";
 import { sha256Hex } from "../model/canonical.js";
@@ -20,7 +24,14 @@ import { Redactor, type RedactionRules } from "../safety/redaction/redactor.js";
 
 /** What the sweep needs. A tenant's evidence and its run locks; the clock for `ended_at`; the
  * sealed artifact store, to tell a `commits` capability's crash from a `read_only` one's. */
-export type SweepDeps = { evidence: EvidenceStore; locks: Locks; clock: Clock; artifacts: ArtifactStore };
+export type SweepDeps = {
+  evidence: EvidenceStore;
+  locks: Locks;
+  clock: Clock;
+  artifacts: ArtifactStore;
+  /** The mailbox, to close a crashed run's open requests (section 7 §17). Left out, none close. */
+  desk?: InterventionDesk;
+};
 
 /** One run the sweep closed. `commit` is set for a replay only. */
 export type SweptRun = { runId: string; kind: "discovery" | "replay"; commit?: CommitState };
@@ -67,6 +78,11 @@ function latestRows(lines: readonly unknown[]): IndexRow[] {
 /** One `events.jsonl` line, read back loosely. */
 type LogLine = { seq: number; at: string; step: string | null; event: string; data: unknown };
 
+/** A line's `data` as a plain object, or `{}`. */
+function dataOf(l: LogLine): Record<string, unknown> {
+  return typeof l.data === "object" && l.data !== null ? (l.data as Record<string, unknown>) : {};
+}
+
 function asLogLines(lines: readonly unknown[]): LogLine[] {
   const out: LogLine[] = [];
   for (const line of lines) {
@@ -84,12 +100,65 @@ function asLogLines(lines: readonly unknown[]): LogLine[] {
   return out.sort((a, b) => a.seq - b.seq);
 }
 
-/** The effect a crashed replay's log proves (section 7 §17's table). */
-function crashedEffect(lines: readonly LogLine[]): { commit: CommitState; sentAt: string | null; step: string | null } {
+/** The effect a crashed replay's log proves (section 7 §17's table, and a person's commit).
+ * `checkpoint` is the commit step's checkpoint condition ID, or `null` when the artifact could
+ * not be read: then no `check` line proves anything, and the commit stays `uncertain`. */
+function crashedEffect(
+  lines: readonly LogLine[],
+  checkpoint: string | null,
+  laterSteps: ReadonlySet<string>,
+): { commit: CommitState; sentAt: string | null; step: string | null; by: "bot" | "human" | null } {
   const intent = [...lines].reverse().find((l) => l.event === "commit_intent");
-  if (intent === undefined) return { commit: "not_sent", sentAt: null, step: null };
-  const laterOtherStep = lines.some((l) => l.seq > intent.seq && l.step !== null && l.step !== intent.step);
-  return { commit: laterOtherStep ? "confirmed" : "uncertain", sentAt: intent.at, step: intent.step };
+  // Why a warning line: a person's send writes no `commit_intent`. `HumanCapture` writes this
+  // warning with `commit: true` for exactly that click (section 7 §14.4). No line, no claim.
+  const human = [...lines].reverse().find((l) => {
+    const d = dataOf(l);
+    return l.event === "warning" && d.code === "human_irreversible_action" && d.commit === true;
+  });
+  const anchor = intent ?? human;
+  if (anchor === undefined) return { commit: "not_sent", sentAt: null, step: null, by: null };
+  const passedCheckpoint =
+    checkpoint !== null &&
+    lines.some((l) => {
+      const d = dataOf(l);
+      return (
+        l.event === "check" &&
+        l.seq > anchor.seq &&
+        d.passed === true &&
+        d.condition === checkpoint &&
+        (d.role === "checkpoint" || d.role === "watch")
+      );
+    });
+  // Why only this proxy: section 7 §17 wants "a passed commit checkpoint". The executor reaches a
+  // step after the commit step only once that checkpoint passed, so an allowed engine action on
+  // such a step proves it for a log written before the `check` line existed. No other line does:
+  // a warning, escalation, human line, or line on an earlier step says nothing about the commit.
+  const laterOtherStep =
+    intent !== undefined &&
+    lines.some((l) => {
+      const d = dataOf(l);
+      return (
+        l.seq > intent.seq &&
+        l.event === "gate" &&
+        d.actor === "engine" &&
+        d.decision === "allowed" &&
+        l.step !== null &&
+        laterSteps.has(l.step)
+      );
+    });
+  return {
+    commit: passedCheckpoint || laterOtherStep ? "confirmed" : "uncertain",
+    sentAt: anchor.at,
+    step: anchor.step,
+    by: intent !== undefined ? "bot" : "human",
+  };
+}
+
+/** Which holder the lease log ends on (section 7 §12), or `null` with no `lease` line at all. */
+function leaseHolderAtCrash(lines: readonly LogLine[]): "bot" | "human" | "nobody" | null {
+  const last = [...lines].reverse().find((l) => l.event === "lease");
+  const to = last === undefined ? undefined : dataOf(last).to;
+  return to === "bot" || to === "human" || to === "nobody" ? to : null;
 }
 
 /** Safe to retry only when nothing was sent (matches the executor's own `safeToRetryOf` rule). */
@@ -119,18 +188,32 @@ function artifactRefOf(data: Record<string, unknown> | undefined): { app: string
   return { app: name.slice(0, cut), capability: name.slice(cut + 1), version };
 }
 
-/** Whether the artifact this crashed run resolved is `commits` or `read_only` (section 3 §5.8:
- * `effect` belongs on a non-rejected `commits` result only). `"unknown"` when the run never
- * froze an artifact, or the sealed version can no longer be read — unsure counts as `commits`,
- * the safe side, wherever this is used. */
-async function effectTypeOf(
+/** What the sealed artifact says about a crashed run: whether it is `commits` or `read_only`
+ * (section 3 §5.8: `effect` belongs on a non-rejected `commits` result only), and the commit
+ * step's checkpoint condition. `"unknown"` when the run never froze an artifact, or the sealed
+ * version can no longer be read — unsure counts as `commits`, the safe side, wherever this is
+ * used, and no checkpoint is known. */
+async function artifactFacts(
   artifacts: ArtifactStore,
   data: Record<string, unknown> | undefined,
-): Promise<"commits" | "read_only" | "unknown"> {
+): Promise<{
+  effect: "commits" | "read_only" | "unknown";
+  checkpoint: string | null;
+  /** The IDs of the steps after the commit step, in artifact order. */
+  laterSteps: ReadonlySet<string>;
+}> {
+  const none = { effect: "unknown", checkpoint: null, laterSteps: new Set<string>() } as const;
   const ref = artifactRefOf(data);
-  if (ref === null) return "unknown";
+  if (ref === null) return none;
   const got = await readArtifact(artifacts, ref.app, ref.capability, ref.version);
-  return got.ok ? got.value.contract.effect : "unknown";
+  if (!got.ok) return none;
+  const steps = got.value.steps;
+  const at = steps.findIndex((st) => st.id === got.value.recovery?.commit_point);
+  return {
+    effect: got.value.contract.effect,
+    checkpoint: at < 0 ? null : (steps[at]?.checkpoint ?? null),
+    laterSteps: new Set(at < 0 ? [] : steps.slice(at + 1).map((st) => st.id)),
+  };
 }
 
 /** `ms` (epoch milliseconds) as a `YYYY-MM-DD` UTC date, for `run.json.retention`. */
@@ -150,11 +233,13 @@ function replayResult(
   eff: ReturnType<typeof crashedEffect>,
   effectType: "commits" | "read_only" | "unknown",
   endedAt: string,
+  humanHeld: boolean,
 ): Result {
   const data = runStartData(lines);
   const ref = artifactRefOf(data);
   const requestId = typeof data?.request_id === "string" ? data.request_id : null;
   const startedAt = lines.find((l) => l.event === "run_start")?.at ?? endedAt;
+  const humanNote = humanHeld ? "; a person held control when it crashed" : "";
   const unsureNote =
     effectType === "unknown" ? " (its capability's effect type could not be confirmed; assuming commits)" : "";
   return Result.parse({
@@ -177,14 +262,14 @@ function replayResult(
       : {
           effect: {
             commit: eff.commit,
-            performed_by: eff.commit === "not_sent" ? null : "bot",
+            performed_by: eff.by,
             sent_at: eff.sentAt,
             attempts: [],
           },
         }),
     failure: {
       code: "internal_error",
-      message: `the run's process crashed; the sweep closed it${unsureNote}`,
+      message: `the run's process crashed; the sweep closed it${humanNote}${unsureNote}`,
       step: eff.step,
       phase: "run",
       expected: { condition: "run", description: "the process crashed before the run finished" },
@@ -224,8 +309,43 @@ async function closeOne(deps: SweepDeps, tenant: string, index: IndexRow, redact
     const at = deps.clock.now().toISOString();
     const capability = index.capability ?? "unknown/unknown";
     const nextSeq = lines.length === 0 ? 1 : Math.max(...lines.map((l) => l.seq)) + 1;
+    // Section 7 §17: no one can answer a request after the run is gone, so each open one closes as
+    // `run_ended`. A takeover claimed by a person closes the same way.
+    if (deps.desk !== undefined) {
+      for (let guard = 0; guard < 20; guard++) {
+        const open = await deps.desk.openRequest(tenant, runId);
+        if (!open.ok || open.value === null) break;
+        const closed = await deps.desk.closeRequest(
+          tenant,
+          runId,
+          open.value.folder,
+          redactor.value({ schema: "intyy.closed/1.0", how: "run_ended", at }),
+        );
+        if (!closed.ok) break;
+      }
+    }
+    // Section 7 §12.2: the lease ends at `nobody`, reason `run_end`, so the log never ends with a
+    // holder. A log with no `lease` line (an older run, or a crash before start) gets none.
+    const holder = leaseHolderAtCrash(lines);
+    let seq = nextSeq;
+    if (holder !== null && holder !== "nobody") {
+      await folder.appendEvent(
+        redactor.value({
+          seq,
+          at,
+          run_id: runId,
+          step: null,
+          by: "engine",
+          why: { kind: "engine_rule", ref: "run_end" },
+          event: "lease",
+          data: { from: holder, to: "nobody", reason: "run_end", staff_id: null, implicit: false },
+        }),
+        { durable: true },
+      );
+      seq += 1;
+    }
     const runEndLine = {
-      seq: nextSeq,
+      seq,
       at,
       run_id: runId,
       step: null,
@@ -253,9 +373,10 @@ async function closeOne(deps: SweepDeps, tenant: string, index: IndexRow, redact
       await folder.writeRunJson(redactor.value(runJson));
       swept = { runId, kind };
     } else {
-      const eff = crashedEffect(lines);
-      const effectType = await effectTypeOf(deps.artifacts, runStartData(lines));
-      const result = replayResult(runId, index, lines, eff, effectType, at);
+      const facts = await artifactFacts(deps.artifacts, runStartData(lines));
+      const effectType = facts.effect;
+      const eff = crashedEffect(lines, facts.checkpoint, facts.laterSteps);
+      const result = replayResult(runId, index, lines, eff, effectType, at, holder === "human");
       const runJson = RunJson.parse({
         schema: "intyy.run/1.0",
         run_id: runId,

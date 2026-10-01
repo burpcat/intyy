@@ -1771,6 +1771,23 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       };
       // Why no signal: never abort between commit_intent and the commit step's end.
       const committed = await commitStep(step, artifact.contract.outcomes, commitCtx);
+      // Why: section 3 §6.4 gives a checkpoint its own `check` line (role `checkpoint`). The crash
+      // sweep reads a passed one as proof of `confirmed` (section 7 §17). An outcome win logs none:
+      // a declared outcome means the checkpoint did not settle the step.
+      if (committed.kind === "effect" && committed.race !== undefined && committed.race.winner !== "outcome") {
+        const sentMs = committed.effect.sent_at === null ? null : Date.parse(committed.effect.sent_at);
+        await log.append({
+          event: "check",
+          step: step.id,
+          by: "engine",
+          data: {
+            condition: step.checkpoint,
+            role: "checkpoint",
+            passed: committed.race.winner === "checkpoint",
+            ...(sentMs === null ? {} : { waited_ms: deps.clock.now().getTime() - sentMs }),
+          },
+        });
+      }
       // Why: nothing was sent and a person touched the page, so a takeover opens (section 7 §12.4).
       if (leaseState.takeoverPending() && committed.kind === "effect" && committed.effect.commit === "not_sent") {
         const t = await humanInputTakeover(step.id);

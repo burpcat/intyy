@@ -226,7 +226,13 @@ export class HumanCapture {
         event: "warning",
         step,
         by: "engine",
-        data: { code: "human_irreversible_action", detail: "a person did something the rules class as irreversible" },
+        // Why `commit`: the crash sweep reads it as the log line that proves a person sent the
+        // commit (section 7 §17), so `performed_by: human` never rests on a guess.
+        data: {
+          code: "human_irreversible_action",
+          detail: "a person did something the rules class as irreversible",
+          commit: sent,
+        },
       });
     }
     if (sent) {
