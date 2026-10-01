@@ -59,6 +59,11 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--instance": "declared bank-app options, like strip_semantics=1; not member data",
   // M09 chunk 2: `thresholds ... --jev` and `jev report --jev` name a jev version, like jev@1.4.2.
   "--jev": "a jev version string, like jev@1.4.2; not member data",
+  // M10 task 5: the `trust` approval family. Notes and reasons come from standard input, never a flag.
+  "--batch": "a batch ID of intyy's own making, like batch_2026-09-26_3fk8q2m7xa; not member data",
+  "--ack": "a fragile step ID of the recipe, like open_member; not member data",
+  "--expect-record": "a record hash (sha256:...) read off the review screen; not member data",
+  "--state": "one trust state: draft, approved, degraded, or retired; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

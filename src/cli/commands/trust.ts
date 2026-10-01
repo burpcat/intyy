@@ -1,46 +1,14 @@
 // `intyy trust rebuild [<key> | --all]`: rebuild score records from their history lines.
-// Follows design section 9 §9.8; section 8 §5.2. The approval family joins this file in M10 task 5.
+// Follows design section 9 §9.8; section 8 §5.2. The approval family is in trust-approval.ts (section 9 §9.4).
 import type { Command } from "commander";
-import { parseKeyText } from "../../core/trust/keys.js";
 import { recordHash } from "../../core/trust/rebuild.js";
-import {
-  listKeys,
-  rebuildKey,
-  type Rebuilt,
-  type ScoreDeps,
-  type ScoreFailure,
-} from "../../core/trust/scores.js";
-import type { ScoreKey } from "../../core/model/score.js";
-import { requireRole, type Ctx } from "../context.js";
-import { CliExit, EXIT, type ExitCode } from "../exit-codes.js";
+import { listKeys, rebuildKey, type Rebuilt } from "../../core/trust/scores.js";
+import { requireRole } from "../context.js";
+import { CliExit, EXIT } from "../exit-codes.js";
 import { answer } from "../output.js";
 import { act, type Register } from "../program.js";
-import { load } from "./documents.js";
-import { settingsTarget } from "./settings.js";
-
-/** The exit code for a score write that failed. */
-function exitFor(failure: ScoreFailure): ExitCode {
-  if (failure === "busy") return EXIT.busy;
-  return failure === "write_failed" ? EXIT.usage : EXIT.invalid;
-}
-
-/** The ports score code uses, from the wiring. */
-export function scoreDeps(ctx: Ctx): ScoreDeps {
-  return { scores: ctx.wiring.scores, locks: ctx.wiring.locks, artifacts: ctx.wiring.candidates };
-}
-
-/** Reads `<key>` text into a key: the tenant is `--tenant`, the app version comes from the tenant's approved settings. */
-export async function keyFromText(ctx: Ctx, text: string | undefined): Promise<ScoreKey> {
-  const app = /^([a-z][a-z0-9_-]*)\//.exec(text ?? "")?.[1];
-  if (app === undefined) throw new CliExit(EXIT.usage, "name a key, like kvfcu/open_share_subaccount@1.0.0");
-  const settings = await load(settingsTarget(ctx), ["approved"]);
-  if (!settings) throw new CliExit(EXIT.invalid, `settings ${ctx.tenant} have no approved revision`);
-  const appVersion = settings.doc.apps[app]?.app_version;
-  if (appVersion === undefined) throw new CliExit(EXIT.usage, `${app} has no settings for tenant ${ctx.tenant}`);
-  const key = parseKeyText(text ?? "", ctx.tenant, appVersion);
-  if (!key.ok) throw new CliExit(EXIT.usage, key.detail ?? key.failure);
-  return key.value;
-}
+import { registerApproval } from "./trust-approval.js";
+import { exitFor, keyFromText, scoreDeps } from "./trust-shared.js";
 
 /** One line per rebuilt key. */
 function describe(r: Rebuilt): string {
@@ -58,6 +26,7 @@ function describe(r: Rebuilt): string {
 /** Registers the trust commands built so far. */
 export const registerTrust: Register = (program: Command, ctxOf) => {
   const trust = program.command("trust").description("trust state per key: scores and approval");
+  registerApproval(trust, ctxOf);
 
   trust
     .command("rebuild")

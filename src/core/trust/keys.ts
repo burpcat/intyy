@@ -51,3 +51,15 @@ export function parseKeyText(
   });
   return key.success ? ok(key.data) : fail("bad_key", key.error.message);
 }
+
+/** Key text, the form `parseKeyText` reads: `kvfcu/open_share_subaccount@1.0.0`, with `+p3` for a patch. */
+export function keyText(key: ScoreKey): string {
+  return `${key.capability}${key.patch_revision === null ? "" : `+p${String(key.patch_revision)}`}`;
+}
+
+/** The parts of an exact capability: `kvfcu/open_share_subaccount@1.2.0` gives name `kvfcu/open_share_subaccount`, major 1. */
+export function capabilityParts(capability: string): { name: string; version: string; major: number } {
+  const at = capability.indexOf("@");
+  const version = capability.slice(at + 1);
+  return { name: capability.slice(0, at), version, major: Number(version.split(".")[0]) };
+}
