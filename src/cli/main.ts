@@ -6,8 +6,11 @@ import { commands } from "./commands/index.js";
 import { run } from "./program.js";
 
 // Why one readline interface: `question` (the `review` walk) and `readAll` (a piped `--note`)
-// never run in the same call, so sharing the one reader over stdin is safe.
-const rl = createInterface({ input: process.stdin });
+// never run in the same call, so sharing the one reader over stdin is safe. Why `output`:
+// readline writes each prompt to it; with none, the review walk waits with no question shown.
+// Prompts go to stderr, so stdout keeps only the command's answer. `terminal: false` keeps piped
+// input untouched; a real terminal echoes the typing itself.
+const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: false });
 
 process.exitCode = await run(
   process.argv.slice(2),
