@@ -13,7 +13,7 @@ Read next: [REPORT.md](REPORT.md) (the decisions), [evidence/README.md](evidence
 - Node.js 24, npm, and git.
 - The bank app `kvfcu`. Its own README lists what it needs. `bankapp.json` pins its repo and commit.
 - An Anthropic API key, only for a new discovery run. The short demo path needs no key.
-- A jev key is not needed. The jev rung is not built yet (see REPORT, Cuts).
+- A jev key, only for the jev rung (*jev* is the error sorter that reads a stuck screen on rung 2). The ports, the reviewer, and `--models off` are built. The jev adapter is not, because it needs the owner's jev SDK. Without it, trouble climbs to a human.
 
 ## Setup
 
@@ -67,7 +67,7 @@ Fill in `.env` before the last three commands (see the next section).
 | Variable | Holds | Needed |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Claude key | Discovery only |
-| `JEV_API_KEY` | jev key | Not used yet. Leave empty |
+| `JEV_API_KEY` | jev key | Not used yet: no jev adapter is built. Leave empty |
 | `INTYY_STAFF` | Your staff ID from `library/staff.json`: `op_017`, `op_022`, or `op_031`. Not a secret | Every command that writes |
 | `INTYY_KEYSTONE_KVFCU_OPERATOR_USERNAME` | The bank app's teller user name | Replay, certify, discovery |
 | `INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD` | The teller's password | Replay, certify, discovery |
@@ -129,7 +129,16 @@ The library ships `sign_in@1.0.0`. Discovery signs in first, by replay.
 - `<next>` is a version that does not exist yet. `1.0.0` is sealed, so pick the next one. `intyy artifact list` shows what exists. `--version` is required today; the CLI does not propose a number.
 - To record the two negative runs, run `intyy discover kvfcu/open_share_subaccount.missing --candidate <candidate_id>`. The `.at_limit` spec works the same way.
 - Discovery pauses before each risky control and asks for approval. In a second terminal run `intyy operator list`, then `intyy operator show <run_id>`. Answer with `intyy operator decide <run_id> <decision>`. The request lists the allowed decisions.
-- At the final Confirm step, the decision is `approve_irreversible` (design section 4 §7.7). TODO(owner): confirm the exact decision words you used for Submit, Confirm, and the box that says OK.
+- Every request says "irreversible". Ignore that word. Answer by the `control:` line in `intyy operator show <run_id>` (design section 4 §7.7):
+
+| `control:` says | Decision |
+|---|---|
+| `"Submit"` | `approve_reversible` |
+| `"Confirm"` | `approve_idempotent` |
+| `"OK"` (the box) | `approve_irreversible`, the only one |
+| anything else | `decline` |
+
+- A takeover request allows `end_run` or `set_outcome` (with `--outcome <code>`) instead. See the handoff demo.
 - Run `make reset` in `kvfcu-bank` before a demo.
 
 ## Handoff demo
@@ -149,7 +158,47 @@ The mailbox is a folder in the run's evidence folder. It records the claim, the 
 
 ## Unattended path
 
-Unattended runs are rejected until a key is certified and approved. `--pin` is refused until M10. See REPORT, Cuts.
+*Unattended* means an agent calls the capability and no human watches. intyy rejects it until the key is certified and a human approves it.
+A *key* is one exact version, like `kvfcu/open_share_subaccount@1.0.0`.
+`--pin` is for supervised runs only. It runs one exact key, and it never grants trust.
+Keys must be sealed first (see the full path). Use `INTYY_STAFF` or `--staff <id>` to pick who acts.
+
+1. Before any approval, replay is rejected (exit 4):
+   `intyy replay kvfcu/open_share_subaccount@1 --mode unattended --inputs demo/valid.json --authorization demo/auth.json`
+2. Certify the key with a full batch, as the sealer (`op_017`). `--plan-only` prints the plan and contacts nothing:
+   `intyy --staff op_017 certify kvfcu/sign_in@1.0.0`
+3. Read the approval screen as another person (`op_022`). It ends with a record hash:
+   `intyy --staff op_022 trust review kvfcu/sign_in@1.0.0`
+4. Approve with that hash. Standard input is your note:
+   `echo "Read the report." | intyy --staff op_022 trust approve kvfcu/sign_in@1.0.0 --expect-record sha256:<hash>`
+   Add `--ack <step>` for each fragile step the review asks you to read.
+5. Do steps 2 to 4 for each linked key, then for `kvfcu/open_share_subaccount@1.0.0`. The commit key waits for the keys it links.
+6. Repeat step 1. Expect `success`, exit 0.
+
+Once a key is approved, live runs score it. Three recipe failures in a row degrade it, and an unattended run is rejected again.
+Restore it with `trust restore` after a new passing batch, or after you exclude the bad runs.
+
+> Built, not proven: the full batches and approvals are not run yet. The owner runs them (M10 owner checks).
+
+## Operating trust and drift
+
+All commands below are built. The owner has not run them live. Reasons and notes come from standard input, never from a flag.
+
+| Task | Commands |
+|---|---|
+| Certify | `certify <key> [--kind quick\|full\|regression] [--instance <facts>] [--plan-only]`; `certify case <key> --profile <id>`; `certify report <batch_id>`; `certify rerun <batch_id> <case_id>` |
+| Read trust | `trust list [--state <state>]`; `trust show <key>`; `trust history <key>`; `trust review <key> [--batch <id>] [--full]` |
+| Change trust | `trust approve`, `trust reject`, `trust restore`, `trust exclude <key> [run_ids...]`, `trust reinstate`, `trust demote`, `trust retire`, `trust rebuild [<key> \| --all] [--from-evidence]` |
+| Reconciliation autonomy | `trust autonomy <key>` reads it. `trust autonomy <key> grant --expect-record <hash>` and `trust autonomy <key> revoke` need a reason on standard input |
+| Alerts | `alert list [--state open\|acted\|dismissed]`; `alert show <id>`; `alert act <id>`; `alert dismiss <id>` |
+| Drift | `drift report [--since <date>]` writes nothing |
+| Majors | `major show <major>`; `major deprecate <major> --successor <n> --retires-on <date>`; `major seal <major>`; `major approve <major> --rev <n>` |
+| Packs | `pack impact <scope> <rev>`; `certify <key> --kind regression --pack <scope>@<rev>` (or `--all-affected`); `pack draft list`; `pack draft show <id>` |
+| jev | `thresholds edit\|check\|seal\|approve\|show <app> --jev <version>`; `jev report <app>`; `tags report <app>` |
+| Operator | `operator dialog <run_id> accept\|dismiss` answers a native dialog during a takeover |
+
+Example, a drill that breaks the button names (the owner restarts the bank app with `KVFCU_STRIP_SEMANTICS=1` first):
+`intyy certify kvfcu/open_share_subaccount@1.0.0 --kind quick --instance strip_semantics=1`
 
 ## Running without live services
 
@@ -162,7 +211,8 @@ Unattended runs are rejected until a key is certified and approved. `--pin` is r
 
 | Command | Needs | Covers |
 |---|---|---|
-| `npm run check` | Nothing live | Types, lint, structure rules, unit and type tests, schema freshness, docs check |
+| `npm run check` | Nothing live | Types, lint, structure rules, unit and type tests, schema freshness, docs check, repo audit |
+| `npm run audit` | Git only | No brief PDF, `.env`, `state/`, trace, HAR, video, cookie, or canary in the tree or history. Part of `check` |
 | `npm run test:live` | The bank app, in test mode | Surface, guard, replay, faults, handoff |
 | `npm run test:safety` | Nothing live | Safety and canary tests. Writes `evidence/tests/safety.json` |
 
@@ -171,7 +221,7 @@ Live tests take the instance lock and run one at a time (`docs/design/CONTRACT.m
 ## Evidence
 
 `evidence/` holds published copies of real runs, sealed artifacts, and the safety report. `evidence/README.md` indexes it.
-Publish with `intyy evidence publish <run_id> ...`. Check with `intyy evidence verify`. Verify checks hashes, links, forbidden files, and canaries.
+Publish with `intyy evidence publish <targets...>`. A target is a run ID, a batch ID, or a trust key. Add `--with-runs all` to publish every run of a batch, not only the ones that did not pass. Check with `intyy evidence verify`. Verify checks hashes, links, forbidden files, and canaries.
 
 | Item | Shows |
 |---|---|
