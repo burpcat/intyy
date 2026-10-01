@@ -5,7 +5,7 @@
 // route map, anchor expansion, truth checks, and verdicts, "all on the fake harness" — by
 // deriving the fault log from the run's own gate lines, deterministically, the way a live app's
 // would line up. Design section 8 §7.4 to §7.8, §8.1 to §8.3; section 9 §9.1. M06 task 8.
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { runCertifyCase, type CertifyCaseInput, type CertifyDeps } from "../../../src/core/certify/runner.js";
 import { sha256Hex } from "../../../src/core/model/canonical.js";
 import { BatchPlan } from "../../../src/core/model/batch-plan.js";
@@ -16,7 +16,11 @@ import type { SuiteClass } from "../../../src/core/model/suite.js";
 import type { TestInstance } from "../../../src/core/model/testdata.js";
 import type { FrozenSet } from "../../../src/core/packs/merge.js";
 import { FakeHarness } from "../../../src/fakes/harness.js";
-import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import { FakeOperator } from "../../../src/fakes/operator.js";
+import { SnapshotSurface, type FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import { HoldingClock } from "../handoff/kit.js";
+import { toFactory } from "../../../src/ports/hands.js";
+import { ok } from "../../../src/ports/outcome.js";
 import { MEMBER_FOUND, MEMBER_MISSING, ORIGIN, TENANT, buildHarness, fixtureSite } from "../replay/executor-harness.js";
 import { idsNotifying, OPEN_SUB_ROUTE_FOR, RouteMappingHarness } from "./route-mapping-harness.js";
 
@@ -362,5 +366,161 @@ describe("runCertifyCase: rerun", () => {
     expect(newCase?.run_id).not.toBe(oldCase.run_id);
     expect(newCase?.inputs).toEqual(oldCase.inputs);
     expect(newCase?.seed).toBe(oldCase.seed);
+  });
+});
+
+/** The case run's ID, from the plan. */
+function caseRunIdOf(plan: { cases: { case_id: string; run_id: string }[] }): string {
+  const id = plan.cases.find((c) => c.case_id === "case")?.run_id;
+  if (id === undefined) throw new Error("no case run id");
+  return id;
+}
+
+// ---- --operator scripted | mailbox (updates file §11.1; section 8 §7.6; M07 task 9) ----------
+
+describe("runCertifyCase: --operator", () => {
+  test("scripted (explicit): the plan says so, and the result is the same as the default", async () => {
+    const { deps, ids } = await buildCertifyDeps(fixtureSite());
+    const result = await runCertifyCase(inputFor(ids.batchId(), { operator: "scripted" }), deps);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.value.plan.operator).toBe("scripted");
+    expect(BatchPlan.safeParse(result.value.plan).success).toBe(true);
+    expect(result.value.report.cases[0]).toMatchObject({ result: { status: "success", detail: null }, verdict: "pass" });
+  });
+
+  test("no operator given: the plan records scripted", async () => {
+    const { deps, ids } = await buildCertifyDeps(fixtureSite());
+    const result = await runCertifyCase(inputFor(ids.batchId()), deps);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.value.plan.operator).toBe("scripted");
+  });
+
+  test("mailbox: only the case run asks the mailbox; the plan records operator and staff; the case is escalated", async () => {
+    // `open_sub_checked`: an uncertain commit runs the reconciliation check first (as the
+    // takeover test above).
+    const { deps, ids } = await buildCertifyDeps(siteWithStuckConfirm());
+    const handler: Handler = {
+      class: "needs_human",
+      id: "supervisor_required",
+      description: "a supervisor must approve this",
+      detector: "supervisor_banner_shown",
+      fixtures: { fire: [], no_fire: [] },
+      operator_note: "Injected for the M07 task 9 mailbox test.",
+    };
+    const frozenSet: FrozenSet = {
+      targets: [],
+      conditions: [
+        { id: "supervisor_banner_shown", description: "supervisor_banner_shown", check: "text_visible", text: "Ask a supervisor to approve this", match: "contains" },
+      ],
+      handlers: [handler],
+      handlerScope: new Map([[handler.id, { level: "global" as const }]]),
+      runStart: { ids: [handler.id], packs: { global: 1 }, from: { [handler.id]: "global" }, hash: `sha256:${sha256Hex(handler.id)}` },
+      warnings: [],
+    };
+    // A child run asks no start confirmation (docs/decisions.md, M06), so the takeover is the
+    // case run's first mailbox request.
+    const operator = new FakeOperator([{ staff: "op_017", decision: "end_run" }]);
+    const asked: string[] = [];
+    const mailboxDeps: CertifyDeps = {
+      ...deps,
+      mailboxOperator: (run) => {
+        asked.push(run.runId);
+        return operator;
+      },
+    };
+    const result = await runCertifyCase(
+      inputFor(ids.batchId(), { capability: "open_sub_checked", frozenSet, operator: "mailbox" }),
+      mailboxDeps,
+    );
+    if (!result.ok) throw new Error("expected ok");
+    const { plan, report } = result.value;
+
+    expect(plan.operator).toBe("mailbox");
+    expect(plan.started_by).toBe("op_017");
+    expect(report.cases[0]?.result).toEqual({ status: "escalated", detail: "takeover/needs_human_handler/click_confirm" });
+
+    // The factory served the case run only; the baseline used the scripted operator.
+    const baselineRunId = plan.cases.find((c) => c.case_id === "baseline")?.run_id;
+    expect(asked).toEqual([caseRunIdOf(plan)]);
+    expect(asked).not.toContain(baselineRunId);
+    expect(operator.requests[0]).toMatchObject({ kind: "takeover", reason: "needs_human_handler" });
+  });
+
+  test("mailbox with no mailbox factory in the deps: falls back to the scripted operator, never throws", async () => {
+    const { deps, ids } = await buildCertifyDeps(fixtureSite());
+    const result = await runCertifyCase(inputFor(ids.batchId(), { operator: "mailbox" }), deps);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.value.plan.operator).toBe("mailbox");
+  });
+
+  test("mailbox: a person takes over, hands back, and the run succeeds; the case still reads escalated", async () => {
+    const site = fixtureSite();
+    // Why a pause: the fake run is far faster than a poll. The case run's first typed action
+    // (armed once its faults are set) waits until the person's first input has been sent.
+    let armed = false;
+    let paused = false;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    class PausingSurface extends SnapshotSurface {
+      override async open(...args: Parameters<SnapshotSurface["open"]>): ReturnType<SnapshotSurface["open"]> {
+        const opened = await super.open(...args);
+        if (!opened.ok) return opened;
+        const { eyes, hands } = opened.value;
+        const pausing = Object.create(hands) as typeof hands;
+        // The first typed action of the case run: past the sign-in prelude, at the first step.
+        pausing.act = async (a, lease, signal) => {
+          if (armed && !paused && a.type === "type") {
+            paused = true;
+            await gate;
+          }
+          return hands.act(a, lease, signal);
+        };
+        return ok({ eyes, hands: pausing });
+      }
+    }
+    const surface = new PausingSurface(site);
+    const { deps, ids, harness } = await buildCertifyDeps(site);
+    const STAFF = "op_017";
+    // The case run has a staff ID, so the person's first input claims the lease at once. The
+    // script then lets the person act and hands back.
+    const operator = new FakeOperator([
+      {
+        act: () => {
+          surface.humanInput({ type: "type", element: "member_id_box", value: MEMBER_FOUND });
+          surface.humanInput({ type: "click", element: "search_button" });
+        },
+      },
+      { staff: STAFF, released: true },
+    ]);
+    const addFaults = harness.addFaults.bind(harness);
+    harness.addFaults = (faults) => {
+      armed = true;
+      return addFaults(faults);
+    };
+    const held = surface;
+    // HoldingClock: the takeover's deadline never ends by itself (tests/unit/handoff/kit.ts).
+    const mailboxDeps: CertifyDeps = { ...deps, clock: new HoldingClock(), surface: toFactory(held), mailboxOperator: () => operator };
+    const running = runCertifyCase(inputFor(ids.batchId(), { operator: "mailbox" }), mailboxDeps);
+    await vi.waitFor(() => {
+      expect(paused).toBe(true);
+    }, { interval: 1 });
+    surface.humanInput();
+    release();
+    const result = await running;
+    if (!result.ok) throw new Error("expected ok");
+
+    // The run itself ended in success, after the handback ...
+    const runJson = await deps.evidence.readRunJson(TENANT, caseRunIdOf(result.value.plan));
+    if (!runJson.ok) throw new Error("no run.json");
+    expect(runJson.value).toMatchObject({ status: "success" });
+    // ... yet the first intervention is the observed result.
+    expect(result.value.report.cases[0]?.result).toEqual({
+      status: "escalated",
+      // The person's input lands while the first typed action is in flight, so the next gate
+      // check, at click_search, is where the engine sees it.
+      detail: "takeover/unexpected_human_input/click_search",
+    });
   });
 });

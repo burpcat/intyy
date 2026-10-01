@@ -40,6 +40,9 @@ import {
 } from "./truth.js";
 import { judgeCase, matchesExpectRule, matchesExtraExpect, matchesWaivedEnding, type ResultClass } from "./verdicts.js";
 
+/** The certify run spec's `operator` field (updates file §11.1, section 8 §7.5). */
+export type CertifyOperator = "scripted" | "mailbox";
+
 /** One profile or suite `extra` case, already picked out by the caller (updates file §11.1). */
 export type CertifySelection =
   | { kind: "profile"; profile: FaultProfile }
@@ -57,6 +60,10 @@ export type CertifyCaseInput = {
   version?: string;
   appVersion: string | undefined;
   staff: string;
+  /** Who answers the case run's interventions (updates file §11.1, section 8 §7.6): the scripted
+   * operator (the default), or the real mailbox, where a human answers with `intyy operator`.
+   * The clean baseline always uses the scripted one. */
+  operator?: CertifyOperator;
   className: string;
   selection: CertifySelection;
   /** The `--at` override: an explicit `@step:<id>`, used only for an `@each_request_step` profile. */
@@ -84,6 +91,8 @@ export type CertifyDeps = {
   artifacts: ArtifactStore;
   requestIndex: RequestIndexDeps;
   harness: Harness;
+  /** The real mailbox's operator port, used only when the input says `operator: "mailbox"`. */
+  mailboxOperator?: (run: { tenant: string; runId: string }) => OperatorPort;
   policy: MergeResult;
   settings: { doc: Settings; rev: string; hash: string };
   engineVersion: string;
@@ -170,6 +179,7 @@ async function runOne(
   input: CertifyCaseInput,
   deps: CertifyDeps,
   effect: Artifact["contract"]["effect"],
+  operator: CertifyOperator,
 ): Promise<ReplayOutcome> {
   const now = deps.clock.now();
   const authorization = syntheticAuthorization(effect, input.batchId, input.staff, link, now);
@@ -191,7 +201,10 @@ async function runOne(
       appVersion: input.appVersion,
       engineVersion: deps.engineVersion,
       outputsRevealed: true,
-      visible: false,
+      // Why: a human takes over in the browser, so the mailbox case shows the window and claims
+      // implicitly under the staff ID that started the batch (section 7 §12.4, updates §11.1).
+      visible: operator === "mailbox",
+      ...(operator === "mailbox" ? { staffId: input.staff } : {}),
       isChildRun: true,
       // Section 3 §4.9: the certify run spec's own `batch_id`/`case_id`.
       batchId: input.batchId,
@@ -208,7 +221,10 @@ async function runOne(
       surface: deps.surface,
       artifacts: deps.artifacts,
       requestIndex: deps.requestIndex,
-      operator: (): OperatorPort => new ScriptedOperator(),
+      operator:
+        operator === "mailbox" && deps.mailboxOperator !== undefined
+          ? deps.mailboxOperator
+          : (): OperatorPort => new ScriptedOperator(),
       ...(deps.signal === undefined ? {} : { signal: deps.signal }),
     },
   );
@@ -272,8 +288,15 @@ async function classify(
   evidence: EvidenceStore,
   tenant: string,
   outcome: ReplayOutcome,
+  firstInterventionCounts = false,
 ): Promise<ResultClass> {
   const r = outcome.result;
+  // Why: updates §11.1, "Judging: the first intervention's kind, reason, and step are the observed
+  // result." A human may hand back, so the run can end any way after the first takeover.
+  if (firstInterventionCounts) {
+    const esc = await escalationDetail(evidence, tenant, outcome.runId);
+    if (esc !== null) return { status: "escalated", detail: `${esc.kind}/${esc.reason}/${esc.step ?? ""}` };
+  }
   if (r.status === "success") return { status: "success", detail: null };
   if (r.status === "business_outcome") return { status: "business_outcome", detail: r.outcome.code };
   if (r.status === "failed") {
@@ -346,6 +369,7 @@ export async function runCertifyCase(
     input,
     deps,
     artifact.contract.effect,
+    "scripted",
   );
 
   const routeMap = await routeMapFor(deps.evidence, deps.harness, input.tenant, baselineRunId, deps.signal);
@@ -391,7 +415,8 @@ export async function runCertifyCase(
   if (!armed.ok) return fail("harness_unreachable", armed.detail);
 
   const caseRunId = deps.ids.runId();
-  const caseOutcome = await runOne(caseRunId, CASE_ID, link, pin, { ...inputs }, input, deps, artifact.contract.effect);
+  const caseOperator: CertifyOperator = input.operator ?? "scripted";
+  const caseOutcome = await runOne(caseRunId, CASE_ID, link, pin, { ...inputs }, input, deps, artifact.contract.effect, caseOperator);
 
   // Section 8 §7.4 step 7: "Read the fault log. Copy this case's entries into the run's
   // faults.jsonl." Read before the final `clearFaults`/`reset` wipe it. The reset just above
@@ -404,7 +429,7 @@ export async function runCertifyCase(
   await deps.harness.setChaos({ entropy: 0, seed: "0" }, deps.signal);
   await deps.harness.reset(deps.signal);
 
-  const resultClass = await classify(deps.evidence, input.tenant, caseOutcome);
+  const resultClass = await classify(deps.evidence, input.tenant, caseOutcome, caseOperator === "mailbox");
   // Why on every status: `effect` sits on the shared envelope (section 3 §5.8), present on
   // every non-rejected result of a `commits` capability, whatever its final status.
   const commit: CommitState | null = caseOutcome.result.effect?.commit ?? null;
@@ -496,6 +521,7 @@ export async function runCertifyCase(
     kind: "quick",
     pin,
     started_by: input.staff,
+    operator: caseOperator,
     started_at: startedAt,
     instance: input.instance,
     route_map: routeMapPlain,

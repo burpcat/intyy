@@ -58,6 +58,10 @@ export const BatchPlan = z
      * the certify run spec's `pin`). `certify rerun` reuses it. */
     pin: z.string().regex(/^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+\.\d+\.\d+$/, "app/capability@x.y.z"),
     started_by: z.string().min(1),
+    /** Who answered the case run's interventions (updates file §11.1: the plan "records
+     * `operator: mailbox` and the staff ID who started the case"). Absent in older plans means
+     * `scripted`. */
+    operator: z.enum(["scripted", "mailbox"]).optional(),
     started_at: z.iso.datetime(),
     instance: TestInstance,
     route_map: z.record(z.string(), RouteMapEntry),

@@ -75,7 +75,7 @@ A human takes over the live browser session and hands it back, set A is publishe
 - [x] 6. Write draft handlers from takeovers, with a golden test.
 - [x] 7. Write takeover during discovery.
 - [x] 8. Finish the crash sweep. Test each row of section 7 §17.
-- [ ] 9. Add `--operator mailbox` to `certify case`.
+- [x] 9. Add `--operator mailbox` to `certify case`.
 - [ ] 10. Write `evidence publish | verify` and `npm run test:safety`.
 - [ ] 11. Stop. Ask the owner to run the live handoff (A11) with two terminals.
 - [ ] 12. Draft `README.md`, `REPORT.md`, and `evidence/README.md` from the outlines.

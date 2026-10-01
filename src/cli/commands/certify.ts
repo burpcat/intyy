@@ -18,7 +18,7 @@ import { requireRole, requireStaff, takeLock, type Ctx } from "../context.js";
 import { instanceKey } from "./discover.js";
 import { load, type DocTarget } from "./documents.js";
 import { CliExit, EXIT } from "../exit-codes.js";
-import { answer, type Answer } from "../output.js";
+import { answer, progress, type Answer } from "../output.js";
 import { act, readVersion, type Register } from "../program.js";
 import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
@@ -151,6 +151,7 @@ async function buildDeps(
     policy,
     settings: { doc: settings.doc, rev: settings.rev, hash: sealed.value.hash },
     engineVersion: readVersion(),
+    mailboxOperator: ctx.wiring.discovery.operator,
   } satisfies Parameters<typeof runCertifyCase>[1];
   const frozenSet = await loadFrozenSetFor(ctx, ctx.tenant, app, appSettings.app_version);
   return { deps, origin: appSettings.origin, appVersion: appSettings.app_version, frozenSet };
@@ -177,6 +178,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
     .option("--class <id>", "the suite class to run; defaults to the extra case's own class")
     .requiredOption("--profile <id>", "a standard fault profile ID, or a suite extra case ID")
     .option("--at <anchor>", "@step:<id>, required only for an @each_request_step profile")
+    .option("--operator <who>", "scripted (default) or mailbox: a human answers the case's interventions")
     .description("a quick batch: a clean baseline, then one fault case, judged against the oracle")
     .action(
       act(ctxOf, async (ctx, args, opts) => {
@@ -190,6 +192,10 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
           throw new CliExit(EXIT.usage, "--class is required for a standard profile");
         }
 
+        const operator = typeof opts.operator === "string" ? opts.operator : "scripted";
+        if (operator !== "scripted" && operator !== "mailbox") {
+          throw new CliExit(EXIT.usage, "--operator must be scripted or mailbox");
+        }
         const { deps, origin, appVersion, frozenSet } = await buildDeps(ctx, app);
         const batchId = ctx.wiring.ids.batchId();
         const holds: LockHold[] = [
@@ -201,6 +207,12 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
           }),
         ];
         try {
+          if (operator === "mailbox") {
+            progress(
+              ctx.io,
+              `batch ${batchId}: the case run's interventions wait in the mailbox. From another terminal: intyy operator list, then claim, and decide or release.`,
+            );
+          }
           const result = await runCertifyCase(
             {
               batchId,
@@ -211,6 +223,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
               ...(version === undefined ? {} : { version }),
               appVersion,
               staff,
+              operator,
               className: resolvedClassName,
               selection,
               at: typeof opts.at === "string" ? opts.at : undefined,

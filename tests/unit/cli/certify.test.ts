@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
 import { wire as realWire } from "../../../src/cli/wiring.js";
 import { commands } from "../../../src/cli/commands/index.js";
+import { EXIT } from "../../../src/cli/exit-codes.js";
 import { run } from "../../../src/cli/program.js";
 import type { Io } from "../../../src/cli/output.js";
 import type { BatchReport } from "../../../src/core/model/batch-report.js";
@@ -323,6 +324,32 @@ describe("certify case: exit codes", () => {
     expect(r.code).toBe(0);
     const body = JSON.parse(r.stdout) as { report: BatchReport };
     expect(body.report.cases[0]?.result.status).toBe("success");
+  });
+
+  test("--operator bogus exits usage and names the choices; nothing runs", async () => {
+    const env = await replayRoot();
+    await sealCertifyInputs(env);
+    const r = await certifyCall(env, "op_017", [
+      "certify", "case", CAP, "--class", "valid", "--profile", "server_error_on_search", "--operator", "bogus", "--json",
+    ]);
+    expect(r.code).toBe(EXIT.usage);
+    expect(r.stderr).toContain("scripted");
+    expect(r.stderr).toContain("mailbox");
+    expect(r.stdout).not.toContain("batch_id");
+  });
+
+  test("--operator scripted runs like the default and the plan records it (M07 task 9)", async () => {
+    const env = await replayRoot();
+    await sealCertifyInputs(env);
+    const r = await certifyCall(env, "op_017", [
+      "certify", "case", CAP, "--class", "valid", "--profile", "server_error_on_search", "--operator", "scripted", "--json",
+    ]);
+    expect(r.code).toBe(0);
+    const body = JSON.parse(r.stdout) as { batch_id: string };
+    const plan = JSON.parse(
+      readFileSync(join(env.root, "state", "evidence", "keystone", "batches", body.batch_id, "plan.json"), "utf8"),
+    ) as { operator?: string; started_by: string };
+    expect(plan).toMatchObject({ operator: "scripted", started_by: "op_017" });
   });
 
   test("a mismatched class exits 5 (the gate failed)", async () => {
