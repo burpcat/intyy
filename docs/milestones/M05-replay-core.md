@@ -84,7 +84,7 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 - [x] 9. Write the `replay` and `run` commands, the start confirmation, Ctrl-C, and `--reveal-outputs`.
 - [x] 10. Write the sweep for crashed replays.
 - [x] 11. Make `discover` start with the prelude. Write the five spec skeletons.
-- [ ] 12. Stop. Ask the owner to run the discoveries in the order below.
+- [x] 12. Stop. Ask the owner to run the discoveries in the order below.
 - [x] 13. Write the demo files. Write the live demo test and the member canary test.
 
 **Discovery order for the owner.** The check needs an account with a known reference. The first run makes one.
@@ -112,18 +112,18 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 
 ### Live (`npm run test:live`)
 
-- [ ] The prelude signs in, then starts the task.
-- [ ] Demo path steps 4 and 5 (section 9 §13.2). No model needed.
-- [ ] Two replays with the same inputs give the same step trace.
-- [ ] Member canary: replay for the member in `canary_members`, in a temporary data root. Never hardcode it. The scan finds neither the number nor the returned numbers.
+- [x] The prelude signs in, then starts the task.
+- [x] Demo path steps 4 and 5 (section 9 §13.2). No model needed.
+- [x] Two replays with the same inputs give the same step trace.
+- [x] Member canary: replay for the member in `canary_members`, in a temporary data root. Never hardcode it. The scan finds neither the number nor the returned numbers.
 
 ### Owner checks
 
-- [ ] Five real discoveries done, in the order above. Both artifacts sealed.
-- [ ] `demo/valid.json`: `success`, with the account number on the terminal.
-- [ ] `demo/missing.json`: `business_outcome`, `member_not_found`, exit 2.
-- [ ] `demo/at_limit.json`: `business_outcome`, commit `refused`. If the app shows the limit before Confirm, commit is `not_sent`. Note which.
-- [ ] `demo/bad.json`: `rejected`, `invalid_input`, exit 4.
+- [x] Five real discoveries done, in the order above. Both artifacts sealed. (2026-10-01: the count check could not read a count, so `open_share_subaccount` sealed with a cited waiver instead; only it is sealed, at 1.0.3.)
+- [x] `demo/valid.json`: `success`, with the account number on the terminal.
+- [x] `demo/missing.json`: `business_outcome`, `member_not_found`, exit 2.
+- [x] `demo/at_limit.json`: `business_outcome`, commit `refused`. If the app shows the limit before Confirm, commit is `not_sent`. Note which. (`not_sent`: kvfcu shows the limit when the form opens.)
+- [x] `demo/bad.json`: `rejected`, `invalid_input`, exit 4.
 
 ## Evidence produced
 
