@@ -10,7 +10,7 @@ import type { Outcome } from "../../ports/outcome.js";
 import type { OperatorPort } from "../../ports/operator.js";
 import type { Secrets } from "../../ports/secrets.js";
 import type { ArtifactStore } from "../catalog/artifacts.js";
-import type { EvidenceStore, RunFolder } from "../../ports/stores.js";
+import type { DocumentStore, EvidenceStore, RunFolder } from "../../ports/stores.js";
 import type { Eyes, LeaseToken, SurfaceFactory, Viewport } from "../../ports/surface.js";
 import { sha256Hex } from "../model/canonical.js";
 import type { Artifact } from "../model/artifact.js";
@@ -37,6 +37,8 @@ import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreKey, ScoreRecord } from "../model/score.js";
 import type { Alert } from "../model/alert.js";
+import type { Major } from "../model/major.js";
+import { majorStatus } from "../trust/majors.js";
 import { recordHash } from "../trust/rebuild.js";
 import { loadRecords } from "../trust/resolve.js";
 import { RunLog, type LogLine } from "../orchestrator/run-log.js";
@@ -174,6 +176,8 @@ export type ReplayDeps = {
    * returned promise, so the CLI can write an alert here.
    */
   onLiveFailure?: (failure: { key: string; runId: string; reason: string }) => unknown;
+  /** Major records, for pre-run check 4 (section 8 §11.9). Omitted, or with no `scores`: no major is ever deprecated. */
+  majors?: DocumentStore<Major>;
   /** Alert files, so a live write's record lists its open alerts (section 8 §5.3). */
   alerts?: AlertStore<Alert>;
   /** The drift reader, run after each live write (section 8 §13.1). Never changes the run's result. */
@@ -524,6 +528,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
   };
 
   const records = deps.scores === undefined ? undefined : await loadRecords(deps.scores, input.tenant, deps.signal);
+  const majorDeps = deps.majors === undefined || deps.scores === undefined ? undefined : { majors: deps.majors, scores: deps.scores };
   const pre = await runPrechecks(
     {
       raw: input.request,
@@ -535,6 +540,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       policy: input.policy.effective,
       resolve: catalogResolve(deps.artifacts, input.pin ?? undefined),
       ...(records === undefined ? {} : { trust: catalogTrust(deps.artifacts, records) }),
+      ...(majorDeps === undefined
+        ? {}
+        : { major: (a: string, c: string, m: number) => majorStatus(majorDeps, input.tenant, input.appVersion, a, c, m) }),
       // Why: a pin (an operator's, or certify's) names the exact key, so no key is chosen and check 7 is skipped.
       ...(input.pin === undefined || input.pin === null ? {} : { pinned: true }),
       ...catalogRequestIndex(deps.requestIndex),
@@ -687,7 +695,12 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     leaseState.end();
     await log.append({ event: "run_end", step, by: "engine", data: { status, code } }, true);
     // Why here: one place covers every ending, so no result site forgets the takeovers.
-    const final: Result = interventions.length === 0 ? result : Result.parse({ ...result, interventions: [...interventions] });
+    // Why the same place: a `major_version_deprecated` warning rides on every result that is not a rejection (section 3 §5.9).
+    const notes = pre.outcome.status === "ok" && result.status !== "rejected" ? (pre.outcome.warnings ?? []) : [];
+    const final: Result =
+      interventions.length === 0 && notes.length === 0
+        ? result
+        : Result.parse({ ...result, interventions: [...interventions], warnings: [...result.warnings, ...notes] });
     // Why the artifact and session: section 3 §7.3, `run.json.frozen` is a copy of `run_start`'s
     // frozen facts, so it names the artifacts the run used (evidence publish copies them).
     await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles, artifactForFacts, sessionForFacts, recordForFacts);

@@ -25,6 +25,7 @@ import { Request } from "../src/core/model/request.js";
 import { Result } from "../src/core/model/result.js";
 import { ReviewerInput } from "../src/core/model/reviewer.js";
 import { RunJson } from "../src/core/model/run.js";
+import { Major } from "../src/core/model/major.js";
 import { Alert } from "../src/core/model/alert.js";
 import { ScoreRecord } from "../src/core/model/score.js";
 import { RunSpec } from "../src/core/model/runspec.js";
@@ -73,6 +74,7 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.thresholds-1.0": Thresholds,
   "intyy.score-1.0": ScoreRecord,
   "intyy.alert-1.0": Alert,
+  "intyy.major-1.0": Major,
   "intyy.jev.step-1.0": JevTroubleInput,
   "intyy.jev.reconcile-1.0": JevReconcileInput,
   "intyy.reviewer.step-1.0": ReviewerInput,

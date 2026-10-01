@@ -55,7 +55,7 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 - [x] 1. Write live lines and the live score. Test that each failure code lands in its class.
 - [x] 2. Write the window and streak rules. Test degrading at the edges, exclusion, and restore.
 - [x] 3. Write early warnings, the drift reader, and alerts. Test the handler set tie-in with fixtures.
-- [ ] 4. Write major records and `major_retired`.
+- [x] 4. Write major records and `major_retired`.
 - [ ] 5. Write `pack impact`, regression batches, and the coverage check.
 - [ ] 6. Write reconciliation autonomy. Test the balance rule and each revocation path.
 - [ ] 7. Only if time allows: draft the lakeshore files. Stop. Ask the owner to run the probe below.
@@ -77,7 +77,7 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 - [x] Handler set tie-in: a drop after a hash change names the pack revision.
 - [ ] Autonomy: the balance rule; each revocation path resets the evidence.
 - [ ] `pack approve` refuses without regression coverage, once a key is approved.
-- [ ] A retired major gives `capability_not_found`, reason `major_retired`, naming the successor.
+- [x] A retired major gives `capability_not_found`, reason `major_retired`, naming the successor.
 
 ### Live (`npm run test:live`)
 

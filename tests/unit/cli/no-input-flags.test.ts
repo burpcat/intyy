@@ -66,6 +66,9 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--state": "one trust state: draft, approved, degraded, or retired; or an alert state: open, acted, dismissed; not member data",
   // M11 chunk B: `drift report --since` names a date, never member data. Alert notes come from standard input.
   "--since": "a date like 2026-09-30; not member data",
+  // M11 chunk C: `major deprecate`. The reason comes from standard input.
+  "--successor": "a capability major number, like 2; not member data",
+  "--retires-on": "a date like 2027-01-31; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

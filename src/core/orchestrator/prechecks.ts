@@ -21,6 +21,7 @@ import { ContractValue } from "../model/common.js";
 import { Request } from "../model/request.js";
 import type { FailureCode, RejectionCode } from "../model/result.js";
 import type { ScoreRecord } from "../model/score.js";
+import { majorVerdict, type MajorStatus } from "../trust/majors.js";
 import { pickKey, recordFor, type PickResult } from "../trust/resolve.js";
 import type { EffectivePolicy } from "../safety/policy/merge.js";
 import { requestIndexOps, type RequestIdLookup, type RequestIndexDeps } from "./request-index.js";
@@ -146,6 +147,11 @@ export type PrecheckInput = {
     records: readonly ScoreRecord[];
     fitting: (app: string, capability: string, major: number, appVersion: string) => Promise<Artifact[]>;
   };
+  /**
+   * Check 4's major view (section 8 §11.9): the status of one capability major in this context, or `null`
+   * when no approved record deprecates it. Omitted: no major is ever deprecated.
+   */
+  major?: (app: string, capability: string, major: number) => Promise<MajorStatus | null>;
   /** True when the run names its exact key: an operator pin, or certify (section 8 §11.5, §11.6).
    * The key is not chosen and check 7 does not apply (section 3 §4.8). */
   pinned?: boolean;
@@ -155,7 +161,14 @@ export type PrecheckInput = {
 
 /** The pipeline's final answer, once every check that ran has passed or the first failure. */
 export type PrecheckOutcome =
-  | { status: "ok"; artifact: Artifact; sessionArtifact: Artifact | null; record: ScoreRecord | null }
+  | {
+      status: "ok";
+      artifact: Artifact;
+      sessionArtifact: Artifact | null;
+      record: ScoreRecord | null;
+      /** Caller-relevant notes the checks found, like `major_version_deprecated` (section 3 §5.9). Absent when none. */
+      warnings?: { code: "major_version_deprecated"; message: string }[];
+    }
   | { status: "duplicate"; runId: string }
   | { status: "rejected"; code: RejectionCode; errors: PrecheckError[] }
   | { status: "failed"; code: FailureCode; detail: string };
@@ -420,6 +433,17 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
     const errors: PrecheckError[] = [{ code: "capability_not_found", message: `${request.capability} has no sealed version here` }];
     return { results, outcome: stop("capability", "capability_not_found", errors) };
   }
+  // Why not for a pinned run: a pin names its exact key (section 3 §4.9), so certify and operators can still run it.
+  // Why after "found": a major with no sealed version is plain `capability_not_found`.
+  const warnings: { code: "major_version_deprecated"; message: string }[] = [];
+  if (input.major !== undefined && input.pinned !== true) {
+    const verdict = majorVerdict(await input.major(app, capability, major), input.now.toISOString().slice(0, 10));
+    if (verdict.kind === "retired") {
+      const errors: PrecheckError[] = [{ code: "capability_not_found", reason: "major_retired", message: verdict.message }];
+      return { results, outcome: stop("capability", "capability_not_found", errors) };
+    }
+    if (verdict.kind === "warn") warnings.push({ code: "major_version_deprecated", message: verdict.message });
+  }
   results.push({ check: "capability", passed: true, errors: [] });
 
   // Check 5: a sealed version fits this bank's app version.
@@ -516,5 +540,14 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
     return { results, outcome: { status: "failed", code: "secret_unavailable", detail: secretResult.detail ?? "a secret has no value" } };
   }
 
-  return { results, outcome: { status: "ok", artifact: versioned, sessionArtifact, record: taskPick.kind === "key" ? taskPick.record : null } };
+  return {
+    results,
+    outcome: {
+      status: "ok",
+      artifact: versioned,
+      sessionArtifact,
+      record: taskPick.kind === "key" ? taskPick.record : null,
+      ...(warnings.length === 0 ? {} : { warnings }),
+    },
+  };
 }

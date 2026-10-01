@@ -25,9 +25,11 @@ import { CandidateIssues } from "../core/model/candidate-issues.js";
 import { CandidateRuns } from "../core/model/candidate-runs.js";
 import type { Config } from "../core/model/config.js";
 import type { Faults } from "../core/model/faults.js";
+import type { Major } from "../core/model/major.js";
 import { HandlerDraft } from "../core/model/handler-draft.js";
 import {
   faultsKind,
+  majorKind,
   packKind,
   policyKind,
   settingsKind,
@@ -73,6 +75,8 @@ export type Wiring = {
   faults: DocumentStore<Faults>;
   /** jev confidence cutoffs per app and jev version (section 8 §14.1). */
   thresholds: DocumentStore<Thresholds>;
+  /** Major records: which capability majors are deprecated, and to what (section 8 §11.9). */
+  majors: DocumentStore<Major>;
   locks: Locks;
   evidence: EvidenceStore;
   candidates: CandidateStore<CandidateFiles, CandidateDecision>;
@@ -138,6 +142,7 @@ export function wire(
       { dir: join(library, "thresholds"), tmpDir },
       clock,
     ),
+    majors: new FileDocumentStore(majorKind, { dir: join(library, "majors"), tmpDir }, clock),
     locks: new LockManager(new FileLockSlots(join(state, "var", "locks")), clock, systemLockEnv()),
     evidence: new FileEvidenceStore({ root: join(state, "evidence"), tmpDir }),
     candidates: new FileCandidateStore<CandidateFiles, CandidateDecision>(

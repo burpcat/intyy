@@ -10,6 +10,7 @@ import { registerDiscover } from "./discover.js";
 import { registerEvidence } from "./evidence.js";
 import { registerFaults } from "./faults.js";
 import { registerFixture } from "./fixture.js";
+import { registerMajor } from "./major.js";
 import { registerOperator } from "./operator.js";
 import { registerPack } from "./pack.js";
 import { registerPolicy } from "./policy.js";
@@ -38,6 +39,7 @@ export const commands: readonly Register[] = [
   registerFaults,
   registerFixture,
   registerJev,
+  registerMajor,
   registerOperator,
   registerPack,
   registerPolicy,

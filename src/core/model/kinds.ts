@@ -2,6 +2,7 @@
 // M06 certify inputs (suites, test data, fault profiles).
 // Follows design section 9 §5.8 (one store per shape, a schema per record kind) and §6.2.
 import { Faults } from "./faults.js";
+import { Major, majorId } from "./major.js";
 import { Pack, packScopeId } from "./pack.js";
 import { parsePolicy, policyDocId, type Policy } from "./policy.js";
 import type { DocKind } from "./sealing.js";
@@ -65,4 +66,12 @@ export const thresholdsKind: DocKind<Thresholds> = {
   parse: (raw) => Thresholds.safeParse(raw),
   revOf: (t) => String(t.revision),
   idOf: thresholdsId,
+};
+
+/** Major records in `library/majors/`. ID: `<app>/<capability>@<major>` (section 8 §11.9). */
+export const majorKind: DocKind<Major> = {
+  name: "major",
+  parse: (raw) => Major.safeParse(raw),
+  revOf: (m) => String(m.revision),
+  idOf: majorId,
 };
