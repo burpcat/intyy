@@ -3,6 +3,8 @@
 // evidence, the winner rule) and section 2 §13 (targets and clues).
 import type { RoleGroup } from "../../ports/surface.js";
 import type { Clues, Target } from "../model/artifact/targets.js";
+import type { Likenesses } from "./picture.js";
+import { imageDegree } from "./likeness.js";
 import { descendantsOf, type ScreenElement, type ScreenView } from "./screen.js";
 import { containsClue, resolveRefs, sameClue } from "./text.js";
 
@@ -61,6 +63,18 @@ function roleGroupOf(role: string): RoleGroup | undefined {
   return ROLE_GROUP[role];
 }
 
+/** Keeps the items that fit a target's `role` clue (section 7 §6.1). No clue keeps all. */
+export function filterByRole<T extends { role: string; roleGroup: RoleGroup }>(
+  role: string | undefined,
+  items: readonly T[],
+): T[] {
+  if (role === undefined) return [...items];
+  const group = roleGroupOf(role);
+  // Why: an unmapped role has no group to compare; fall back to an exact role match rather
+  // than a guessed group, so it still filters without excluding the element it was for.
+  return group === undefined ? items.filter((e) => e.role === role) : items.filter((e) => e.roleGroup === group);
+}
+
 /** Euclidean distance between two centers, in fractions of the viewport. */
 function centerDistance(
   a: { x: number; y: number; w: number; h: number },
@@ -93,13 +107,14 @@ function pathDegree(a: string, b: string): number {
 
 /** One candidate's score and the clues that agreed, differed, or were missing (section 7 §6.4,
  * §6.5, §6.8). "Agreeing" includes a partial match (`region`, `path`); "differing" is zero.
- * Only clues the target recorded take part (§6.4, last bullet). Picture likeness is M08: until
- * then `image` is always missing on the candidate side, so it never scores.
+ * Only clues the target recorded take part (§6.4, last bullet). `measured` is the candidate's
+ * picture likeness, when the caller compared pictures; without it `image` is missing.
  */
 function scoreOf(
   clues: Clues,
   el: ScreenElement,
   refs: ReadonlyMap<string, string> | undefined,
+  measured: number | undefined,
 ): {
   score: number;
   meetsEvidence: boolean;
@@ -140,7 +155,8 @@ function scoreOf(
   if (clues.region !== undefined) {
     add("region", el.region === undefined ? null : regionDegree(clues.region, el.region));
   }
-  if (clues.image !== undefined) add("image", null); // M08: no pixel comparison yet.
+  // Why: section 7 §6.4, a candidate with no crop to compare leaves the vote.
+  if (clues.image !== undefined) add("image", imageDegree(measured ?? null));
   if (clues.path !== undefined) add("path", pathDegree(resolveRefs(clues.path, refs), el.path));
 
   const score = weightTotal === 0 ? 0 : weightAgree / weightTotal;
@@ -189,6 +205,7 @@ export function vote(
   screen: ScreenView,
   targetsById: ReadonlyMap<string, Target>,
   refs?: ReadonlyMap<string, string>,
+  likenesses?: Likenesses,
 ): VoteResult {
   let pool: readonly ScreenElement[] = screen.elements;
   if (target.within !== undefined) {
@@ -196,20 +213,17 @@ export function vote(
     if (parent === undefined) {
       throw new Error(`target ${target.id}: within ${target.within} is not a known target`);
     }
-    const parentVote = vote(parent, screen, targetsById, refs);
+    const parentVote = vote(parent, screen, targetsById, refs, likenesses);
     if (parentVote.kind !== "winner") return { kind: parentVote.kind, facts: EMPTY_FACTS };
     const within = descendantsOf(screen, parentVote.elementId);
     pool = screen.elements.filter((e) => within.has(e.id) && e.id !== parentVote.elementId);
   }
-  if (target.clues.role !== undefined) {
-    const role = target.clues.role;
-    const group = roleGroupOf(role);
-    // Why: an unmapped role has no group to compare; fall back to an exact role match rather
-    // than a guessed group, so it still filters without excluding the element it was for.
-    pool = group === undefined ? pool.filter((e) => e.role === role) : pool.filter((e) => e.roleGroup === group);
-  }
+  pool = filterByRole(target.clues.role, pool);
 
-  const scored = pool.map((el) => ({ el, ...scoreOf(target.clues, el, refs) }));
+  const scored = pool.map((el) => ({
+    el,
+    ...scoreOf(target.clues, el, refs, likenesses?.get(target.id)?.get(el.id)),
+  }));
   scored.sort((a, b) => b.score - a.score);
   const best = scored[0];
   if (best === undefined) return { kind: "not_found", facts: { ...EMPTY_FACTS, candidates: 0 } };
@@ -226,6 +240,8 @@ export function vote(
     missing: best.missing,
   };
   if (best.score < 0.7 || !best.meetsEvidence) return { kind: "not_found", facts };
-  if (margin < 0.15) return { kind: "ambiguous", facts };
+  // Why: section 7 §6.6. A margin under 0.15 is a tie only when a second candidate also reaches
+  // 0.70; "Winner, alone" wins with the only candidate that does.
+  if (margin < 0.15 && (second?.score ?? 0) >= 0.7) return { kind: "ambiguous", facts };
   return { kind: "winner", elementId: best.el.id, facts };
 }

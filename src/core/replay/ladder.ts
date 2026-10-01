@@ -261,6 +261,7 @@ async function runResponseAction(action: HandlerAction, deps: ResponseDeps): Pro
   if (!observed.ok) return false;
   const target = deps.packTargets.get(action.target);
   if (target === undefined) throw new Error(`handler response names unknown target ${action.target}`);
+  // Why no pictures: handler pack targets keep no sealed crops, so `image` stays missing.
   const found = findTarget(target, observed.value, deps.packTargets, deps.refs, deps.redactor);
   if (found.kind !== "winner") return false;
   const gateAction: GateAction =

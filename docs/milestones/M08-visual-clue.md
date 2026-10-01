@@ -50,10 +50,10 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 
 - [ ] 1. Add `certify --kind quick` and `--instance` on top of M06's case runner.
 - [x] 2. Write the region clue and its degree edges.
-- [ ] 3. Write picture likeness and the image clue. Test the degree edges and the dropped masked crop.
-- [ ] 4. Add both clues to voting. Bump the engine version.
-- [ ] 5. Write the stripped-button test on the snapshot surface: no name, label, or text; region and image carry the vote.
-- [ ] 6. Check the renamed-button test still fails, and ties are still ambiguous.
+- [x] 3. Write picture likeness and the image clue. Test the degree edges and the dropped masked crop.
+- [x] 4. Add both clues to voting. Bump the engine version.
+- [x] 5. Write the stripped-button test on the snapshot surface: no name, label, or text; region and image carry the vote.
+- [x] 6. Check the renamed-button test still fails, and ties are still ambiguous.
 - [ ] 7. Stop. Ask the owner to run the drill below.
 
 **The drill (B1), for the owner:**
@@ -67,9 +67,9 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 
 ### Automated (CI `check` job)
 
-- [ ] Clue voting: the stripped button wins; a renamed button fails; ties are ambiguous; evidence rules hold (section 7 §21).
+- [x] Clue voting: the stripped button wins; a renamed button fails; ties are ambiguous; evidence rules hold (section 7 §21).
 - [x] Region and image degree edges.
-- [ ] A crop with a mask box in it is dropped. The target keeps its other clues.
+- [x] A crop with a mask box in it is dropped. The target keeps its other clues.
 - [ ] A `quick` batch on the fake harness writes a plan and a report. A declared difference marks it a drill.
 - [ ] Determinism still holds: two runs, same trace.
 

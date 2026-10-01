@@ -30,6 +30,7 @@ import type { SecretSources } from "../safety/secrets/injector.js";
 import type { RequestIndexDeps } from "../orchestrator/request-index.js";
 import { catalogRequestIndex, catalogResolve, runPrechecks } from "../orchestrator/prechecks.js";
 import { RunLog } from "../orchestrator/run-log.js";
+import { loadRecordedPictures } from "../targets/picture.js";
 import { commitStep, type CommitApproval, type CommitContext } from "./commit.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
 import { BotWindows, HumanCapture } from "../handoff/capture.js";
@@ -636,6 +637,25 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     return failEnd(null, { code: "app_unreachable", phase: "start", message: `could not open the bank app: ${opened.failure}` }, "", true);
   }
   const { eyes, gate } = opened.value;
+  // Why: section 7 §6.3, the `image` clue compares live pixels with each target's sealed crop.
+  // A missing or unreadable crop leaves that clue missing; it never fails the run.
+  const recorded = await loadRecordedPictures(
+    deps.artifacts,
+    `${artifact.identity.app}/${artifact.identity.capability}`,
+    artifact.identity.version ?? "0.0.0",
+    artifact.targets,
+    deps.signal,
+  );
+  const sessionRecorded =
+    sessionArtifact === null
+      ? undefined
+      : await loadRecordedPictures(
+          deps.artifacts,
+          `${sessionArtifact.identity.app}/${sessionArtifact.identity.capability}`,
+          sessionArtifact.identity.version ?? "0.0.0",
+          sessionArtifact.targets,
+          deps.signal,
+        );
   const refs = new Map(Object.entries(input.request.inputs).map(([k, v]) => [`input.${k}`, String(v)]));
   /** The step the run is on, for the lines a human's input writes (section 3 §6.4). */
   let currentStep: string | null = null;
@@ -753,6 +773,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         redactor: r,
         lease,
         clock: deps.clock,
+        ...(sessionRecorded === undefined ? {} : { recorded: sessionRecorded }),
         ...(signal === undefined ? {} : { signal }),
       };
       const result = await runPrelude(sessionArtifact, preludeCtx);
@@ -770,6 +791,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         redactor: r,
         lease,
         clock: deps.clock,
+        ...(sessionRecorded === undefined ? {} : { recorded: sessionRecorded }),
         ...(deps.signal === undefined ? {} : { signal: deps.signal }),
       };
       const preluded = await runPrelude(sessionArtifact, preludeCtx);
@@ -1668,6 +1690,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           lease,
           clock: deps.clock,
           logPrefix: "",
+          recorded,
           ...(deps.signal === undefined ? {} : { signal: deps.signal }),
         };
         const outcome = await runStep(step, stepCtx);
@@ -1777,6 +1800,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         clock: deps.clock,
         approval,
         screenshot: null,
+        recorded,
       };
       // Why no signal: never abort between commit_intent and the commit step's end.
       const committed = await commitStep(step, artifact.contract.outcomes, commitCtx);

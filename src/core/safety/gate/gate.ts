@@ -21,6 +21,8 @@ import { checkActionType, checkKey } from "../policy/allowlist.js";
 import type { EffectivePolicy } from "../policy/merge.js";
 import { matchesAny, normalizePath, parsePattern, type PathMatcher } from "../policy/paths.js";
 import type { Redactor } from "../redaction/redactor.js";
+import { pictureLikeness } from "../../targets/picture.js";
+import type { Pixels } from "../../targets/png.js";
 import {
   classify,
   normalizeWords,
@@ -63,8 +65,10 @@ export type Proposal = {
   action: GateAction;
   /** The artifact step or handler action, for the log. */
   step: string | null;
-  /** The human-confirmed risk flag, and the words recorded with it (section 4 §7.8, check 4). */
-  confirmed?: { risk: RiskClass; words: readonly string[] };
+  /** The human-confirmed risk flag, and the words recorded with it (section 4 §7.8, check 4).
+   * `picture` is the target's sealed crop, decoded: a control with no words stands when its
+   * picture matches it. */
+  confirmed?: { risk: RiskClass; words: readonly string[]; picture?: Pixels };
   /** This is the step named in `recovery.commit_point` (section 4 §7.8, check 1). */
   commitPoint?: boolean;
   /** A human said yes to this one action (rule `risk.human_approved`). */
@@ -201,6 +205,9 @@ const RANK: Record<RiskClass, number> = { idempotent: 0, reversible: 1, irrevers
 /** Text that looks like a mask or a reference. Typing it would put a mask into the app (§3.6). */
 const MASK_TOKEN =
   /\[[a-z]+#\d+\]|\[(?:secret|human_text|pii|financial)\]|\{(?:input|output|secret|system)\.[a-z0-9_]+\}/;
+
+/** Picture likeness that counts as "the same look" at the live re-check (section 4 §7.8, check 4). */
+const PICTURE_MATCH = 0.9;
 
 /** The words risk reads from a control: name, visible text, and tooltip (section 4 §7.3). */
 function wordsOf(el: SurfaceElement): string[] {
@@ -516,10 +523,19 @@ class ActionGate implements Gate {
       const live = target === undefined ? null : wordsOf(target);
       const same = live === null || sameWords(live, p.confirmed.words);
       if (!same) {
-        // ponytail: no picture match until M08, so a control with no words is always blocked here.
-        if (live.length === 0) return block("risk.live_mismatch", rules.risk, extra);
-        if (RANK[rules.risk] > RANK[p.confirmed.risk])
-          return block("risk.live_mismatch", rules.risk, extra);
+        // Why: section 4 §7.8 check 4, a stripped button that looks the same is the same
+        // control. A picture at likeness 0.90 or more keeps the flag; else no words is unsure.
+        const looksSame =
+          live.length === 0 &&
+          target !== undefined &&
+          p.confirmed.picture !== undefined &&
+          ((await pictureLikeness(this.eyes, o, target.ref, this.deps.redactor, p.confirmed.picture, signal)) ?? 0) >=
+            PICTURE_MATCH;
+        if (!looksSame) {
+          if (live.length === 0) return block("risk.live_mismatch", rules.risk, extra);
+          if (RANK[rules.risk] > RANK[p.confirmed.risk])
+            return block("risk.live_mismatch", rules.risk, extra);
+        }
       }
       risk = p.confirmed.risk;
       unsure = false;

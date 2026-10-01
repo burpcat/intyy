@@ -15,6 +15,7 @@ import type { Gate, GateFailure } from "../safety/gate/gate.js";
 import type { Redactor } from "../safety/redaction/redactor.js";
 import { actStep, type ActContext, type ActStepResult } from "./act.js";
 import type { AnyCheck } from "../targets/evaluate.js";
+import { picOf, type RecordedPictures } from "../targets/picture.js";
 import { raceCheckpointAndOutcomes, type RaceOutcome, type RaceResult } from "./wait.js";
 
 /** Asks a human for a commit approval when no authorization is present (docs/decisions.md, M05:
@@ -47,6 +48,8 @@ export type CommitContext = {
   /** Present only in supervised mode; unattended runs with no valid authorization also pause
    * here (docs/decisions.md, M05: "missing authorization never blocks the start"). */
   approval: CommitApproval;
+  /** The artifact's decoded sealed crops, for the `image` clue (section 7 §6.3). Absent: none. */
+  recorded?: RecordedPictures;
   /** A masked screenshot path for the approval request, if one was taken. */
   screenshot: string | null;
   signal?: AbortSignal;
@@ -103,7 +106,10 @@ function proposeCommit(
     stepId: step.id,
     commitPoint: true,
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
-    ...(target === null ? {} : { confirmed: { risk: step.risk, words: confirmedWords(target) } }),
+    ...(target === null
+      ? {}
+      : { confirmed: { risk: step.risk, words: confirmedWords(target), ...picOf(ctx.recorded, target) } }),
+    ...(ctx.recorded === undefined ? {} : { pictures: { eyes: ctx.eyes, recorded: ctx.recorded } }),
     ...(approval === undefined ? {} : { approval }),
   };
   return actStep(step.action, actCtx);

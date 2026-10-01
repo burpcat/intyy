@@ -17,6 +17,7 @@ import type { Redactor } from "../safety/redaction/redactor.js";
 import { settleAfterAction } from "./settle.js";
 import { raceCheckpointAndOutcomes, waitForCondition, type RaceOutcome } from "./wait.js";
 import type { AnyCheck, EvalCtx } from "../targets/evaluate.js";
+import { picOf, type RecordedPictures } from "../targets/picture.js";
 
 /** How long a precondition may wait: the previous step already waited for its own screen
  * (section 7 §5.2). */
@@ -37,6 +38,8 @@ export type StepRunnerContext = {
   clock: Clock;
   /** `"session:"` in the prelude, `""` in the task (section 7 §10, "Log them as `session:<step_id>`"). */
   logPrefix: string;
+  /** The artifact's decoded sealed crops, for the `image` clue (section 7 §6.3). Absent: none. */
+  recorded?: RecordedPictures;
   signal?: AbortSignal;
 };
 
@@ -180,7 +183,16 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
     gate: ctx.gate,
     lease: ctx.lease,
     stepId,
-    ...(target === null ? {} : { confirmed: { risk: step.risk, words: confirmedWords(target) } }),
+    ...(target === null
+      ? {}
+      : {
+          confirmed: {
+            risk: step.risk,
+            words: confirmedWords(target),
+            ...picOf(ctx.recorded, target),
+          },
+        }),
+    ...(ctx.recorded === undefined ? {} : { pictures: { eyes: ctx.eyes, recorded: ctx.recorded } }),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
   };
   const acted = await actStep(step.action, actCtx);

@@ -1,6 +1,6 @@
 {
   "name": "intyy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Gives AI agents hands in bank back-office apps that have no API.",
   "type": "module",
   "private": true,

@@ -8,7 +8,7 @@
 // them like any other control.
 import type { Masked } from "../../ports/masked.js";
 import type { Outcome } from "../../ports/outcome.js";
-import type { LeaseToken, Observation } from "../../ports/surface.js";
+import type { Eyes, LeaseToken, Observation } from "../../ports/surface.js";
 import { readOutput } from "../discovery/read.js";
 import type { ContractOutput } from "../model/artifact/contract.js";
 import type { StepAction } from "../model/artifact/steps.js";
@@ -22,6 +22,8 @@ import type {
 } from "../safety/gate/gate.js";
 import type { RiskKind } from "../model/artifact/steps.js";
 import type { Redactor } from "../safety/redaction/redactor.js";
+import { candidateLikenesses, type RecordedPictures } from "../targets/picture.js";
+import type { Pixels } from "../targets/png.js";
 import { resolveRefs } from "../targets/text.js";
 import { findTarget, type TargetVoteFacts } from "./find-target.js";
 
@@ -60,7 +62,10 @@ export type ActContext = {
   approval?: { by: string };
   /** The recorded risk and words a human confirmed at review, for the gate's live re-check
    * (section 4 §7.8 check 4). Task 7 (the commit path) sets this for the commit step. */
-  confirmed?: { risk: RiskKind; words: readonly string[] };
+  confirmed?: { risk: RiskKind; words: readonly string[]; picture?: Pixels };
+  /** The live eyes and the artifact's decoded sealed crops, for the `image` clue (section 7
+   * §6.3). Without both, `image` is missing for every candidate. */
+  pictures?: { eyes: Eyes; recorded: RecordedPictures };
   signal?: AbortSignal;
 };
 
@@ -109,13 +114,13 @@ export async function actStep(action: StepAction, ctx: ActContext): Promise<ActS
     return { outcome: { kind: "acted", gate: await propose(ctx, gateAction) }, facts: null };
   }
 
-  const found = findTarget(
-    targetOf(ctx, action.target),
-    ctx.observation,
-    ctx.targets,
-    ctx.refs,
-    ctx.redactor,
-  );
+  const wanted = targetOf(ctx, action.target);
+  // Why: section 7 §6.3, the vote is sync, so the pictures are compared first.
+  const likenesses =
+    ctx.pictures === undefined
+      ? undefined
+      : await candidateLikenesses(ctx.pictures, ctx.observation, wanted, ctx.targets, ctx.redactor, ctx.signal);
+  const found = findTarget(wanted, ctx.observation, ctx.targets, ctx.refs, ctx.redactor, likenesses);
   if (found.kind !== "winner") {
     const kind = found.kind === "not_found" ? "target_not_found" : "target_ambiguous";
     return { outcome: { kind }, facts: found.facts };
