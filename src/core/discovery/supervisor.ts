@@ -161,7 +161,7 @@ export class OperatorSupervisor implements Supervisor {
    */
   async takeover(
     ask: {
-      reason: "stuck" | "needs_human_handler";
+      reason: "stuck" | "needs_human_handler" | "unexpected_human_input";
       step: { id: string; intent: string | null };
       trouble: { phase: string; detail: string } | null;
       ladder: readonly unknown[];

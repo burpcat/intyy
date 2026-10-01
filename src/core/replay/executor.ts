@@ -32,6 +32,8 @@ import { catalogRequestIndex, catalogResolve, runPrechecks } from "../orchestrat
 import { RunLog } from "../orchestrator/run-log.js";
 import { commitStep, type CommitApproval, type CommitContext } from "./commit.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
+import { watchHumanInput } from "../handoff/human-input.js";
+import { Lease, leaseWhy } from "../handoff/lease.js";
 import { capture } from "../capture/capture.js";
 import { matchDetectors, runLadder, type LadderStep } from "./ladder.js";
 import { runReconciliationCheck, type ReconciliationVerdict } from "./reconciliation.js";
@@ -102,6 +104,9 @@ export type ReplayInput = {
   /** `run_start.purpose` (section 7 §11.1, §11.3): `commit_check` for a reconciliation check,
    * `commit_retry` for a retry child. `null` (the default) for a top-level run. */
   purpose?: string | null;
+  /** The staff ID of the person who started this replay. Human input while nobody holds the
+   * lease claims it implicitly under this ID (section 7 §12.4). `null`/omitted: no implicit claim. */
+  staffId?: string | null;
   /** True for any child run this module starts on its own (section 7 §11.1, §11.3;
    * docs/decisions.md, M06: "Child runs ask no start confirmation"). Skips the supervised-mode
    * start confirmation outright, whatever `request.mode` says. */
@@ -523,12 +528,18 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
   const captureFiles: string[] = [];
   const evidenceLevel = input.policy.effective.evidence.level;
 
+  // Why one Lease per run: the gate refuses bot actions unless the bot holds it (section 7 §12).
+  const leaseState = new Lease(deps.ids, (c, by) => {
+    void log.append({ event: "lease", step: null, by, why: leaseWhy(c, by), data: c });
+  });
+
   const endRun = async (
     status: Result["status"],
     code: string | null,
     result: Result,
     step: string | null,
   ): Promise<ReplayOutcome> => {
+    leaseState.end();
     await log.append({ event: "run_end", step, by: "engine", data: { status, code } }, true);
     await finish(folder, deps, r, input, capabilityStr, status, code, result, captureFiles);
     return { runId, result };
@@ -561,7 +572,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     timeZone: app.time_zone,
     visible: input.visible,
   };
-  const lease = deps.ids.leaseToken() as unknown as LeaseToken;
+  leaseState.start();
+  // Why a plain value: every step passes it. Handback (task 4) rebuilds the contexts with the
+  // new token after reverify; until then the first grant's token is the only bot token.
+  const lease: LeaseToken = leaseState.botToken();
   // Owner decision, M05: declared paths are the union of the session and task artifacts' paths.
   const declaredPaths = [...(sessionArtifact?.runs_on.paths ?? []), ...artifact.runs_on.paths];
   const gateRun: GateRun = {
@@ -581,7 +595,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       policy: input.policy.effective,
       redactor: r,
       run: gateRun,
-      lease: () => lease,
+      lease: () => leaseState.current(),
       log: (line) => void log.append(line),
       secrets: sources,
       beforeDispatch: async (p): Promise<Outcome<void, "evidence_write_failed">> => {
@@ -598,6 +612,37 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     return failEnd(null, { code: "app_unreachable", phase: "start", message: `could not open the bank app: ${opened.failure}` }, "", true);
   }
   const { eyes, gate } = opened.value;
+  // Human input while the bot drives opens a takeover (section 7 §12.4). The watcher moves the
+  // lease at once, so the gate refuses the bot's next action; the step loop then opens the request.
+  const watching = new AbortController();
+  /** Aborts the approval the engine waits on, when human input arrives (section 7 §12.4). */
+  let interruptWait: (() => void) | null = null;
+  void watchHumanInput(eyes.events(watching.signal), leaseState, input.staffId ?? null, (effect) => {
+    if (effect.kind === "takeover") {
+      void log.append({
+        event: "warning",
+        step: null,
+        by: "engine",
+        data: { code: "human_input_while_bot", detail: "a person touched the browser while the bot held control" },
+      });
+      if (effect.wasWaiting) interruptWait?.();
+    }
+  });
+  /** Runs one wait for a human decision as a lease `waiting` period. Human input ends the wait
+   * early, so the request closes unanswered. Returns `null` when the bot no longer holds the lease. */
+  const whileWaiting = async <T>(wait: (signal: AbortSignal | undefined) => Promise<T>, signal?: AbortSignal): Promise<T | null> => {
+    if (!leaseState.awaitDecision().ok) return null;
+    const stop = new AbortController();
+    interruptWait = () => {
+      stop.abort();
+    };
+    try {
+      return await wait(signal === undefined ? stop.signal : AbortSignal.any([signal, stop.signal]));
+    } finally {
+      interruptWait = null;
+      if (leaseState.holder === "bot") leaseState.decided();
+    }
+  };
 
   try {
     const targets = new Map(artifact.targets.map((t) => [t.id, t]));
@@ -714,7 +759,8 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         // Why a fallback of 15: section 7 §13.3's own default for this deadline.
         deadlineMinutes: input.policy.effective.escalation.start_confirmation_minutes ?? 15,
       });
-      const confirmed = await confirmation.startConfirmation(deps.signal);
+      const confirmed =
+        (await whileWaiting((signal) => confirmation.startConfirmation(signal), deps.signal)) ?? { kind: "run_ended" as const };
       await log.append({
         event: "escalation",
         step: null,
@@ -732,7 +778,11 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         r.value({ run_id: fact(runId), at: fact(deps.clock.now().toISOString()), status: "running", code: null, kind: "replay", capability: capabilityStr }),
         deps.signal,
       );
-      if (confirmed.kind !== "approved") {
+      // Why: human input closed the request unanswered. The step loop opens the takeover
+      // (section 7 §12.4); the bot sends nothing before it.
+      if (confirmed.kind === "run_ended" && leaseState.takeoverPending()) {
+        // fall through
+      } else if (confirmed.kind !== "approved") {
         await captureOnFailure("start_confirmation_failed");
         const code = confirmed.kind === "timed_out" ? "escalation_timeout" : "ended_by_operator";
         const message =
@@ -746,7 +796,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     // Why: skip the entry navigate when the browser already stands on it (same rule as discovery).
     const hereNow = await eyes.observe(deps.signal);
     const atTaskEntry = hereNow.ok && isSamePlace(hereNow.value.url, artifact.runs_on.entry);
-    const navToTask = atTaskEntry
+    const navToTask = atTaskEntry || leaseState.takeoverPending()
       ? null
       : await gate.act(
           { actor: "engine", lease, action: { type: "navigate", to: artifact.runs_on.entry }, step: "entry" },
@@ -828,11 +878,14 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
      */
     const attemptTakeover = async (
       stepId: string,
-      reason: "stuck" | "needs_human_handler",
+      reason: "stuck" | "needs_human_handler" | "unexpected_human_input",
       trouble: { phase: string; detail: string } | null,
       operatorNote: string | null,
       screenshot: string | null,
     ): Promise<ReplayOutcome> => {
+      // Why: a takeover moves the lease to nobody (section 7 §12.2). Human input already did.
+      leaseState.requestTakeover();
+      leaseState.takePending();
       const opening = deps.clock.now().toISOString();
       await log.append({ event: "escalation", step: stepId, by: "engine", data: { kind: "takeover", reason, state: "open" } });
       await deps.evidence.appendIndex(
@@ -899,6 +952,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       }
       return endAfterTakeover(stepId, got.kind);
     };
+
+    /** Human input stopped the bot: opens the takeover (section 7 §12.4). */
+    const humanInputTakeover = (stepId: string): Promise<ReplayOutcome> =>
+      attemptTakeover(stepId, "unexpected_human_input", null, null, null);
 
     /** Section 3 §5.10's `via: "reconciliation"` recovery entry (section 7 §11.1: "`recoveries`
      * lists `via: reconciliation`"). `rung` is `null`: not a ladder rung. */
@@ -1309,6 +1366,8 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       if (isAborted(deps.signal)) {
         return await failEnd(null, { code: "ended_by_operator", phase: "run", message: "the operator ended the run" }, await currentLocation(eyes), true);
       }
+      // Why: human input stops the engine before its next action (section 7 §12.4).
+      if (leaseState.takeoverPending()) return await humanInputTakeover(step.id);
 
       const isCommit = artifact.recovery?.commit_point === step.id;
       if (!isCommit) {
@@ -1328,6 +1387,8 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         };
         const outcome = await runStep(step, stepCtx);
         if (outcome.kind === "failed") {
+          // Why: a gate block from a lease lost to human input is not a real failure.
+          if (leaseState.takeoverPending()) return await humanInputTakeover(step.id);
           if (outcome.failure.phase !== "precondition" && outcome.failure.phase !== "target" && outcome.failure.phase !== "checkpoint") {
             // Section 5 §8.1: a gate block or an extract failure never starts the ladder.
             await captureOnFailure(`${step.id}_failed`);
@@ -1401,13 +1462,17 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       }
 
       const approval: CommitApproval = {
-        ask: (ask, signal) =>
-          new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
-            runId,
-            tenant: input.tenant,
-            capability: capabilityStr,
-            deadlineMinutes: input.policy.effective.escalation.approval_minutes ?? 5,
-          }).commitApproval(ask, signal),
+        ask: async (ask, signal) =>
+          (await whileWaiting(
+            (sig) =>
+              new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
+                runId,
+                tenant: input.tenant,
+                capability: capabilityStr,
+                deadlineMinutes: input.policy.effective.escalation.approval_minutes ?? 5,
+              }).commitApproval(ask, sig),
+            signal,
+          )) ?? { kind: "run_ended" as const },
       };
       const commitCtx: CommitContext = {
         observation: observed.value,
@@ -1425,6 +1490,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       };
       // Why no signal: never abort between commit_intent and the commit step's end.
       const committed = await commitStep(step, artifact.contract.outcomes, commitCtx);
+      // Why: nothing was sent and a person touched the page, so a takeover opens (section 7 §12.4).
+      if (leaseState.takeoverPending() && committed.kind === "effect" && committed.effect.commit === "not_sent") {
+        return await humanInputTakeover(step.id);
+      }
       if (committed.kind !== "effect") {
         await captureOnFailure(`${step.id}_failed`);
         const code = committed.kind === "evidence_write_failed" ? "evidence_write_failed" : "action_failed";
@@ -1532,6 +1601,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     });
     return await endRun("success", null, result, null);
   } finally {
+    watching.abort();
     await gate.close();
   }
 }

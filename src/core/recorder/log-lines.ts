@@ -182,6 +182,33 @@ export const GateLogLine = BaseLine.extend({ event: z.literal("gate"), data: Gat
 /** One `gate` line. */
 export type GateLogLine = z.infer<typeof GateLogLine>;
 
+/** One `lease` line's `data` (section 3 §6.4; `src/core/handoff/lease.ts`). */
+const LeaseData = z
+  .object({
+    from: z.enum(["bot", "human", "nobody"]),
+    to: z.enum(["bot", "human", "nobody"]),
+    reason: z.enum([
+      "run_start",
+      "awaiting_decision",
+      "decided",
+      "takeover_requested",
+      "claimed",
+      "handed_back",
+      "reverified",
+      "reverify_failed",
+      "run_end",
+    ]),
+    staff_id: z.string().nullable(),
+    implicit: z.boolean(),
+  })
+  .strict();
+
+/** One `lease` line: control changed hands (section 7 §12.2). */
+export const LeaseLine = BaseLine.extend({ event: z.literal("lease"), data: LeaseData });
+
+/** One `lease` line. */
+export type LeaseLine = z.infer<typeof LeaseLine>;
+
 /** Every line kind the recorder reads. An event this module does not list is `other`. */
 export type ParsedLine =
   | ({ kind: "action" } & ActionLine)
@@ -189,6 +216,7 @@ export type ParsedLine =
   | ({ kind: "extract" } & ExtractLine)
   | ({ kind: "escalation" } & EscalationLine)
   | ({ kind: "gate" } & GateLogLine)
+  | ({ kind: "lease" } & LeaseLine)
   | { kind: "other" };
 
 /** Parses one already-JSON-parsed log line. Throws on a line that fails its own schema: a
@@ -207,6 +235,8 @@ export function parseLine(raw: unknown): ParsedLine {
       return { kind: "escalation", ...EscalationLine.parse(raw) };
     case "gate":
       return { kind: "gate", ...GateLogLine.parse(raw) };
+    case "lease":
+      return { kind: "lease", ...LeaseLine.parse(raw) };
     default:
       return { kind: "other" };
   }

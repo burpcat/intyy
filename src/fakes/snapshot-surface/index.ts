@@ -413,6 +413,14 @@ export class SnapshotSurface implements SurfaceSession {
     return Promise.resolve(ok({ eyes: new FakeEyes(b), hands: new FakeHands(b) }));
   }
 
+  /**
+   * Plays a human touching the page: emits one `human_input` event (section 7 §12.4). Tests call
+   * this to drive the lease. Task 3 will give it a payload (the action and its control).
+   */
+  humanInput(): void {
+    this.#browser?.hub.emit({ kind: "human_input" });
+  }
+
   close(): Promise<void> {
     if (this.#browser !== null) {
       this.#browser.open = false;

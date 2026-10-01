@@ -12,6 +12,7 @@ import type { LeaseToken, SurfaceFactory, Viewport } from "../../ports/surface.j
 import type { ArtifactStore } from "../catalog/artifacts.js";
 import { runLoop, type LoopEnd } from "../discovery/loop.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
+import { Lease, leaseWhy } from "../handoff/lease.js";
 import { PROMPTS } from "../discovery/prompts/index.js";
 import { checkSpec } from "../discovery/spec-checks.js";
 import { taskView } from "../discovery/task-view.js";
@@ -353,8 +354,13 @@ export async function runDiscovery(
     timeZone: app.time_zone,
     visible: input.visible,
   };
-  // ponytail: one fixed lease token per run; M07 builds real leases and takeovers.
-  const lease = deps.ids.leaseToken() as unknown as LeaseToken;
+  // Why a real lease: the gate refuses bot actions unless the bot holds it (section 7 §12).
+  // Discovery's takeover and human capture come with task 7; here the bot holds it all run.
+  const leaseState = new Lease(deps.ids, (c, by) => {
+    void log.append({ event: "lease", step: null, by, why: leaseWhy(c, by), data: c });
+  });
+  leaseState.start();
+  const lease: LeaseToken = leaseState.botToken();
   const opened = await openGate(
     deps.surface,
     cfg,
@@ -368,7 +374,7 @@ export async function runDiscovery(
         authorizationValid: () => false,
         declaredPaths: null,
       },
-      lease: () => lease,
+      lease: () => leaseState.current(),
       log: (line) => void log.append(line),
       secrets: sources,
     },
@@ -376,6 +382,7 @@ export async function runDiscovery(
   );
   if (!opened.ok) {
     const code = "app_unreachable";
+    leaseState.end();
     await log.append(
       { event: "run_end", step: null, by: "engine", data: { status: "failed", code } },
       true,
@@ -492,6 +499,7 @@ export async function runDiscovery(
   await log.append({ event: "session", step: null, by: "engine", data: { state: "closed" } });
   if (preludeCode !== null || loop === null) {
     const code = preludeCode ?? "internal_error";
+    leaseState.end();
     await log.append({ event: "run_end", step: null, by: "engine", data: { status: "failed", code } }, true);
     await finish(folder, deps, r, input, { startedAt, status: "failed", code, loop: null });
     return { runId, status: "failed", code, problems: [] };
@@ -504,6 +512,7 @@ export async function runDiscovery(
     commits: loop.commits,
   };
   const wall = deps.clock.now().getTime() - startedMs;
+  leaseState.end();
   await log.append(
     {
       event: "run_end",

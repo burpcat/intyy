@@ -38,7 +38,8 @@
         "needs_human_handler",
         "reconciliation_unclear",
         "reconciliation_waived",
-        "retry_needs_approval"
+        "retry_needs_approval",
+        "unexpected_human_input"
       ]
     },
     "step": {

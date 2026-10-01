@@ -46,6 +46,8 @@ export const Intervention = z
       "reconciliation_unclear",
       "reconciliation_waived",
       "retry_needs_approval",
+      // Why: docs/decisions.md, M07. Section 7 §12.4, human input while the bot drives.
+      "unexpected_human_input",
     ]),
     step: z.object({ id: z.string().min(1), intent: z.string().nullable() }).strict(),
     trouble: z.object({ phase: z.string(), detail: z.string() }).strict().nullable(),
