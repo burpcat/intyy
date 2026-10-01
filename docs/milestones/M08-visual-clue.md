@@ -1,6 +1,6 @@
 # M08 — Visual clue
 
-> **Phase:** B · **Size:** S · **Depends on:** M07 · **Status:** not started
+> **Phase:** B · **Size:** S · **Depends on:** M07 · **Status:** in progress
 
 ## Read first
 
@@ -49,7 +49,7 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 ## Tasks, in order
 
 - [ ] 1. Add `certify --kind quick` and `--instance` on top of M06's case runner.
-- [ ] 2. Write the region clue and its degree edges.
+- [x] 2. Write the region clue and its degree edges.
 - [ ] 3. Write picture likeness and the image clue. Test the degree edges and the dropped masked crop.
 - [ ] 4. Add both clues to voting. Bump the engine version.
 - [ ] 5. Write the stripped-button test on the snapshot surface: no name, label, or text; region and image carry the vote.
@@ -68,7 +68,7 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 ### Automated (CI `check` job)
 
 - [ ] Clue voting: the stripped button wins; a renamed button fails; ties are ambiguous; evidence rules hold (section 7 §21).
-- [ ] Region and image degree edges.
+- [x] Region and image degree edges.
 - [ ] A crop with a mask box in it is dropped. The target keeps its other clues.
 - [ ] A `quick` batch on the fake harness writes a plan and a report. A declared difference marks it a drill.
 - [ ] Determinism still holds: two runs, same trace.

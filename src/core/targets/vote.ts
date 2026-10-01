@@ -74,7 +74,7 @@ function centerDistance(
 }
 
 /** 1 within 3% of the viewport, falling linearly to 0 at 20% (section 7 §6.3, `region`). */
-function regionDegree(
+export function regionDegree(
   a: { x: number; y: number; w: number; h: number },
   b: { x: number; y: number; w: number; h: number },
 ): number {

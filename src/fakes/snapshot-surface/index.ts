@@ -57,6 +57,9 @@ export type FakeElement = {
   form?: { id: string; submits: boolean };
   context?: { column?: string; left?: string };
   unreadable?: true;
+  /** Real PNG bytes that `crop` returns for this element (section 7 §6.3, `image`). Without it,
+   * `crop` returns the fake JSON image. */
+  image?: Uint8Array;
   enabled?: boolean;
   box?: Box | null;
   frame?: number;
@@ -396,7 +399,10 @@ class FakeEyes implements Eyes {
 
   crop(el: ElementRef): Promise<Outcome<Png, "stale_element">> {
     const id = this.b.idOf(el);
-    return Promise.resolve(id === null ? fail("stale_element") : ok(fakePng({ crop: id })));
+    if (id === null) return Promise.resolve(fail("stale_element"));
+    const image = this.b.active?.elements.find((e) => e.id === id)?.image;
+    // Why a cast: the Png brand has no runtime form.
+    return Promise.resolve(ok(image === undefined ? fakePng({ crop: id }) : (image as Png)));
   }
 
   events(signal?: AbortSignal): AsyncIterable<SurfaceEvent> {
