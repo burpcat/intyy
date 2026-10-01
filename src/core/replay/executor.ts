@@ -32,8 +32,10 @@ import { catalogRequestIndex, catalogResolve, runPrechecks } from "../orchestrat
 import { RunLog } from "../orchestrator/run-log.js";
 import { commitStep, type CommitApproval, type CommitContext } from "./commit.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
+import { BotWindows, HumanCapture } from "../handoff/capture.js";
 import { watchHumanInput } from "../handoff/human-input.js";
 import { Lease, leaseWhy } from "../handoff/lease.js";
+import { watchCommit } from "../handoff/watch.js";
 import { capture } from "../capture/capture.js";
 import { matchDetectors, runLadder, type LadderStep } from "./ladder.js";
 import { runReconciliationCheck, type ReconciliationVerdict } from "./reconciliation.js";
@@ -588,6 +590,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     },
     declaredPaths,
   };
+  // Why: section 7 §14.3, the gate marks each bot action's window, so capture can tell the bot's
+  // own input events from a person's.
+  const botWindows = new BotWindows(() => deps.clock.now().getTime());
   const opened = await openGate(
     deps.surface,
     cfg,
@@ -595,6 +600,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       policy: input.policy.effective,
       redactor: r,
       run: gateRun,
+      botAction: botWindows,
       lease: () => leaseState.current(),
       log: (line) => void log.append(line),
       secrets: sources,
@@ -612,22 +618,56 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     return failEnd(null, { code: "app_unreachable", phase: "start", message: `could not open the bank app: ${opened.failure}` }, "", true);
   }
   const { eyes, gate } = opened.value;
+  const refs = new Map(Object.entries(input.request.inputs).map(([k, v]) => [`input.${k}`, String(v)]));
+  /** The step the run is on, for the lines a human's input writes (section 3 §6.4). */
+  let currentStep: string | null = null;
+  // The commit step's target, so a human click on it counts as the commit (section 7 §14.4).
+  const commitStepDef = artifact.steps.find((s2) => s2.id === artifact.recovery?.commit_point);
+  const commitTargetId =
+    commitStepDef === undefined || commitStepDef.action.type === "navigate" || commitStepDef.action.type === "press"
+      ? null
+      : commitStepDef.action.target;
+  const commitTarget = artifact.targets.find((t) => t.id === commitTargetId) ?? null;
+  const humanCapture = new HumanCapture({
+    gate,
+    eyes,
+    lease: leaseState,
+    redactor: r,
+    windows: botWindows,
+    clock: deps.clock,
+    viewport: REPLAY_VIEWPORT,
+    refs,
+    commit:
+      commitTarget === null
+        ? null
+        : {
+            target: commitTarget,
+            notSent: () => effect?.commit === "not_sent",
+            // Section 7 §14.4: in flight, performed by the human, sent at the event's time.
+            humanSent: (at) => {
+              if (effect !== null) effect = { ...effect, commit: "uncertain", performed_by: "human", sent_at: at };
+            },
+          },
+    step: () => currentStep,
+    log: (line) => void log.append(line),
+    ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+  });
   // Human input while the bot drives opens a takeover (section 7 §12.4). The watcher moves the
   // lease at once, so the gate refuses the bot's next action; the step loop then opens the request.
   const watching = new AbortController();
   /** Aborts the approval the engine waits on, when human input arrives (section 7 §12.4). */
   let interruptWait: (() => void) | null = null;
-  void watchHumanInput(eyes.events(watching.signal), leaseState, input.staffId ?? null, (effect) => {
-    if (effect.kind === "takeover") {
+  void watchHumanInput(eyes.events(watching.signal), leaseState, input.staffId ?? null, (humanEffect) => {
+    if (humanEffect.kind === "takeover") {
       void log.append({
         event: "warning",
         step: null,
         by: "engine",
         data: { code: "human_input_while_bot", detail: "a person touched the browser while the bot held control" },
       });
-      if (effect.wasWaiting) interruptWait?.();
+      if (humanEffect.wasWaiting) interruptWait?.();
     }
-  });
+  }, humanCapture);
   /** Runs one wait for a human decision as a lease `waiting` period. Human input ends the wait
    * early, so the request closes unanswered. Returns `null` when the bot no longer holds the lease. */
   const whileWaiting = async <T>(wait: (signal: AbortSignal | undefined) => Promise<T>, signal?: AbortSignal): Promise<T | null> => {
@@ -648,7 +688,6 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     const targets = new Map(artifact.targets.map((t) => [t.id, t]));
     const conditions = new Map(artifact.conditions.map((c) => [c.id, c]));
     const outputs = new Map(artifact.contract.outputs.map((o) => [o.name, o]));
-    const refs = new Map(Object.entries(input.request.inputs).map(([k, v]) => [`input.${k}`, String(v)]));
 
     const captureOnFailure = async (name: string): Promise<void> => {
       if (evidenceLevel === "minimal") return;
@@ -920,14 +959,17 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
               data: { kind: "takeover", reason, state: "claimed", staff_id: staff, deadline: fact(deadline), implicit },
             });
           },
-          // Acting on the answer is task 3's capture work. The line records that it arrived.
-          onDialog: (staff, answer) => {
+          // Section 7 §14.5: the operator answers the native box through the CLI. The line
+          // records that it arrived; then the engine clicks Accept or Dismiss for the human,
+          // through the gate, and capture logs it as a human action.
+          onDialog: async (staff, answer) => {
             void log.append({
               event: "escalation",
               step: stepId,
               by: "human",
               data: { kind: "takeover", reason, state: "dialog_answered", staff_id: staff, decision: answer },
             });
+            await humanCapture.answerDialog(staff, answer);
           },
         },
       );
@@ -936,6 +978,30 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       );
       const commitState = effect?.commit ?? "none";
       const inFlight = commitState === "uncertain";
+      // Section 7 §15: while a human drives, check the commit step's checkpoint and outcomes every
+      // second, if the commit is in flight. A pass settles the commit at that moment. The state
+      // is read live, because a human may send the commit during the takeover (§14.4).
+      const watchStop = new AbortController();
+      if (commitStepDef !== undefined) {
+        void watchCommit(
+          {
+            eyes,
+            clock: deps.clock,
+            ctx: { targets, conditions, refs },
+            step: commitStepDef.id,
+            checkpoint: commitStepDef.checkpoint,
+            outcomes: artifact.contract.outcomes
+              .filter((o) => commitStepDef.outcomes.includes(o.code))
+              .map((o) => ({ code: o.code, condition: o.condition })),
+            inFlight: () => effect?.commit === "uncertain",
+            log: (line) => void log.append(line),
+            onVerdict: (v) => {
+              if (effect !== null) effect = { ...effect, commit: v.kind === "confirmed" ? "confirmed" : "refused" };
+            },
+          },
+          watchStop.signal,
+        );
+      }
       const got = await supervisor.takeover(
         {
           reason,
@@ -952,6 +1018,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         },
         deps.signal,
       );
+      watchStop.abort();
       await log.append({
         event: "escalation",
         step: stepId,
@@ -1001,7 +1068,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       // check found" (docs/decisions.md, M06). Unlike the ordinary uncertain-commit path, this
       // never opens a further `reconciliation_decision` or `retry_decision`: one check, then
       // the takeover's own ending stands, with the commit state the check found.
-      if (inFlight) {
+      // Why read it again: a watcher may have settled the commit, or a human may have sent it, while
+      // the takeover was open (section 7 §14.4, §15). A settled commit needs no check.
+      if (effect?.commit === "uncertain") {
         const { verdict, checkRunId } =
           deps.reconciliationCheck !== undefined
             ? { verdict: await deps.reconciliationCheck(deps.signal), checkRunId: null as string | null }
@@ -1012,7 +1081,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         const foundCommit = verdict.kind === "found" || verdict.kind === "found_outputs_unavailable";
         const newCommit = foundCommit ? "found_by_check" : verdict.kind === "absent" ? "absent_by_check" : "uncertain";
         effect = {
-          ...(effect ?? notSentEffect()),
+          ...effect,
           commit: newCommit,
           ...(checkRunId === null ? {} : { check: { run_id: checkRunId, decided_by: "code" as const, staff_id: null } }),
         };
@@ -1435,6 +1504,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       if (isAborted(deps.signal)) {
         return await failEnd(null, { code: "ended_by_operator", phase: "run", message: "the operator ended the run" }, await currentLocation(eyes), true);
       }
+      currentStep = step.id;
       // Why: human input stops the engine before its next action (section 7 §12.4).
       if (leaseState.takeoverPending()) return await humanInputTakeover(step.id);
 

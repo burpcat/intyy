@@ -305,6 +305,30 @@ export class Redactor {
   }
 
   /**
+   * What the log holds for text a human typed (section 4 §8.10): `[secret]` for a password field
+   * (`raw` is `null`, never read), the input's reference when the whole value equals one known
+   * input, else `[human_text]`. Never the text, even when it looks harmless. A short value, or a
+   * value two inputs share, cannot name one input, so it is `[human_text]` (section 4 §9.6).
+   */
+  humanText(raw: string | null): Masked<string> {
+    if (raw === null) return mask("[secret]");
+    const hits = this.#known.filter(
+      (v) => v.ref.startsWith("input.") && this.#valueKey(v) === this.#keyOf(v.type, raw),
+    );
+    const first = hits[0];
+    const one = hits.every((v) => v.ref === first?.ref);
+    return first === undefined || !one || first.value.trim().length < 4
+      ? mask("[human_text]")
+      : mask(`{${first.ref}}`);
+  }
+
+  /** The key a typed value is compared by, for a known value of `type` (like {@link #valueKey}). */
+  #keyOf(type: KnownValue["type"], raw: string): string {
+    if (type === "money") return parseAmount(raw) ?? raw;
+    return raw.trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  /**
    * Masks one text through the six rules, in order (§9.5). `label` is the label found beside
    * the text: its field label, its column header, or the cell to its left (§9.7).
    */

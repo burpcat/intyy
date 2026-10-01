@@ -7,8 +7,10 @@ import { fromFactory } from "../../../ports/hands.js";
 import type { Masked } from "../../../ports/masked.js";
 import { fail, ok, type Outcome } from "../../../ports/outcome.js";
 import type {
+  ElementFingerprint,
   ElementRef,
   Eyes,
+  HumanInput,
   LeaseToken,
   Observation,
   SessionConfig,
@@ -133,6 +135,12 @@ export type GateDeps = {
    * runs with no commit to guard, like discovery.
    */
   beforeDispatch?: (p: Proposal) => Promise<Outcome<void, "evidence_write_failed">>;
+  /**
+   * Told when the hands start and stop an action (section 7 §14.3: "the engine marks its own
+   * action windows"). `path` is the target's path clue, or `null` for an action with no target.
+   * Capture uses it to tell the bot's own input events from a person's.
+   */
+  botAction?: { begin(path: string | null): void; end(): void };
 };
 
 /** A page or frame load the network guard blocked, and who acted last before it (section 4 §6.8). */
@@ -147,6 +155,12 @@ export type GateFailure =
 export interface Gate {
   /** Checks one proposal in the order of section 4 §3.3, then acts only when allowed. */
   act(p: Proposal, signal?: AbortSignal): Promise<Outcome<GateResult, GateFailure>>;
+  /**
+   * Classes and logs one human action the engine saw after it happened (section 4 §7.10): a
+   * `gate` line with decision `observed` and rule `human.observed`. It never blocks and never
+   * reaches the hands. The classing reads the fingerprint taken as the event happened.
+   */
+  observeHuman(input: HumanInput, step: string | null): GateResult;
   /** Marks the last action as settled: nothing is in flight (section 4 §7.9, `risk.in_flight`). */
   settled(): void;
   /**
@@ -224,6 +238,8 @@ class ActionGate implements Gate {
   #blocked: BlockedLoad[] = [];
   /** Hosts already logged for a blocked resource: once per host per run (section 4 §6.8). */
   readonly #loggedHosts = new Set<string>();
+  /** The path clue of the target the gate is about to act on, for `botAction` (section 7 §14.3). */
+  #path: string | null = null;
   /** Forms that received a `financial` input, for C1 (section 4 §7.5). */
   readonly #moneyForms = new Set<string>();
   readonly #declared: PathMatcher[] | null;
@@ -312,7 +328,7 @@ class ActionGate implements Gate {
 
   /** Writes one gate line and returns the result. */
   #decide(
-    p: Proposal,
+    p: Pick<Proposal, "actor" | "step"> & { action: { type: GateAction["type"] } },
     decision: Decision,
     rule: RuleId,
     risk: RiskClass | null,
@@ -338,6 +354,51 @@ class ActionGate implements Gate {
       ...(data.label === undefined ? {} : { label: data.label }),
       ...(data.path === undefined ? {} : { path: data.path }),
     };
+  }
+
+  observeHuman(input: HumanInput, step: string | null): GateResult {
+    this.#nonEngineActed = true;
+    this.#lastActor = "human";
+    const a = input.action;
+    const page = a.type === "navigate" ? new URL(a.to, this.cfg.origin).href : input.url;
+    const verdict = this.cfg.allowlist.check(page, "document");
+    const pageIrreversible = verdict.allowed && verdict.irreversible;
+    const words = (f: ElementFingerprint): string[] =>
+      [f.clues.name, f.clues.text, f.tooltip].filter((w): w is string => w !== undefined);
+    // ponytail: the money-form rule (C1) needs the form's field values, which a fingerprint
+    // never holds, so a human click is never classed on it. Upgrade: ask the page script for a
+    // `hasMoney` flag on the form.
+    const click = (f: ElementFingerprint): ClickInput => ({
+      type: "click",
+      control: { role: f.role, roleGroup: f.roleGroup, words: words(f) },
+      link: f.href === undefined ? null : linkVerdict(this.cfg, f.href),
+      pageIrreversible,
+      submitsMoneyForm: false,
+      dialogMessage: null,
+    });
+    const risk = ((): RiskInput => {
+      switch (a.type) {
+        case "click":
+          return click(a.target);
+        case "press":
+          return { type: "press", key: a.key, submit: a.key === "Enter" && a.submit !== null ? click(a.submit) : null };
+        case "navigate":
+          return { type: "navigate", irreversiblePath: pageIrreversible };
+        default:
+          return { type: a.type };
+      }
+    })();
+    const fp = a.type === "navigate" ? null : a.type === "press" ? (a.submit ?? a.target) : a.target;
+    const label = fp === null ? undefined : (fp.clues.name ?? fp.clues.text);
+    const path = URL.canParse(page) ? new URL(page).pathname : page;
+    const rules = classify(risk, this.deps.policy.risk);
+    return this.#decide(
+      { actor: "human", step, action: { type: a.type } },
+      "observed",
+      "human.observed",
+      rules.risk,
+      { ...(label === undefined ? {} : { label }), path },
+    );
   }
 
   async act(p: Proposal, signal?: AbortSignal): Promise<Outcome<GateResult, GateFailure>> {
@@ -426,6 +487,7 @@ class ActionGate implements Gate {
       // Why: section 4 §6.10, intyy cannot know what text is safe to enter.
       return block("browser.prompt");
     }
+    this.#path = target?.clues.path ?? null;
     const input = this.#riskInput(a, o, target, page.irreversible);
     // Why: section 4 §7.5 C1, a form that holds a financial input submits money.
     if (a.type === "type" && a.value.kind === "input" && a.value.label === "financial") {
@@ -436,7 +498,15 @@ class ActionGate implements Gate {
     const extra = { ...(label === undefined ? {} : { label }), path };
 
     if (p.actor === "human") {
-      return ok(this.#decide(p, "observed", "human.observed", rules.risk, extra));
+      const seen = this.#decide(p, "observed", "human.observed", rules.risk, extra);
+      // Why: section 7 §14.5, the engine holds a native box open, so a human may not be able to
+      // click it. The operator answers through the CLI, and the engine clicks for them. The gate
+      // still logs it as a human action, and `#go` writes `commit_intent` first when it is
+      // irreversible. Every other human action is observed only.
+      if (a.type === "click" && target?.clues.path.startsWith("native:dialog > ") === true) {
+        return this.#go(p, seen, action, false, signal);
+      }
+      return ok(seen);
     }
 
     // Why: section 4 §7.8 check 4, a human's flag holds for the exact words the human saw.
@@ -579,10 +649,18 @@ class ActionGate implements Gate {
       const before = await this.deps.beforeDispatch(p);
       if (!before.ok) return before;
     }
-    const acted =
-      a.type === "type" && a.value.kind === "secret"
-        ? await this.#typeSecret(a, a.value.name, p.lease, p.step, signal)
-        : await this.hands.act(this.#resolve(a), p.lease, signal);
+    // Why: section 7 §14.3, the engine marks its own action window: from just before the hands
+    // act until the action ends. Capture adds 300 ms after.
+    this.deps.botAction?.begin(this.#path);
+    let acted;
+    try {
+      acted =
+        a.type === "type" && a.value.kind === "secret"
+          ? await this.#typeSecret(a, a.value.name, p.lease, p.step, signal)
+          : await this.hands.act(this.#resolve(a), p.lease, signal);
+    } finally {
+      this.deps.botAction?.end();
+    }
     if (!acted.ok) return acted;
     // Why: forward only. A commit that may have gone out counts as sent (section 4 §7.8, check 3).
     if (result.risk === "irreversible" && acted.value.dispatched !== false) this.#commitSent = true;

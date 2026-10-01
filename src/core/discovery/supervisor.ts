@@ -31,8 +31,9 @@ export type SupervisorFacts = {
 export type SupervisorHooks = {
   /** A claim arrived and moved the deadline to `deadline` (an ISO time). */
   onClaim?: (staff: string, implicit: boolean, deadline: string) => void;
-  /** An operator answered a native dialog (section 7 §13.4, `dialogs.jsonl`). */
-  onDialog?: (staff: string, answer: "accept" | "dismiss") => void;
+  /** An operator answered a native dialog (section 7 §13.4, `dialogs.jsonl`). The wait resumes
+   * once this settles, so the engine's own click on the box lands before the next answer. */
+  onDialog?: (staff: string, answer: "accept" | "dismiss") => unknown;
 };
 
 /** What a takeover can end with (section 7 §13.2). */
@@ -435,7 +436,7 @@ export class OperatorSupervisor implements Supervisor {
         continue;
       }
       if (ev.kind === "dialog") {
-        this.hooks.onDialog?.(ev.staff, ev.answer);
+        await this.hooks.onDialog?.(ev.staff, ev.answer);
         continue;
       }
       if (ev.kind === "released" && !handback) continue;

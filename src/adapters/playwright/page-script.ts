@@ -27,8 +27,19 @@ export type RawElement = {
   path: string;
 };
 
-/** What `collectElements` needs. `offset` moves frame boxes into top-document pixels. */
-export type CollectArg = { tag: string; offsetX: number; offsetY: number; secretKey: string };
+/**
+ * What `collectElements` needs. `offset` moves frame boxes into top-document pixels. With `only`,
+ * it describes that one element for a fingerprint (section 7 §14.1): no ref is set and no field
+ * value is read, so a human's typing never enters the engine through a look. `only` stays in
+ * the page: it is never sent through `evaluate`.
+ */
+export type CollectArg = {
+  tag: string;
+  offsetX: number;
+  offsetY: number;
+  secretKey: string;
+  only?: Element;
+};
 
 /**
  * Lists the elements of the current frame. Each element gets a `data-intyy-ref` attribute, so
@@ -165,12 +176,16 @@ export function collectElements(arg: CollectArg): RawElement[] {
       return { kind: "check", checked: el.checked };
     }
     if (el instanceof HTMLSelectElement) {
+      if (arg.only !== undefined) return { kind: "choice" };
       const shown = el.selectedOptions[0];
       return { kind: "choice", value: clean(shown?.textContent) ?? "" };
     }
     if (role === null || !["textbox", "searchbox", "spinbutton"].includes(role)) return undefined;
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return undefined;
     const kind = el instanceof HTMLInputElement && el.type === "password" ? "password" : "text";
+    // Why: section 7 §14.2, a fingerprint never reads a field's value. The type event reads a
+    // non-password value on its own.
+    if (arg.only !== undefined) return { kind };
     if (secretFields?.has(el) === true) return el.value === "" ? { kind } : { kind, filled: true };
     return { kind, value: el.value };
   };
@@ -250,6 +265,7 @@ export function collectElements(arg: CollectArg): RawElement[] {
   const counter = window as unknown as { __intyyNextRef?: number };
   const listed = new Map<Element, string>();
   const refFor = (el: Element): string => {
+    if (arg.only !== undefined) return "";
     const prior = el.getAttribute("data-intyy-ref");
     if (prior !== null && prior.startsWith(`${arg.tag}:`)) return prior;
     const n = counter.__intyyNextRef ?? 0;
@@ -267,7 +283,7 @@ export function collectElements(arg: CollectArg): RawElement[] {
   };
   const scrollX = arg.offsetX === 0 && arg.offsetY === 0 ? window.scrollX : 0;
   const scrollY = arg.offsetX === 0 && arg.offsetY === 0 ? window.scrollY : 0;
-  for (const el of document.body.querySelectorAll("*")) {
+  for (const el of arg.only !== undefined ? [arg.only] : document.body.querySelectorAll("*")) {
     const role = roleOf(el);
     if (role === null && !clickable(el) && !hasOwnText(el)) continue;
     if (["script", "style", "noscript", "option"].includes(el.tagName.toLowerCase())) continue;
@@ -340,4 +356,191 @@ export function serializeFrame(): string {
   for (const el of copy.querySelectorAll("option")) el.removeAttribute("selected");
   const doctype = document.doctype === null ? "" : `<!DOCTYPE ${document.doctype.name}>`;
   return `${doctype}${copy.outerHTML}`;
+}
+
+/** What the capture script reports for one control: `RawElement` without refs or values. */
+export type CapturedPrint = {
+  role: string;
+  roleGroup: RoleGroup;
+  clues: { name?: string; label?: string; text?: string; path: string };
+  tooltip?: string;
+  href?: string;
+  form?: { id: string; submits: boolean };
+  box: Box | null;
+  fieldKind?: "text" | "password" | "choice" | "check";
+};
+
+/**
+ * Installs the human-input capture (design section 7 §14.1). It reports click, type (one per
+ * field, at blur), select, set_checked, and press (Enter, Escape, Tab, F-keys) through the
+ * `binding`. Each report carries a fingerprint taken at once, so a click that changes the page
+ * still has its control. A password field's value is never read (section 7 §14.2). Only trusted
+ * events count: a script's own synthetic events do not. `collect` is `collectElements`, passed in
+ * so the fingerprint uses one set of rules. Runs in the page: it may use no outside names.
+ */
+export function installCapture(
+  collect: (arg: CollectArg) => RawElement[],
+  binding: string,
+  secretKey: string,
+): void {
+  const w = window as unknown as Record<string, unknown>;
+  if (w["__intyyCaptureOn"] === true) return;
+  w["__intyyCaptureOn"] = true;
+  const send = (payload: Record<string, unknown>): void => {
+    const fn = w[binding];
+    if (typeof fn !== "function") return;
+    try {
+      void Promise.resolve((fn as (p: unknown) => unknown)(payload)).catch(() => undefined);
+    } catch {
+      // Why: a page that is going away may refuse the call. Nothing else can be done.
+    }
+  };
+  const topUrl = (): string => {
+    try {
+      return window.top?.location.href ?? location.href;
+    } catch {
+      return location.href;
+    }
+  };
+  /** The frame's place in top-document pixels, as the eyes measure it. */
+  const offset = (): { x: number; y: number } => {
+    let x = 0;
+    let y = 0;
+    try {
+      let win: Window = window;
+      while (win.parent !== win) {
+        const holder = win.frameElement;
+        if (holder === null) break;
+        const r = holder.getBoundingClientRect();
+        x += r.x;
+        y += r.y;
+        win = win.parent;
+      }
+      if (win !== window) {
+        x += win.scrollX;
+        y += win.scrollY;
+      }
+    } catch {
+      // Why: a frame from another host cannot be measured. Its boxes stay frame-relative.
+    }
+    return { x, y };
+  };
+  const INTERACTIVE = "button,a[href],input,select,textarea,summary,[role],[onclick],[tabindex]";
+  const print = (target: EventTarget | null): CapturedPrint | null => {
+    if (!(target instanceof Element)) return null;
+    const at = offset();
+    const start = target.closest(INTERACTIVE) ?? target;
+    for (
+      let e: Element | null = start;
+      e !== null && e !== document.documentElement;
+      e = e.parentElement
+    ) {
+      const [raw] = collect({ tag: "", offsetX: at.x, offsetY: at.y, secretKey, only: e });
+      if (raw === undefined) continue;
+      const out: CapturedPrint = {
+        role: raw.role,
+        roleGroup: raw.roleGroup,
+        clues: { path: raw.path },
+        box: raw.box,
+      };
+      if (raw.name !== undefined) out.clues.name = raw.name;
+      if (raw.label !== undefined) out.clues.label = raw.label;
+      if (raw.text !== undefined) out.clues.text = raw.text;
+      if (raw.tooltip !== undefined) out.tooltip = raw.tooltip;
+      if (raw.href !== undefined) out.href = raw.href;
+      if (raw.form !== undefined) out.form = raw.form;
+      if (raw.field !== undefined) out.fieldKind = raw.field.kind;
+      return out;
+    }
+    return { role: "generic", roleGroup: "container", clues: { path: "" }, box: null };
+  };
+
+  const TEXTLESS = ["checkbox", "radio", "button", "submit", "reset", "file", "image", "range", "color", "hidden"];
+  const isTextField = (t: EventTarget | null): t is HTMLInputElement | HTMLTextAreaElement =>
+    t instanceof HTMLTextAreaElement ||
+    (t instanceof HTMLInputElement && !TEXTLESS.includes(t.type));
+  /** Fields with typing not yet reported, and the time of the last keystroke in each. */
+  const dirty = new Map<HTMLInputElement | HTMLTextAreaElement, number>();
+  const report = (el: HTMLInputElement | HTMLTextAreaElement): void => {
+    const at = dirty.get(el);
+    if (at === undefined) return;
+    dirty.delete(el);
+    const target = print(el);
+    if (target === null) return;
+    // Why: section 7 §14.2, a password field's value is never read.
+    const value = el instanceof HTMLInputElement && el.type === "password" ? null : el.value;
+    send({ kind: "type", at, url: topUrl(), target, value });
+  };
+  const flush = (): void => {
+    for (const el of [...dirty.keys()]) report(el);
+  };
+
+  window.addEventListener(
+    "input",
+    (e) => {
+      if (e.isTrusted && isTextField(e.target)) dirty.set(e.target, Date.now());
+    },
+    true,
+  );
+  window.addEventListener("focusout", (e) => {
+    if (isTextField(e.target)) report(e.target);
+  }, true);
+  window.addEventListener("pagehide", flush, true);
+  window.addEventListener("submit", flush, true);
+  /** When Enter last went down. Enter in a field makes the browser click the form's submit control. */
+  let enterAt = 0;
+  window.addEventListener(
+    "click",
+    (e) => {
+      if (!e.isTrusted) return;
+      // Why: that click is the Enter press's own effect, already reported as `press` with `submit`.
+      if (e.detail === 0 && Date.now() - enterAt < 100) return;
+      // Why: a checkbox or radio click is reported by its change event, as `set_checked`.
+      if (e.target instanceof HTMLInputElement && (e.target.type === "checkbox" || e.target.type === "radio")) return;
+      flush();
+      const target = print(e.target);
+      if (target !== null) send({ kind: "click", at: Date.now(), url: topUrl(), target });
+    },
+    true,
+  );
+  window.addEventListener(
+    "change",
+    (e) => {
+      if (!e.isTrusted) return;
+      const t = e.target;
+      if (t instanceof HTMLSelectElement) {
+        const target = print(t);
+        const option = (t.selectedOptions[0]?.textContent ?? "").replace(/\s+/g, " ").trim();
+        if (target !== null) send({ kind: "select", at: Date.now(), url: topUrl(), target, option });
+      } else if (t instanceof HTMLInputElement && (t.type === "checkbox" || t.type === "radio")) {
+        const target = print(t);
+        if (target !== null) {
+          send({ kind: "set_checked", at: Date.now(), url: topUrl(), target, checked: t.checked });
+        }
+      }
+    },
+    true,
+  );
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!e.isTrusted || e.repeat) return;
+      if (!(["Enter", "Escape", "Tab"].includes(e.key) || /^F\d{1,2}$/.test(e.key))) return;
+      if (e.key === "Enter") enterAt = Date.now();
+      flush();
+      const target = print(e.target);
+      let submit: CapturedPrint | null = null;
+      // Why `?? null`: only form controls have a `form` property; any other element gives `undefined`.
+      const form = (e.target as { form?: HTMLFormElement | null } | null)?.form ?? null;
+      if (e.key === "Enter" && form !== null) {
+        // Why: Enter in a field presses the form's first submit control (section 7 §14.4).
+        const first = [...form.elements].find((c) =>
+          c.matches("button[type=submit],button:not([type]),input[type=submit],input[type=image]"),
+        );
+        submit = first === undefined ? null : print(first);
+      }
+      send({ kind: "press", at: Date.now(), url: topUrl(), key: e.key, target, submit });
+    },
+    true,
+  );
 }

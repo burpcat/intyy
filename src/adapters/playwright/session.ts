@@ -13,9 +13,10 @@ import type {
   SurfaceEvent,
   SurfaceFactory,
 } from "../../ports/surface.js";
+import { CAPTURE_BINDING, captureInitScript, toHumanInput } from "./capture.js";
 import { PlaywrightEyes } from "./eyes.js";
 import { PlaywrightHands } from "./hands.js";
-import { BrowserState, STEP_TIMEOUT_MS } from "./state.js";
+import { BrowserState, SECRET_KEY, STEP_TIMEOUT_MS } from "./state.js";
 
 /**
  * Playwright resource types that are static files: they never count toward network quiet
@@ -183,6 +184,16 @@ export class PlaywrightSurface implements SurfaceSession {
         permissions: [],
       });
       await context.addInitScript({ content: `${NAME_SHIM}\n${NO_PRINT}` });
+      // Why: section 7 §14.1, a small script in every page and frame reports human input. The
+      // report goes through a binding, so a typed value reaches the engine in memory only (§14.2).
+      await context.exposeBinding(CAPTURE_BINDING, (source, raw: unknown) => {
+        const fi = s.frames(source.page).indexOf(source.frame);
+        const popup = s.pages.indexOf(source.page) > 0 ? "window[popup] > " : "";
+        const frame = fi > 0 ? `frame[${String(fi - 1)}] > ` : "";
+        const input = toHumanInput(raw, `${popup}${frame}`);
+        hub.emit(input === null ? { kind: "human_input" } : { kind: "human_input", input });
+      });
+      await context.addInitScript({ content: `${NAME_SHIM}\n${captureInitScript(SECRET_KEY)}` });
       await context.route("**/*", (route) => guard(route, cfg.allowlist, hub));
       await context.routeWebSocket(/.*/, (ws) => {
         const v = cfg.allowlist.check(ws.url(), "websocket");

@@ -120,6 +120,34 @@ export type SessionConfig = {
 };
 
 /**
+ * What the eyes know of a control a human acted on, taken as the event happens (section 7 §14.1):
+ * role, clues, tooltip, link, form, box, and field kind. It never holds a field's value.
+ */
+export type ElementFingerprint = Pick<
+  SurfaceElement,
+  "role" | "roleGroup" | "clues" | "tooltip" | "href" | "form" | "box"
+> & { fieldKind?: FieldState["kind"] };
+
+/**
+ * One human input (section 7 §14.1, section 9 §5.2). `at` is the time it happened, in ms since the
+ * epoch. For `type` it is the last keystroke, not the blur. `url` is the page it happened on.
+ * A typed value is raw and in memory only (section 7 §14.2); it is `null` for a password field,
+ * which the page script never reads. The core masks it before any write.
+ */
+export type HumanInput = {
+  at: number;
+  url: string;
+  action:
+    | { type: "click"; target: ElementFingerprint }
+    | { type: "type"; target: ElementFingerprint; value: string | null }
+    | { type: "select"; target: ElementFingerprint; option: string }
+    | { type: "set_checked"; target: ElementFingerprint; checked: boolean }
+    /** `submit` is the form's default submit control, so Enter can be scored as its click. */
+    | { type: "press"; key: string; target: ElementFingerprint | null; submit: ElementFingerprint | null }
+    | { type: "navigate"; to: string };
+};
+
+/**
  * One surface event (section 9 §5.2, `SurfaceEvent` table). Addresses are raw; the core masks them.
  * `browser_blocked` covers the section 4 §6.10 features: a download, a file chooser, a pop-up.
  */
@@ -139,7 +167,11 @@ export type SurfaceEvent =
   | { kind: "dialog_closed" }
   | { kind: "popup_opened"; url: string }
   | { kind: "popup_closed" }
-  | { kind: "human_input" }
+  /**
+   * A person touched the page (section 7 §12.4, §14). `input` says what they did. An adapter that
+   * cannot tell still reports the touch, with no `input`.
+   */
+  | { kind: "human_input"; input?: HumanInput }
   | { kind: "connection_closed" }
   | { kind: "browser_error_page"; url: string }
   | {

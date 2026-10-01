@@ -17,7 +17,9 @@ import type {
   Box,
   ElementRef,
   Eyes,
+  ElementFingerprint,
   FieldState,
+  HumanInput,
   NativeDialog,
   Observation,
   Png,
@@ -63,6 +65,20 @@ export type FakeElement = {
    * "a pop-up covered Confirm"). Unlike `enabled: false`, the element stays enabled. */
   covered?: true;
 };
+
+/**
+ * A person's input on the fake page (section 7 §14.1). `element` is a `FakeElement` id. `at` is
+ * the time of the input in ms since the epoch; it defaults to now, which is never inside a bot
+ * window a test clock made (section 7 §14.3). A `type` into a password field carries no value.
+ */
+export type FakeHumanInput = { at?: number } & (
+  | { type: "click"; element: string }
+  | { type: "type"; element: string; value: string }
+  | { type: "select"; element: string; option: string }
+  | { type: "set_checked"; element: string; checked: boolean }
+  | { type: "press"; key: string; element?: string }
+  | { type: "navigate"; to: string }
+);
 
 /** One request the fake reports as this screen loads (section 7 §5.1, `resource: static | data`). */
 export type FakeRequest = { url: string; resource: "static" | "data" };
@@ -226,6 +242,77 @@ class FakeBrowser {
     if (d.kind !== "alert")
       out.push(el("native-dismiss", "button", "Cancel", "native:dialog > dismiss"));
     return out;
+  }
+
+  /** The fingerprint of one page element, with no field value (section 7 §14.1). */
+  fingerprint(page: Page, el: FakeElement): ElementFingerprint {
+    const e = this.element(page, el);
+    const out: ElementFingerprint = {
+      role: e.role,
+      roleGroup: e.roleGroup,
+      clues: e.clues,
+      box: e.box,
+    };
+    if (e.tooltip !== undefined) out.tooltip = e.tooltip;
+    if (e.href !== undefined) out.href = e.href;
+    if (e.form !== undefined) out.form = e.form;
+    if (e.field !== undefined) out.fieldKind = e.field.kind;
+    return out;
+  }
+
+  /**
+   * Plays one human input: the event first, while the page still shows the control, then the
+   * change the input causes. The page script does the same: it reports before the page moves on.
+   */
+  human(h: FakeHumanInput): void {
+    const page = this.active;
+    if (page === null) return;
+    const at = h.at ?? Date.now();
+    if (h.type === "navigate") {
+      this.hub.emit({ kind: "human_input", input: { at, url: page.url, action: { type: "navigate", to: h.to } } });
+      this.go(h.to);
+      return;
+    }
+    const id = h.element;
+    const el = id === undefined ? undefined : page.screen.elements.find((e) => e.id === id);
+    if (id !== undefined && el === undefined) throw new Error(`no fake element ${id}`);
+    const target = el === undefined ? null : this.fingerprint(page, el);
+    const field = el === undefined ? undefined : page.fields.get(el.id);
+    const send = (action: HumanInput["action"]): void => {
+      this.hub.emit({ kind: "human_input", input: { at, url: page.url, action } });
+    };
+    switch (h.type) {
+      case "click":
+        if (target === null || el === undefined) return;
+        send({ type: "click", target });
+        if (el.onClick !== undefined) this.apply(el.onClick);
+        else if (el.href !== undefined) this.go(el.href);
+        return;
+      case "type":
+        if (target === null || el === undefined) return;
+        send({ type: "type", target, value: field?.kind === "password" ? null : h.value });
+        if (field !== undefined && (field.kind === "text" || field.kind === "password")) {
+          page.fields.set(el.id, field.kind === "password" ? { kind: "password", filled: true } : { kind: "text", value: h.value });
+        }
+        return;
+      case "select":
+        if (target === null || el === undefined) return;
+        send({ type: "select", target, option: h.option });
+        if (field?.kind === "choice") page.fields.set(el.id, { ...field, value: h.option });
+        return;
+      case "set_checked":
+        if (target === null || el === undefined) return;
+        send({ type: "set_checked", target, checked: h.checked });
+        if (field?.kind === "check") page.fields.set(el.id, { ...field, checked: h.checked });
+        return;
+      case "press": {
+        const formId = el?.form?.id;
+        const submit = formId === undefined ? undefined : page.screen.elements.find((e) => e.form?.id === formId && e.form.submits);
+        send({ type: "press", key: h.key, target, submit: submit === undefined ? null : this.fingerprint(page, submit) });
+        if (h.key === "Enter" && submit?.onClick !== undefined) this.apply(submit.onClick);
+        return;
+      }
+    }
   }
 
   /** One page element as the eyes report it. */
@@ -414,11 +501,13 @@ export class SnapshotSurface implements SurfaceSession {
   }
 
   /**
-   * Plays a human touching the page: emits one `human_input` event (section 7 §12.4). Tests call
-   * this to drive the lease. Task 3 will give it a payload (the action and its control).
+   * Plays a human touching the page (section 7 §12.4, §14). With no argument it emits a bare
+   * `human_input` event, as an adapter does when it cannot say what happened. With one, it emits
+   * the input with its fingerprint and raw value, then applies its effect to the fake page.
    */
-  humanInput(): void {
-    this.#browser?.hub.emit({ kind: "human_input" });
+  humanInput(input?: FakeHumanInput): void {
+    if (input === undefined) this.#browser?.hub.emit({ kind: "human_input" });
+    else this.#browser?.human(input);
   }
 
   close(): Promise<void> {
