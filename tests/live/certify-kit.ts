@@ -115,15 +115,18 @@ export async function requireCertifyPrereqs(): Promise<void> {
   }
 }
 
-/** The real wiring, with one fixed batch ID so the case seed is fixed. */
+/** The real wiring, with one fixed batch ID so the case seed is fixed. `over` swaps ports after
+ * that, such as a table reviewer; only a test passes it, never production wiring. */
 function fixedWire(
   root: string,
   cfg: Parameters<typeof wire>[1],
   env: Record<string, string | undefined>,
+  over: Partial<Wiring> = {},
 ): Wiring {
   const w = wire(root, cfg, env);
   return {
     ...w,
+    ...over,
     ids: {
       runId: () => w.ids.runId(),
       batchId: () => FIXED_BATCH,
@@ -143,8 +146,20 @@ export type CaseRun = {
   commit: string | null;
   /** The case run's `result.recoveries`, as `{ via, ref }`. */
   recoveries: { via: string; ref: string }[];
+  /** The case run's `ladder` log lines: the rung and who acted (`engine`, `jev`, or `reviewer`). */
+  ladder: { rung: number; by: string }[];
   remove: () => Promise<void>;
 };
+
+/** How a case treats the models. Default: off, like the M06 table. */
+export type ModelsOpt = {
+  /** Ports swapped into the wiring by the test, such as `reviewer: () => new TableReviewer(...)`. */
+  wire: Partial<Wiring>;
+};
+
+const LadderLine = z
+  .object({ event: z.literal("ladder"), by: z.string().optional(), data: z.object({ rung: z.number() }).loose() })
+  .loose();
 
 const CaseFacts = z
   .object({
@@ -159,7 +174,7 @@ const CaseFacts = z
 
 /** One in-process `intyy certify …` call in a fresh temp data root. `tail` is everything after
  * the global flags, like `["certify", "case", KEY, "--class", "valid", …]`. */
-async function invoke(tail: string[]): Promise<{
+async function invoke(tail: string[], models?: ModelsOpt): Promise<{
   code: number;
   stdout: string;
   stderr: string;
@@ -172,6 +187,9 @@ async function invoke(tail: string[]): Promise<{
   symlinkSync(lib, join(tmp.root, config.library));
   const env: Record<string, string | undefined> = { ...process.env };
   loadDotEnv(ROOT, env);
+  // Why a made-up key when models are on: the CLI builds a reviewer only when the key variable is
+  // set, and the test's table reviewer replaces the real one, so no call ever leaves the machine.
+  if (models !== undefined) env[config.model_keys.claude] = "table-reviewer-no-real-key";
   const done = await call(
     [
       "--root",
@@ -179,11 +197,14 @@ async function invoke(tail: string[]): Promise<{
       "--staff",
       STAFF,
       "--json",
-      "--models",
-      "off",
+      ...(models === undefined ? ["--models", "off"] : []),
       ...tail,
     ],
-    { cwd: tmp.root, env, deps: { wire: fixedWire } },
+    {
+      cwd: tmp.root,
+      env,
+      deps: { wire: (root, cfg, wireEnv) => fixedWire(root, cfg, wireEnv, models?.wire) },
+    },
   );
   return {
     code: done.code,
@@ -199,17 +220,20 @@ async function invoke(tail: string[]): Promise<{
  * `--at @step:<at>` when given) and reads back the case run's own facts. Throws with the CLI's
  * stderr text when the command printed no batch (a usage or environment problem, not a verdict).
  */
-export async function certifyCase(profile: string, at?: string): Promise<CaseRun> {
-  const r = await invoke([
-    "certify",
-    "case",
-    KEY,
-    "--class",
-    "valid",
-    "--profile",
-    profile,
-    ...(at === undefined ? [] : ["--at", `@step:${at}`]),
-  ]);
+export async function certifyCase(profile: string, at?: string, models?: ModelsOpt): Promise<CaseRun> {
+  const r = await invoke(
+    [
+      "certify",
+      "case",
+      KEY,
+      "--class",
+      "valid",
+      "--profile",
+      profile,
+      ...(at === undefined ? [] : ["--at", `@step:${at}`]),
+    ],
+    models,
+  );
   let parsed: { plan: BatchPlan; report: BatchReport };
   try {
     const raw: unknown = JSON.parse(r.stdout);
@@ -231,12 +255,18 @@ export async function certifyCase(profile: string, at?: string): Promise<CaseRun
     throw new Error(`the case run ${caseRunId} left no readable run.json`);
   }
   const facts = CaseFacts.parse(runJson.value);
+  const events = await evidence.events(config.default_tenant, caseRunId);
+  const ladder = (events.ok ? events.value : []).flatMap((line) => {
+    const got = LadderLine.safeParse(line);
+    return got.success ? [{ rung: got.data.data.rung, by: got.data.by ?? "engine" }] : [];
+  });
   return {
     code: r.code,
     report: parsed.report,
     plan: parsed.plan,
     commit: facts.result.effect?.commit ?? null,
     recoveries: facts.result.recoveries ?? [],
+    ladder,
     remove: r.remove,
   };
 }
