@@ -72,7 +72,7 @@ A human takes over the live browser session and hands it back, set A is publishe
 - [x] 3. Write capture and watchers.
 - [x] 4. Write handback, reverify, and forward search. Test: credits finished fills only; stops at `read` steps; needs `confirmed` to cross the commit.
 - [x] 5. Write the handoff test: a scripted "human" takes over, acts, and hands back.
-- [ ] 6. Write draft handlers from takeovers, with a golden test.
+- [x] 6. Write draft handlers from takeovers, with a golden test.
 - [ ] 7. Write takeover during discovery.
 - [ ] 8. Finish the crash sweep. Test each row of section 7 §17.
 - [ ] 9. Add `--operator mailbox` to `certify case`.

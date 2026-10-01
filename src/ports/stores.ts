@@ -230,3 +230,29 @@ export interface EvidenceStore {
   /** Lists the tenant's run IDs, sorted. */
   listRuns(tenant: string, signal?: AbortSignal): Promise<string[]>;
 }
+
+/** One draft in a listing: the app it is for, and its ID. */
+export type DraftRef = { app: string; id: string };
+
+/**
+ * Draft handlers under `library/drafts/handlers/<app>/<id>/` (section 9 §6.2, section 5 §12.2).
+ * A draft is never sealed and replay never loads it, so this store has no revisions. `T` is the
+ * draft's type. Takeover drafts go through it (section 7 §16.5); the file holds masked data only.
+ */
+export interface DraftStore<T> {
+  /**
+   * Writes `draft.json`, plus each of `files` beside it (names like `<fixture_id>/a11y.yaml`).
+   * `conflict`: that draft already exists. A reviewer may be editing it, so it is never replaced.
+   */
+  put(
+    app: string,
+    id: string,
+    draft: T,
+    files: Readonly<Record<string, Uint8Array | string>>,
+    signal?: AbortSignal,
+  ): Promise<Outcome<void, "conflict" | "write_failed">>;
+  /** Reads one draft. */
+  get(app: string, id: string, signal?: AbortSignal): Promise<Outcome<T, "not_found" | "invalid">>;
+  /** Lists every draft, or one app's, sorted by app then ID. */
+  list(app?: string, signal?: AbortSignal): Promise<DraftRef[]>;
+}

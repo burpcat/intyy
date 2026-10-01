@@ -14,6 +14,8 @@ import type {
   AppendOptions,
   CandidateStore,
   DocId,
+  DraftRef,
+  DraftStore,
   EvidenceStore,
   LogStore,
   Rev,
@@ -451,5 +453,64 @@ export class FileEvidenceStore implements EvidenceStore {
     assertSafeName(tenant);
     assertSafeName(runId);
     return join(this.#root, tenant, "runs", runId);
+  }
+}
+
+/** Draft handlers under `library/drafts/handlers/` (section 9 §6.2, section 5 §12.2). */
+export class FileDraftStore<T> implements DraftStore<T> {
+  /** `dir` is `<library>/drafts/handlers`. `schema` checks a draft on read. */
+  constructor(
+    private readonly schema: z.ZodType<T>,
+    private readonly dirs: { dir: string; tmpDir: string },
+  ) {}
+
+  /** Writes the draft folder. The folder itself is made without `recursive`, so a second write
+   * of the same draft is a `conflict`. */
+  async put(
+    app: string,
+    id: string,
+    draft: T,
+    files: Readonly<Record<string, Uint8Array | string>>,
+  ): Promise<Outcome<void, "conflict" | "write_failed">> {
+    const dir = this.#dir(app, id);
+    try {
+      await mkdir(join(this.dirs.dir, app), { recursive: true });
+      await mkdir(dir);
+    } catch (e) {
+      if (hasCode(e, "EEXIST")) return fail("conflict", `${app}/${id} exists`);
+      return fail("write_failed", e instanceof Error ? e.message : String(e));
+    }
+    return guardWrite(async () => {
+      for (const [name, bytes] of Object.entries(files)) {
+        assertSafeRelPath(name);
+        await writeAtomic(this.dirs.tmpDir, join(dir, name), bytes);
+      }
+      await writeAtomic(this.dirs.tmpDir, join(dir, "draft.json"), prettyJson(draft));
+    });
+  }
+
+  /** Reads one draft and checks its schema. */
+  async get(app: string, id: string): Promise<Outcome<T, "not_found" | "invalid">> {
+    const read = await readJson(join(this.#dir(app, id), "draft.json"));
+    if (read.kind === "missing") return fail("not_found", `${app}/${id}`);
+    if (read.kind === "bad") return fail("invalid", read.detail);
+    const parsed = this.schema.safeParse(read.value);
+    return parsed.success ? ok(parsed.data) : fail("invalid", `${app}/${id}: ${parsed.error.message}`);
+  }
+
+  /** Lists draft folders that hold a `draft.json`, sorted. */
+  async list(app?: string): Promise<DraftRef[]> {
+    if (app !== undefined) assertSafeName(app);
+    const found = (await walkFiles(this.dirs.dir))
+      .map((f) => f.split("/"))
+      .filter((p) => p.length === 3 && p[2] === "draft.json")
+      .map((p): DraftRef => ({ app: p[0] ?? "", id: p[1] ?? "" }));
+    return found.filter((r) => app === undefined || r.app === app);
+  }
+
+  #dir(app: string, id: string): string {
+    assertSafeName(app);
+    assertSafeName(id);
+    return join(this.dirs.dir, app, id);
   }
 }

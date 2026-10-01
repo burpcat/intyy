@@ -22,6 +22,8 @@ import type {
   DocId,
   DocSummary,
   DocumentStore,
+  DraftRef,
+  DraftStore,
   EvidenceStore,
   LogStore,
   Rev,
@@ -520,5 +522,52 @@ export class FakeEvidenceStore implements EvidenceStore {
   #run(tenant: string, runId: string): FakeRun | undefined {
     assertSafeName(runId);
     return this.#tenant(tenant).runs.get(runId);
+  }
+}
+
+/** In-memory draft store. Files are kept as given, so a test can read them back. */
+export class FakeDraftStore<T> implements DraftStore<T> {
+  readonly #drafts = new Map<string, { app: string; id: string; draft: unknown; files: Record<string, Uint8Array | string> }>();
+
+  /** A store whose drafts follow `schema` on read. */
+  constructor(private readonly schema: z.ZodType<T>) {}
+
+  /** Writes one draft. A second write of the same app and ID is a `conflict`. */
+  put(
+    app: string,
+    id: string,
+    draft: T,
+    files: Readonly<Record<string, Uint8Array | string>>,
+  ): Promise<Outcome<void, "conflict" | "write_failed">> {
+    assertSafeName(app);
+    assertSafeName(id);
+    for (const name of Object.keys(files)) assertSafeRelPath(name);
+    const key = `${app}/${id}`;
+    if (this.#drafts.has(key)) return Promise.resolve(fail("conflict", `${key} exists`));
+    this.#drafts.set(key, { app, id, draft: roundTrip(draft), files: { ...files } });
+    return Promise.resolve(ok(undefined));
+  }
+
+  /** Reads one draft. */
+  get(app: string, id: string): Promise<Outcome<T, "not_found" | "invalid">> {
+    const got = this.#drafts.get(`${app}/${id}`);
+    if (got === undefined) return Promise.resolve(fail("not_found", `${app}/${id}`));
+    const parsed = this.schema.safeParse(got.draft);
+    return Promise.resolve(parsed.success ? ok(parsed.data) : fail("invalid", issues(parsed.error)));
+  }
+
+  /** Lists drafts, sorted. */
+  list(app?: string): Promise<DraftRef[]> {
+    return Promise.resolve(
+      [...this.#drafts.values()]
+        .filter((d) => app === undefined || d.app === app)
+        .map((d): DraftRef => ({ app: d.app, id: d.id }))
+        .sort((a, b) => `${a.app}/${a.id}`.localeCompare(`${b.app}/${b.id}`)),
+    );
+  }
+
+  /** The files written beside one draft, by name. For tests. */
+  filesOf(app: string, id: string): Readonly<Record<string, Uint8Array | string>> | undefined {
+    return this.#drafts.get(`${app}/${id}`)?.files;
   }
 }

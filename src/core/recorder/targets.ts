@@ -3,8 +3,8 @@
 import type { Clues, Target } from "../model/artifact/targets.js";
 import type { TaggedAction } from "./tags.js";
 
-/** The role suffix table (section 6 §14.4). */
-const ROLE_SUFFIX: Record<string, string> = {
+/** The role suffix table (section 6 §14.4). Takeover drafts name targets the same way. */
+export const ROLE_SUFFIX: Record<string, string> = {
   button: "button",
   textbox: "box",
   combobox: "list",

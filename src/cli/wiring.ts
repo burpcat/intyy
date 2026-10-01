@@ -5,7 +5,7 @@ import { z } from "zod";
 import { EnvSecrets } from "../adapters/env-secrets/secrets.js";
 import { FileDocumentStore } from "../adapters/files/document-store.js";
 import { FileLockSlots, systemLockEnv } from "../adapters/files/locks.js";
-import { FileEvidenceStore, FileLogStore } from "../adapters/files/other-stores.js";
+import { FileDraftStore, FileEvidenceStore, FileLogStore } from "../adapters/files/other-stores.js";
 import { ClaudePlanner } from "../adapters/claude/planner.js";
 import { KvfcuHarness, type KvfcuHarnessConfig } from "../adapters/kvfcu-harness/harness.js";
 import { MailboxDesk, MailboxOperator } from "../adapters/mailbox/mailbox.js";
@@ -20,6 +20,7 @@ import { CandidateIssues } from "../core/model/candidate-issues.js";
 import { CandidateRuns } from "../core/model/candidate-runs.js";
 import type { Config } from "../core/model/config.js";
 import type { Faults } from "../core/model/faults.js";
+import { HandlerDraft } from "../core/model/handler-draft.js";
 import { faultsKind, packKind, policyKind, settingsKind, suiteKind, testdataKind } from "../core/model/kinds.js";
 import type { Pack } from "../core/model/pack.js";
 import type { Policy } from "../core/model/policy.js";
@@ -36,7 +37,7 @@ import type { Planner } from "../ports/models.js";
 import type { InterventionDesk, OperatorPort } from "../ports/operator.js";
 import type { SurfaceFactory } from "../ports/surface.js";
 import type { Secrets } from "../ports/secrets.js";
-import type { CandidateStore, DocumentStore, EvidenceStore, LogStore } from "../ports/stores.js";
+import type { CandidateStore, DocumentStore, DraftStore, EvidenceStore, LogStore } from "../ports/stores.js";
 
 /** Every port a command may use. Commands see ports only, never adapters. */
 export type Wiring = {
@@ -53,6 +54,8 @@ export type Wiring = {
   locks: Locks;
   evidence: EvidenceStore;
   candidates: CandidateStore<CandidateFiles, CandidateDecision>;
+  /** Draft handlers in `library/drafts/handlers/` (section 9 §6.2, section 5 §12.2). */
+  drafts: DraftStore<HandlerDraft>;
   /** The operator CLI's side of the mailbox (section 9 §10.5). */
   desk: InterventionDesk;
   /** What a discovery run opens: the browser, the marker, the model, and the mailbox (section 6 §4). */
@@ -105,6 +108,7 @@ export function wire(
       { dir: join(library, "candidates"), artifactsDir: join(library, "artifacts"), tmpDir },
       clock,
     ),
+    drafts: new FileDraftStore(HandlerDraft, { dir: join(library, "drafts", "handlers"), tmpDir }),
     desk: new MailboxDesk({ evidenceRoot: join(state, "evidence"), tmpDir }),
     discovery: {
       surface: playwrightFactory,

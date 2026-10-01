@@ -1,0 +1,5 @@
+- dialog "Session notice":
+  - text: Your session is about to expire.
+  - button "Dismiss"
+- textbox "Member ID"
+- button "Search"

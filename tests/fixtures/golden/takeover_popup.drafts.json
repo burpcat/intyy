@@ -1,0 +1,112 @@
+{
+  "drafts": [
+    {
+      "draft": {
+        "app": "kvfcu",
+        "conditions": [
+          {
+            "check": "all_of",
+            "checks": [
+              {
+                "check": "text_visible",
+                "match": "contains",
+                "text": "Session notice"
+              },
+              {
+                "check": "element_visible",
+                "target": "dismiss_button"
+              }
+            ],
+            "description": "The click_search_t8 trouble screen is showing.",
+            "id": "click_search_t8_detector"
+          }
+        ],
+        "fixtures": {
+          "fire": "click_search_t8_fire",
+          "no_fire": []
+        },
+        "handler": {
+          "class": "recoverable",
+          "description": "Drafted from a takeover at step click_search of run_2026-09-24_k3pdr4ft01. A reviewer must edit this before it is used.",
+          "detector": "click_search_t8_detector",
+          "fixtures": {
+            "fire": [
+              "click_search_t8_fire"
+            ],
+            "no_fire": []
+          },
+          "id": "click_search_t8",
+          "limits": {
+            "per_run": 1,
+            "per_step": 1
+          },
+          "on_exhausted": {
+            "class": "needs_human",
+            "operator_note": "Drafted from a takeover at step click_search of run_2026-09-24_k3pdr4ft01. A reviewer must edit this before it is used. It kept recurring."
+          },
+          "response": [
+            {
+              "risk": "idempotent",
+              "target": "dismiss_button",
+              "type": "click"
+            },
+            {
+              "key": "Tab",
+              "risk": "idempotent",
+              "type": "press"
+            }
+          ]
+        },
+        "id": "click_search_t8",
+        "risk_hints": [
+          {
+            "class": "idempotent",
+            "source": "gate",
+            "subject": "run_2026-09-24_k3pdr4ft01#12"
+          },
+          {
+            "class": "idempotent",
+            "source": "gate",
+            "subject": "run_2026-09-24_k3pdr4ft01#14"
+          }
+        ],
+        "schema": "intyy.handler_draft/1.0",
+        "source": {
+          "app_version": "8.4",
+          "kind": "takeover",
+          "run_id": "run_2026-09-24_k3pdr4ft01",
+          "seq": [
+            8,
+            12,
+            14
+          ],
+          "tenant": "keystone"
+        },
+        "suggested_scope": "tenant",
+        "targets": [
+          {
+            "clues": {
+              "name": "Dismiss",
+              "path": "dialog > button[1]",
+              "region": {
+                "h": 0.05,
+                "w": 0.1,
+                "x": 0.45,
+                "y": 0.55
+              },
+              "role": "button",
+              "text": "Dismiss"
+            },
+            "description": "The button \"Dismiss\".",
+            "id": "dismiss_button"
+          }
+        ]
+      },
+      "trouble": {
+        "a11y": "a11y/00007_click_search_ladder.yaml",
+        "screen": "screens/00007_click_search_ladder.png"
+      }
+    }
+  ],
+  "skipped": []
+}

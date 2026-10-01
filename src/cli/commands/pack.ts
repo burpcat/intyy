@@ -14,6 +14,7 @@ import {
   type Pack,
   type PackScope,
 } from "../../core/model/pack.js";
+import type { HandlerDraft } from "../../core/model/handler-draft.js";
 import type { Ctx } from "../context.js";
 import { requireRole, requireStaff } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
@@ -207,6 +208,24 @@ async function dryRunFixtures(ctx: Ctx, doc: Pack): Promise<{ fixtureId: string;
   }));
 }
 
+/** One draft as plain lines for `pack draft show` (section 9 §8.5, section 5 §12.5): its class,
+ * where it came from, the drafted detector and response, and each action's class. */
+function draftLines(d: HandlerDraft): string[] {
+  const h = d.handler;
+  const lines = [
+    `${d.app}/${d.id}: ${h.class}, from a ${d.source.kind} (run ${d.source.run_id}, seq ${d.source.seq.join(", ")})`,
+    `scope: ${d.suggested_scope}, tenant ${d.source.tenant}, app version ${d.source.app_version}`,
+    `detector: ${d.conditions.find((c) => c.id === h.detector)?.description ?? h.detector}`,
+  ];
+  if (h.class === "recoverable") {
+    h.response.forEach((a, i) => lines.push(`response ${String(i + 1)}: ${a.type}${"target" in a ? ` ${a.target}` : ""} (${a.risk})`));
+  }
+  if (h.class === "needs_human") lines.push(`operator note: ${h.operator_note}`);
+  for (const r of d.risk_hints) lines.push(`risk ${r.subject}: ${r.class} (${r.source})`);
+  lines.push(`fire fixture: ${d.fixtures.fire}`);
+  return lines;
+}
+
 /** Registers the pack commands. */
 export const registerPack: Register = (program: Command, ctxOf) => {
   const pack = program.command("pack").description("handler packs: global, app, app_version, tenant scope");
@@ -318,6 +337,44 @@ export const registerPack: Register = (program: Command, ctxOf) => {
           { document: t.label, subject, agreed: agree, by: staff },
           `${t.label} ${subject}: ${agree ? "agreed" : "disagreed"} by ${staff}.`,
         );
+      }),
+    );
+
+  const draft = pack.command("draft").description("draft handlers from takeovers and discovery (section 5 §12)");
+
+  draft
+    .command("list")
+    .option("--app <app>", "one app only")
+    .description("lists draft handlers")
+    .action(
+      act(ctxOf, async (ctx, _args, opts) => {
+        const refs = await ctx.wiring.drafts.list(typeof opts.app === "string" ? opts.app : undefined);
+        const rows = [];
+        for (const r of refs) {
+          const got = orExit(await ctx.wiring.drafts.get(r.app, r.id), `draft ${r.app}/${r.id}`);
+          rows.push({ app: r.app, id: r.id, source: got.source.kind, class: got.handler.class });
+        }
+        return answer(
+          { drafts: rows },
+          rows.length === 0 ? "no draft handlers" : rows.map((r) => `${r.app}/${r.id}  ${r.source}  ${r.class}`).join("\n"),
+        );
+      }),
+    );
+
+  draft
+    .command("show")
+    .argument("<id>", "the draft's ID")
+    .option("--app <app>", "the draft's app, when two apps share an ID")
+    .description("shows one draft handler")
+    .action(
+      act(ctxOf, async (ctx, args, opts) => {
+        const id = args[0] ?? "";
+        const refs = (await ctx.wiring.drafts.list(typeof opts.app === "string" ? opts.app : undefined)).filter((r) => r.id === id);
+        const ref = refs[0];
+        if (ref === undefined) throw new CliExit(EXIT.usage, `no draft handler ${id}`);
+        if (refs.length > 1) throw new CliExit(EXIT.usage, `draft ${id} exists in ${refs.map((r) => r.app).join(", ")}; pass --app`);
+        const got = orExit(await ctx.wiring.drafts.get(ref.app, ref.id), `draft ${ref.app}/${ref.id}`);
+        return answer(got, draftLines(got).join("\n"));
       }),
     );
 };

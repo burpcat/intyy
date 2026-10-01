@@ -11,6 +11,7 @@ import type { RequestIndexKeySource } from "../../core/orchestrator/request-inde
 import { issueText } from "../../core/model/sealing.js";
 import { Request } from "../../core/model/request.js";
 import type { Result } from "../../core/model/result.js";
+import { draftTakeovers } from "../../core/handoff/drafts.js";
 import { runReplay, type ReplayDeps, type ReplayInput, type ReplayOutcome } from "../../core/replay/executor.js";
 import { redactionRules, Redactor } from "../../core/safety/redaction/redactor.js";
 import type { LockHold } from "../../ports/locks.js";
@@ -367,6 +368,17 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           stop.abort();
           await watcher.catch(() => undefined);
           for (const h of holds) await ctx.wiring.locks.release(h);
+        }
+
+        // Section 7 §16.5: a takeover a human handed back, for an unknown state, drafts a handler.
+        // The drafts never change this run's result. A draft that cannot be written is only said.
+        if (app !== undefined && outcome.result.interventions.length > 0) {
+          const drafted = await draftTakeovers(
+            { evidence: ctx.wiring.evidence, drafts: ctx.wiring.drafts },
+            { tenant: ctx.tenant, runId, app: appName, appVersion: app.app_version },
+          );
+          for (const id of drafted.written) progress(ctx.io, `run ${runId}: drafted handler ${appName}/${id} (see: intyy pack draft show ${id}).`);
+          for (const id of drafted.failed) progress(ctx.io, `run ${runId}: could not write the draft handler ${id}.`);
         }
 
         // Fail closed (section 4 §9.14, section 3 §5.13): off a terminal, without a valid
