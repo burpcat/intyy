@@ -16,7 +16,8 @@ export const NAV_GRACE_MS = 500;
 /**
  * Waits for one event or a clock deadline, whichever comes first (section 7 §2.1: no fixed
  * sleeps). Keeps exactly one `iter.next()` outstanding across calls, so no event is skipped:
- * a call that times out leaves that same pending read for the next call to pick up.
+ * a call that times out leaves that same pending read for the next call to pick up. `end`
+ * means the signal aborted or the stream closed: no event can come, so the caller stops waiting.
  */
 function nextOrDeadline(
   iter: AsyncIterator<SurfaceEvent>,
@@ -24,7 +25,8 @@ function nextOrDeadline(
   deadlineMs: number,
   clock: Clock,
   signal: AbortSignal | undefined,
-): Promise<SurfaceEvent | "timeout"> {
+): Promise<SurfaceEvent | "timeout" | "end"> {
+  if (signal?.aborted === true) return Promise.resolve("end");
   const remaining = Math.max(0, deadlineMs - clock.now().getTime());
   const ctrl = new AbortController();
   const onAbort = (): void => {
@@ -35,10 +37,12 @@ function nextOrDeadline(
     () => "timeout" as const,
     () => "timeout" as const,
   );
-  const ev = pending.next.then((r) => (r.done === true ? "timeout" as const : r.value));
+  const ev = pending.next.then((r) => (r.done === true ? "end" as const : r.value));
   return Promise.race([ev, timer]).then((first) => {
     ctrl.abort();
     signal?.removeEventListener("abort", onAbort);
+    // Why: a stream that ends on abort must not read as a timeout, or the quiet loop spins.
+    if (first === "end" || signal?.aborted === true) return "end";
     if (first !== "timeout") pending.next = iter.next();
     return first;
   });
@@ -70,6 +74,8 @@ class RequestTracker {
  *    `stepTimeoutMs`. A finished navigation drops any request the old page had open.
  * 2. Then waits for network quiet: no `data` request in flight for {@link QUIET_MS}, capped at
  *    {@link QUIET_CAP_MS}.
+ * Returns at once, without throwing, once `signal` aborts or the stream closes. Why return: an
+ * abort is expected trouble, not a bug (CLAUDE.md), and each caller checks its own signal next.
  */
 export async function settleAfterAction(
   events: AsyncIterable<SurfaceEvent>,
@@ -79,7 +85,7 @@ export async function settleAfterAction(
 ): Promise<void> {
   const iter = events[Symbol.asyncIterator]();
   const pending = { next: iter.next() };
-  const next = (deadlineMs: number): Promise<SurfaceEvent | "timeout"> =>
+  const next = (deadlineMs: number): Promise<SurfaceEvent | "timeout" | "end"> =>
     nextOrDeadline(iter, pending, deadlineMs, clock, signal);
   let requests = new RequestTracker(clock.now().getTime());
   const see = (e: SurfaceEvent): void => {
@@ -91,6 +97,7 @@ export async function settleAfterAction(
   let navigating = false;
   for (;;) {
     const e = await next(graceEnd);
+    if (e === "end") return;
     if (e === "timeout") break;
     see(e);
     if (e.kind === "navigation_started") {
@@ -102,6 +109,7 @@ export async function settleAfterAction(
     const loadDeadline = clock.now().getTime() + stepTimeoutMs;
     for (;;) {
       const e = await next(loadDeadline);
+      if (e === "end") return;
       if (e === "timeout") break;
       see(e);
       if (e.kind === "navigation_done") break;
@@ -122,6 +130,7 @@ export async function settleAfterAction(
     if (quiet) break;
     const deadline = requests.inFlight === 0 ? Math.min(cap, requests.lastActivity + QUIET_MS) : cap;
     const e = await next(deadline);
+    if (e === "end") return;
     if (e !== "timeout") see(e);
   }
 }
