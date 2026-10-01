@@ -48,5 +48,5 @@
   "session": "kvfcu/sign_in@1",
   "entry": "/main.do",
   "model": "claude-sonnet-5",
-  "prompt": "discovery@1.0"
+  "prompt": "discovery@1.1"
 }
