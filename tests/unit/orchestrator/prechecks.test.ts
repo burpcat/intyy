@@ -416,3 +416,53 @@ describe("the checks run in order, and the first failing check is the one report
     expect(results.slice(0, -1).every((r) => r.passed)).toBe(true);
   });
 });
+
+// A commit retry meets check 8 again, after the human wait (section 7 §11.3: "The authorization is
+// checked again. Expired: approval at the commit point."; section 3 §4.6: expiry at the commit
+// point pauses the run for a human, it does not fail). So the retry skips only the `expired` reason.
+describe("check 8 with allowExpiredAuthorization (the commit retry)", () => {
+  /** An authorization for the task, valid at 09:00 to 09:05 and so expired at the input's 10:00. */
+  const expired = (over: Record<string, unknown> = {}) => ({
+    ...baseRequest(),
+    authorization: {
+      consent_ref: "consent_1",
+      granted_by: "member",
+      granted_at: "2026-09-24T09:00:00Z",
+      expires_at: "2026-09-24T09:05:00Z",
+      capability: CAP_LINK,
+      ...over,
+    },
+  });
+  const reasonsOf = async (input: PrecheckInput): Promise<string[] | string> => {
+    const { outcome } = await runPrechecks(input);
+    return outcome.status === "rejected" ? outcome.errors.map((e) => e.reason ?? "") : outcome.status;
+  };
+
+  test("an expired authorization passes with the flag, and is rejected as expired without it", async () => {
+    expect(await reasonsOf(baseInput({ raw: expired(), allowExpiredAuthorization: true }))).toBe("ok");
+    expect(await reasonsOf(baseInput({ raw: expired() }))).toEqual(["expired"]);
+    expect(await reasonsOf(baseInput({ raw: expired(), allowExpiredAuthorization: false }))).toEqual(["expired"]);
+  });
+
+  test("the flag skips nothing but expiry: a wrong capability still rejects", async () => {
+    const raw = expired({ capability: "kvfcu/other_capability@1" });
+    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["capability_mismatch"]);
+  });
+
+  test("the flag skips nothing but expiry: a lifetime over the policy cap still rejects", async () => {
+    const raw = expired({ granted_at: "2026-09-24T07:00:00Z", expires_at: "2026-09-24T09:00:00Z" });
+    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["lifetime_too_long"]);
+  });
+
+  test("the flag skips nothing but expiry: a missing staff ID still rejects", async () => {
+    const raw = expired({ granted_by: "staff" });
+    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["missing_field"]);
+  });
+
+  test("a still-valid authorization passes with or without the flag", async () => {
+    const raw = expired({ granted_at: "2026-09-24T09:55:00Z", expires_at: "2026-09-24T10:10:00Z" });
+    expect(await reasonsOf(baseInput({ raw }))).toBe("ok");
+    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toBe("ok");
+  });
+});
+
