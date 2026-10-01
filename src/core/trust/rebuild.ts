@@ -73,6 +73,9 @@ function applyLine(
   switch (line.event) {
     case "batch": {
       if (line.kind === "quick") return ok(next); // Why: a quick batch is never approval-grade (section 9 §9.1).
+      // Why: section 8 §7.1. A drill's evidence describes an app this tenant does not run, so it
+      // never replaces the latest full batch in the record.
+      if (line.drill === true) return ok(next);
       const summary = {
         batch: line.batch,
         at: line.at,

@@ -40,6 +40,8 @@ export type StepRunnerContext = {
   logPrefix: string;
   /** The artifact's decoded sealed crops, for the `image` clue (section 7 §6.3). Absent: none. */
   recorded?: RecordedPictures;
+  /** Passed to `actStep`: logs each target vote (section 3 §6.4). */
+  onVote?: ActContext["onVote"];
   signal?: AbortSignal;
 };
 
@@ -193,6 +195,7 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
           },
         }),
     ...(ctx.recorded === undefined ? {} : { pictures: { eyes: ctx.eyes, recorded: ctx.recorded } }),
+    ...(ctx.onVote === undefined ? {} : { onVote: ctx.onVote }),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
   };
   const acted = await actStep(step.action, actCtx);

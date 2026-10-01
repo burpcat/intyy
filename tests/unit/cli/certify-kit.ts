@@ -83,7 +83,7 @@ export async function certifyCall(
 }
 
 /** Edits a document through the `EDITOR: cp` trick. */
-async function editWith(env: ReplayEnv, staff: string, argv: readonly string[], body: Record<string, unknown>): Promise<void> {
+export async function editWith(env: ReplayEnv, staff: string, argv: readonly string[], body: Record<string, unknown>): Promise<void> {
   const editedPath = join(env.root, `edited-${String(Math.random()).slice(2)}.json`);
   writeFileSync(editedPath, JSON.stringify(body));
   const io: Io = {

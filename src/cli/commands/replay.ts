@@ -232,8 +232,9 @@ export function outputLines(result: Result): string[] {
  * The models a replay run may use (section 5 §8.7, §8.8). There is no jev adapter, so rung 2 is
  * never wired. The reviewer is built only when policy `llm.replay_reviewer` is on, the run is not
  * `--models off`, and the key variable `intyy.json` names is set (never read from a file).
+ * `certify` uses it too, so a batch tests the ladder a live run gets (section 8 §7.1).
  */
-function replayModels(ctx: Ctx, reviewerSwitch: boolean): NonNullable<ReplayDeps["models"]> {
+export function replayModels(ctx: Ctx, reviewerSwitch: boolean): NonNullable<ReplayDeps["models"]> {
   if (ctx.flags.models === "off") return { off: true };
   if (!reviewerSwitch) return {};
   const name = ctx.config.model_keys.claude;

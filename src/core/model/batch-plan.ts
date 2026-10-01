@@ -26,11 +26,22 @@ export const ResolvedFault = z
 /** A resolved fault. */
 export type ResolvedFault = z.infer<typeof ResolvedFault>;
 
+/** Which part of a batch a case belongs to (section 8 §7.2). A `twin` repeats the first valid baseline run. */
+export const CaseGroup = z.enum(["baseline", "twin", "matrix", "extra", "drill"]);
+
+/** A case group. */
+export type CaseGroup = z.infer<typeof CaseGroup>;
+
 /** One run this batch made: the baseline, or the one chosen case (section 8 §7.4, §7.5). */
 export const BatchPlanCase = z
   .object({
     case_id: z.string().min(1),
+    /** `none` for a void case that never reached a run: nothing to point at (section 8 §8.3). */
     run_id: z.string().min(1),
+    /** `full` batches name each case's part of the batch (section 8 §7.2). Absent in a quick batch. */
+    group: CaseGroup.optional(),
+    /** `setup` for a run that prepares data for the next case (section 8 §7.5). Absent: a case run. */
+    purpose: z.literal("setup").optional(),
     class: z.string().min(1),
     /** A standard profile ID, a suite `extra` case ID, or `null` for the baseline. */
     profile: z.string().nullable(),
@@ -44,8 +55,8 @@ export const BatchPlanCase = z
 /** One plan case. */
 export type BatchPlanCase = z.infer<typeof BatchPlanCase>;
 
-/** The plan for one `quick` certify batch (`certify case`, `certify rerun`, or `certify --kind
- * quick`; section 8 §7.1, §7.8). Never approval-grade (section 9 §9.1). */
+/** The plan for one certify batch: `quick` (`certify case`, `certify rerun`, `--kind quick`; never
+ * approval-grade, section 9 §9.1) or `full` (section 8 §7.1, §7.2, §7.8). */
 export const BatchPlan = z
   .object({
     schema: z.literal("intyy.batch_plan/1.0"),
@@ -53,7 +64,7 @@ export const BatchPlan = z
     tenant: TenantId,
     app: AppId,
     capability: z.string().min(1),
-    kind: z.literal("quick"),
+    kind: z.enum(["quick", "full"]),
     /** The exact sealed key under test, like `kvfcu/open_share_subaccount@1.0.0` (section 3 §4.9,
      * the certify run spec's `pin`). `certify rerun` reuses it. */
     pin: z.string().regex(/^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+\.\d+\.\d+$/, "app/capability@x.y.z"),
@@ -75,6 +86,9 @@ export const BatchPlan = z
       .object({ by: z.string().min(1), differs: z.array(z.string().min(1)) })
       .strict()
       .optional(),
+    /** `true` when the batch ran with `--models off`: it did not test the ladder live runs use, so it is a
+     * drill (section 8 §7.1). */
+    models_off: z.literal(true).optional(),
     rerun_of: z.object({ batch_id: z.string().min(1), case_id: z.string().min(1) }).optional(),
   })
   .strict();

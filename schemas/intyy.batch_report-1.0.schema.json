@@ -27,6 +27,110 @@
       "format": "date-time",
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
     },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "quick",
+        "full"
+      ]
+    },
+    "key": {
+      "type": "object",
+      "properties": {
+        "capability": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*\\/[a-z][a-z0-9_]*@\\d+\\.\\d+\\.\\d+$"
+        },
+        "tenant": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "app_version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_@+-][A-Za-z0-9_.@+-]*$"
+        },
+        "patch_revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "capability",
+        "tenant",
+        "app_version",
+        "patch_revision"
+      ],
+      "additionalProperties": false
+    },
+    "under": {
+      "type": "object",
+      "properties": {
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handler_set": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jev": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "check": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "engine",
+        "handler_set",
+        "jev",
+        "session",
+        "check"
+      ],
+      "additionalProperties": false
+    },
     "cases": {
       "minItems": 1,
       "type": "array",
@@ -38,6 +142,24 @@
             "minLength": 1
           },
           "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "twin",
+              "matrix",
+              "extra",
+              "drill"
+            ]
+          },
+          "purpose": {
+            "type": "string",
+            "const": "setup"
+          },
+          "note": {
             "type": "string",
             "minLength": 1
           },
@@ -169,12 +291,180 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "rules": {
+          "type": "object",
+          "properties": {
+            "complete": {
+              "type": "boolean"
+            },
+            "no_wrong": {
+              "type": "boolean"
+            },
+            "baseline": {
+              "type": "boolean"
+            },
+            "matrix": {
+              "type": "boolean"
+            },
+            "extra": {
+              "type": "boolean"
+            },
+            "no_void": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "complete",
+            "no_wrong",
+            "baseline",
+            "matrix",
+            "extra",
+            "no_void"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
         "passed"
       ],
       "additionalProperties": false
+    },
+    "outcome_score": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "verdicts": {
+      "type": "object",
+      "properties": {
+        "pass": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "explained": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "assisted": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unexplained": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "wrong": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "void": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "pass",
+        "explained",
+        "assisted",
+        "unexplained",
+        "wrong",
+        "void"
+      ],
+      "additionalProperties": false
+    },
+    "margin": {
+      "type": "object",
+      "properties": {
+        "lowest": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targets": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "step": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lowest": {
+                "type": "number"
+              },
+              "median": {
+                "type": "number"
+              },
+              "score_low": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "step",
+              "lowest",
+              "median",
+              "score_low"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "lowest",
+        "step",
+        "targets"
+      ],
+      "additionalProperties": false
+    },
+    "fragile": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "coverage_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "stability": {
+      "type": "null"
+    },
+    "models_off": {
+      "type": "boolean",
+      "const": true
     },
     "drill": {
       "type": "boolean",

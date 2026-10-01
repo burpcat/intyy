@@ -32,6 +32,7 @@ import type { RequestIndexDeps } from "../orchestrator/request-index.js";
 import { catalogRequestIndex, catalogResolve, runPrechecks } from "../orchestrator/prechecks.js";
 import { RunLog, type LogLine } from "../orchestrator/run-log.js";
 import { loadRecordedPictures } from "../targets/picture.js";
+import type { TargetVoteFacts } from "./find-target.js";
 import { commitStep, type CommitApproval, type CommitContext } from "./commit.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
 import { BotWindows, HumanCapture } from "../handoff/capture.js";
@@ -507,6 +508,24 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     }
   }
   const log = new RunLog(folder, r, deps.clock);
+  /** Logs one target vote (section 3 §6.4, `target_vote`). Certify reads the margins (section 8 §9.2). */
+  const logVote = (stepId: string, targetId: string, f: TargetVoteFacts): void => {
+    void log.append({
+      event: "target_vote",
+      step: stepId,
+      by: "engine",
+      data: {
+        target: targetId,
+        candidates: f.candidates,
+        winner: f.winner,
+        score: f.score,
+        margin: f.margin,
+        agree: f.agreeing,
+        disagree: f.differing.map((d) => d.clue),
+        missing: f.missing,
+      },
+    });
+  };
   const startedAt = deps.clock.now().toISOString();
   const capabilityBlock: CapabilityBlock = {
     name: capabilityStr,
@@ -1852,6 +1871,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           clock: deps.clock,
           logPrefix: "",
           recorded,
+          onVote: logVote,
           ...(deps.signal === undefined ? {} : { signal: deps.signal }),
         };
         const outcome = await runStep(step, stepCtx);
@@ -1962,6 +1982,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         approval,
         screenshot: null,
         recorded,
+        onVote: logVote,
       };
       // Why no signal: never abort between commit_intent and the commit step's end.
       const committed = await commitStep(step, artifact.contract.outcomes, commitCtx);

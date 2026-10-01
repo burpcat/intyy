@@ -59,8 +59,8 @@ A key earns trust from a full certify batch and a human approval, and only then 
 
 - [x] 1. Write the score store and the record rebuild. Golden test: same lines, same record bytes.
 - [x] 2. Write the trust state machine. Test every transition; nothing moves up without a staff ID.
-- [ ] 3. Write the scorer and the `full` batch runner.
-- [ ] 4. Write the gate. Test each rule failing alone.
+- [x] 3. Write the scorer and the `full` batch runner.
+- [x] 4. Write the gate. Test each rule failing alone.
 - [ ] 5. Write the approval family, the approval screen, and `--expect-record`.
 - [ ] 6. Write the resolver and check 7, with linked capabilities.
 - [ ] 7. Draft the two new suites. Stop. Ask the owner to seal and approve them.

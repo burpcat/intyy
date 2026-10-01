@@ -24,7 +24,10 @@
     },
     "kind": {
       "type": "string",
-      "const": "quick"
+      "enum": [
+        "quick",
+        "full"
+      ]
     },
     "pin": {
       "type": "string",
@@ -116,6 +119,20 @@
           "run_id": {
             "type": "string",
             "minLength": 1
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "twin",
+              "matrix",
+              "extra",
+              "drill"
+            ]
+          },
+          "purpose": {
+            "type": "string",
+            "const": "setup"
           },
           "class": {
             "type": "string",
@@ -241,6 +258,10 @@
         "differs"
       ],
       "additionalProperties": false
+    },
+    "models_off": {
+      "type": "boolean",
+      "const": true
     },
     "rerun_of": {
       "type": "object",

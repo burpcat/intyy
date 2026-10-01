@@ -12,9 +12,11 @@ import { issueText } from "../../core/model/sealing.js";
 import type { Suite } from "../../core/model/suite.js";
 import type { Testdata } from "../../core/model/testdata.js";
 import { declareInstance } from "../../core/certify/instance.js";
+import { BASELINE_REPEATS, runCertifyFull, type SetupSpec } from "../../core/certify/full.js";
 import { isDrill, matrixProfiles, runCertifyQuick } from "../../core/certify/quick.js";
 import { runCertifyCase, type CertifySelection } from "../../core/certify/runner.js";
 import type { FrozenSet } from "../../core/packs/merge.js";
+import type { BatchScores, Under } from "../../core/model/score.js";
 import { appendHistory, batchLine } from "../../core/trust/scores.js";
 import type { LockHold } from "../../ports/locks.js";
 import { requireRole, requireStaff, takeLock, type Ctx } from "../context.js";
@@ -25,6 +27,7 @@ import { answer, progress, type Answer } from "../output.js";
 import { act, readVersion, type Register } from "../program.js";
 import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
+import { replayModels } from "./replay.js";
 import { settingsTarget } from "./settings.js";
 
 /**
@@ -101,6 +104,14 @@ function batchDir(ctx: Ctx, batchId: string): string {
   return join(ctx.root, ctx.config.state, "evidence", ctx.tenant, "batches", batchId);
 }
 
+/** Writes `plan.json` and `report.json` under the batch folder (section 8 §7.8). */
+function writeBatchFiles(ctx: Ctx, plan: BatchPlan, report: BatchReport): void {
+  const dir = batchDir(ctx, plan.batch_id);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+  writeFileSync(join(dir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+}
+
 /** Writes `plan.json` and `report.json`, and prints the same summary `certify case`,
  * `certify rerun`, and `certify report` all use. */
 function writeAndAnswer(ctx: Ctx, plan: BatchPlan, report: BatchReport): Answer {
@@ -155,6 +166,9 @@ async function buildDeps(
     settings: { doc: settings.doc, rev: settings.rev, hash: sealed.value.hash },
     engineVersion: readVersion(),
     mailboxOperator: ctx.wiring.discovery.operator,
+    // Why: section 8 §7.1. A batch tests the ladder a live run would use, so it gets the models a
+    // live replay gets: the reviewer only when the policy switch and the key allow, never a fake jev.
+    models: replayModels(ctx, policy.effective.llm.replay_reviewer),
   } satisfies Parameters<typeof runCertifyCase>[1];
   const frozenSet = await loadFrozenSetFor(ctx, ctx.tenant, app, appSettings.app_version);
   return { deps, origin: appSettings.origin, appVersion: appSettings.app_version, frozenSet };
@@ -170,7 +184,16 @@ async function recordBatch(
   kind: "quick" | "full" | "regression",
   plan: BatchPlan,
   report: BatchReport,
-  facts: { appVersion: string; engine: string; frozenSet: FrozenSet },
+  facts: {
+    appVersion: string;
+    engine: string;
+    frozenSet: FrozenSet;
+    /** A full batch's own `under` facts and scores; a quick batch has neither (section 8 §5.4). */
+    under?: Under;
+    scores?: BatchScores;
+    /** Run IDs of cases that did not pass, for a `degraded` line when a full batch fails its gate. */
+    failing?: readonly string[];
+  },
 ): Promise<void> {
   const line = batchLine({
     at: ctx.wiring.clock.now(),
@@ -179,21 +202,41 @@ async function recordBatch(
     batch: plan.batch_id,
     kind,
     gatePassed: report.gate.passed,
+    drill: report.drill === true || report.models_off === true,
     report,
-    under: {
+    under: facts.under ?? {
       engine: facts.engine,
       handler_set: facts.frozenSet.runStart.hash,
       jev: null,
       session: null,
       check: null,
     },
+    ...(facts.scores === undefined ? {} : { scores: facts.scores }),
   });
-  const written = await appendHistory(
-    { scores: ctx.wiring.scores, locks: ctx.wiring.locks, artifacts: ctx.wiring.candidates },
-    { capability: plan.pin, tenant: ctx.tenant, app_version: facts.appVersion, patch_revision: null },
-    line,
-    { owner: plan.batch_id, command: "certify", staff: ctx.staff },
-  );
+  const deps = { scores: ctx.wiring.scores, locks: ctx.wiring.locks, artifacts: ctx.wiring.candidates };
+  const key = { capability: plan.pin, tenant: ctx.tenant, app_version: facts.appVersion, patch_revision: null };
+  const who = { owner: plan.batch_id, command: "certify", staff: ctx.staff };
+  const written = await appendHistory(deps, key, line, who);
+  // Section 8 §4.2: an approved key whose full batch fails the gate becomes `degraded`, by `certify`.
+  // Why not for a drill: section 8 §7.1. A drill's evidence describes an app this tenant does not
+  // run, so a drill never changes trust state.
+  const drill = report.drill === true || report.models_off === true;
+  if (written.ok && kind === "full" && !drill && !report.gate.passed && written.value.state === "approved") {
+    const degraded = await appendHistory(
+      deps,
+      key,
+      {
+        event: "degraded",
+        at: ctx.wiring.clock.now().toISOString(),
+        by: "certify",
+        reason: `full batch ${plan.batch_id} failed its gate`,
+        rule: "certify",
+        runs: [...(facts.failing ?? [])],
+      },
+      who,
+    );
+    if (!degraded.ok) progress(ctx.io, `warning: the key was not marked degraded (${degraded.failure}). Run intyy trust demote.`);
+  }
   if (!written.ok) {
     progress(
       ctx.io,
@@ -224,12 +267,51 @@ function instanceLine(i: Testdata["instance"]): string {
   ].join(" ");
 }
 
-/** `certify <key> --kind quick`: a baseline, then the commit-step matrix (section 8 §7.1;
- * section 9 §9.1, §9.2). `--plan-only` contacts nothing and writes nothing. */
+/** The suite's setup runs, each with its own suite's class (section 8 §6.1). */
+async function loadSetups(ctx: Ctx, suite: Suite): Promise<SetupSpec[]> {
+  const out: SetupSpec[] = [];
+  for (const s of suite.setup) {
+    const m = /^([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_]*)@(\d+)$/.exec(s.capability);
+    if (m?.[1] === undefined || m[2] === undefined || m[3] === undefined) {
+      throw new CliExit(EXIT.invalid, `suite setup ${s.capability} does not fit app/capability@major`);
+    }
+    const own = await loadCertifyInputs(ctx, m[1], m[2], Number(m[3]));
+    const cls = own.suite.classes.find((c) => c.id === s.class);
+    if (cls === undefined) throw new CliExit(EXIT.invalid, `suite setup ${s.capability} names class ${s.class}, which its suite lacks`);
+    out.push({ app: m[1], capability: m[2], major: Number(m[3]), cls });
+  }
+  return out;
+}
+
+/** The lines `certify --kind full` prints: counts, failed rules, gaps, and the gate (section 9 §9.1). */
+function fullSummary(plan: BatchPlan, report: BatchReport): string[] {
+  const rules = report.gate.rules;
+  const failed = rules === undefined ? [] : Object.entries(rules).filter(([, v]) => !v).map(([k]) => k);
+  const v = report.verdicts;
+  return [
+    `batch ${plan.batch_id} (full${report.drill === true ? ", drill" : ""})`,
+    `runs: ${String(report.cases.length)}`,
+    ...(v === undefined ? [] : [`verdicts: ${Object.entries(v).map(([k, n]) => `${k} ${String(n)}`).join(", ")}`]),
+    `outcome score: ${report.outcome_score === null || report.outcome_score === undefined ? "none" : report.outcome_score.toFixed(2)}`,
+    `lowest margin: ${report.margin?.lowest === null || report.margin?.lowest === undefined ? "none" : `${report.margin.lowest.toFixed(2)} at ${report.margin.step ?? ""}`}`,
+    `fragile steps: ${report.fragile === undefined || report.fragile.length === 0 ? "none" : report.fragile.join(", ")}`,
+    ...(report.coverage_gaps ?? []).map((g) => `gap: ${g}`),
+    ...report.cases.filter((c) => c.verdict !== "pass").map((c) => `${c.case_id}: ${c.result.status}${c.result.detail === null ? "" : ` ${c.result.detail}`}, ${c.verdict}`),
+    ...(failed.length === 0 ? [] : [`failed rules: ${failed.join(", ")}`]),
+    `gate: ${report.gate.passed ? "passed" : "failed"}`,
+  ];
+}
+
+/** `certify <key> [--kind full|quick]`. `quick`: a baseline, then the commit-step matrix. `full`:
+ * baselines, the whole matrix, extras, and drills (section 8 §7.1, §7.2; section 9 §9.1, §9.2).
+ * `--plan-only` contacts nothing and writes nothing. */
 async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<string, unknown>): Promise<Answer> {
   const kind = typeof opts.kind === "string" ? opts.kind : "full";
-  if (kind !== "quick") {
-    throw new CliExit(EXIT.usage, `--kind ${kind} is not built yet; use --kind quick (full and regression arrive in M10)`);
+  if (kind === "regression") {
+    throw new CliExit(EXIT.usage, "--kind regression is not built yet; it arrives in M11 (pack regression batches)");
+  }
+  if (kind !== "quick" && kind !== "full") {
+    throw new CliExit(EXIT.usage, `--kind ${kind}: use full or quick`);
   }
   const staff = requireRole(ctx, ctx.tenant, "operator");
   const { app, capability, major, version } = parseKey(key);
@@ -242,7 +324,9 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
     instance = declared.value.instance;
     declaration = { by: staff, differs: declared.value.differs };
   }
-  const drill = isDrill(declaration);
+  // Why: section 8 §7.1. A batch run with `--models off` did not test the ladder live runs use, so it is a drill.
+  const modelsOff = ctx.flags.models === "off";
+  const drill = isDrill(declaration) || modelsOff;
   const { deps, origin, appVersion, frozenSet } = await buildDeps(ctx, app);
   if (deps.settings.doc.apps[app]?.environment !== "test") {
     throw new CliExit(EXIT.invalid, "certify: environment_not_test");
@@ -253,6 +337,28 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
     // Why: section 9 §9.1, "stops here with --plan-only". The route map needs a baseline run, so
     // the plan here holds no routes and no run IDs, and no file is written.
     const runs = matrixProfiles(faults.profiles, null).length;
+    if (kind === "full") {
+      const baselines = suite.classes.length * BASELINE_REPEATS + 1;
+      const profiles = suite.matrix.profiles === "standard" ? faults.profiles.length : suite.matrix.profiles.length;
+      const lines = [
+        `plan for ${app}/${capability}@${String(major)} (full, plan only)`,
+        `class: ${className}`,
+        `baseline: ${String(suite.classes.length)} classes x ${String(BASELINE_REPEATS)} repeats + 1 twin = ${String(baselines)} runs`,
+        `matrix: ${String(profiles)} profiles on every request step and the commit step; the count is known after the baseline`,
+        `extra: ${String(suite.extra.length)} cases`,
+        `drills: ${String(suite.drills.count)}`,
+        `setup runs: ${String(suite.setup.length)} before each case`,
+        `instance: ${instanceLine(instance)}`,
+        declaration === undefined
+          ? "declared: no, the test data set's instance is used"
+          : `declared by ${declaration.by}; differs: ${declaration.differs.join(", ") || "nothing"}`,
+        `drill: ${drill ? "yes, never approval-grade" : "no"}`,
+      ];
+      return answer(
+        { plan_only: true, kind, class: className, baselines, profiles, extra: suite.extra.length, drills: suite.drills.count, instance, declaration: declaration ?? null, drill },
+        lines.join("\n"),
+      );
+    }
     const lines = [
       `plan for ${app}/${capability}@${String(major)} (quick, plan only)`,
       `class: ${className}`,
@@ -279,9 +385,48 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
     }),
   ];
   try {
+    if (kind === "full") {
+      const result = await runCertifyFull(
+        {
+          batchId,
+          tenant: ctx.tenant,
+          app,
+          capability,
+          major,
+          ...(version === undefined ? {} : { version }),
+          appVersion,
+          staff,
+          className,
+          classes: suite.classes,
+          pools: testdata.pools,
+          instance,
+          frozenSet,
+          profiles: faults.profiles,
+          matrixProfiles: suite.matrix.profiles,
+          extra: suite.extra,
+          drills: suite.drills.count,
+          setup: await loadSetups(ctx, suite),
+          businessDate: testdata.business_date,
+          modelsOff,
+          ...(declaration === undefined ? {} : { declaration }),
+          progress: (line) => {
+            progress(ctx.io, `batch ${batchId}: ${line}`);
+          },
+        },
+        deps,
+      );
+      if (!result.ok) {
+        throw new CliExit(EXIT.invalid, `certify: ${result.failure}${result.detail ? `: ${result.detail}` : ""}`);
+      }
+      const { plan, report, scores, under, failing } = result.value;
+      writeBatchFiles(ctx, plan, report);
+      await recordBatch(ctx, "full", plan, report, { appVersion, engine: deps.engineVersion, frozenSet, under, scores, failing });
+      return answer({ batch_id: plan.batch_id, plan, report }, fullSummary(plan, report).join("\n"), report.gate.passed ? EXIT.ok : EXIT.failed);
+    }
     const result = await runCertifyQuick(
       {
         batchId,
+        ...(modelsOff ? { modelsOff: true } : {}),
         tenant: ctx.tenant,
         app,
         capability,
@@ -327,9 +472,9 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
 export const registerCertify: Register = (program: Command, ctxOf) => {
   const certify = program
     .command("certify")
-    .description("certify a capability: a quick batch, or one fault case on demand")
+    .description("certify a capability: a full or quick batch, or one fault case on demand")
     .argument("[key]", "app/capability@major, for a batch")
-    .option("--kind <kind>", "full, quick, or regression; only quick is built")
+    .option("--kind <kind>", "full (default), quick, or regression (M11)")
     .option("--instance <facts>", "declared instance facts, like strip_semantics=1,drop_labels=0.3")
     .option("--plan-only", "print the plan and stop; contact nothing")
     .action(act(ctxOf, (ctx, args, opts) => certifyQuick(ctx, args[0], opts)));
@@ -387,6 +532,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
               staff,
               operator,
               className: resolvedClassName,
+              ...(ctx.flags.models === "off" ? { modelsOff: true } : {}),
               selection,
               at: typeof opts.at === "string" ? opts.at : undefined,
               classes: suite.classes,
@@ -479,6 +625,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
               appVersion,
               staff,
               className: oldCase.class,
+              ...(ctx.flags.models === "off" ? { modelsOff: true } : {}),
               selection,
               at: at === undefined ? undefined : `@step:${at}`,
               classes: suite.classes,

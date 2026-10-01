@@ -96,7 +96,8 @@ export async function runCertifyQuick(
     input.progress?.(`${profile.id}: ${ran.value.reportCase.verdict}`);
   }
 
-  const drill = isDrill(input.declaration);
+  // Why: section 8 §7.1, a batch run with `--models off` is a drill too.
+  const drill = isDrill(input.declaration) || input.modelsOff === true;
   const plan: BatchPlan = {
     schema: "intyy.batch_plan/1.0",
     batch_id: input.batchId,
@@ -112,6 +113,7 @@ export async function runCertifyQuick(
     route_map: routeMapPlain(p.routeMap),
     cases: planCases,
     ...(drill ? { drill: true as const } : {}),
+    ...(input.modelsOff === true ? { models_off: true as const } : {}),
     ...(input.declaration === undefined
       ? {}
       : { declaration: { by: input.declaration.by, differs: [...input.declaration.differs] } }),
@@ -130,6 +132,7 @@ export async function runCertifyQuick(
       ...(notes.length === 0 ? {} : { notes }),
     },
     ...(drill ? { drill: true as const } : {}),
+    ...(input.modelsOff === true ? { models_off: true as const } : {}),
   };
   return ok({ plan, report });
 }

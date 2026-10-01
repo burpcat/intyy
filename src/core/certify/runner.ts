@@ -13,7 +13,7 @@ import type { EvidenceStore } from "../../ports/stores.js";
 import type { SurfaceFactory } from "../../ports/surface.js";
 import type { ArtifactStore } from "../catalog/artifacts.js";
 import type { Artifact } from "../model/artifact.js";
-import type { BatchPlan, BatchPlanCase, ResolvedFault } from "../model/batch-plan.js";
+import type { BatchPlan, BatchPlanCase, CaseGroup, ResolvedFault } from "../model/batch-plan.js";
 import type { BatchReport, BatchReportCase } from "../model/batch-report.js";
 import type { ContractValue } from "../model/common.js";
 import type { ExpectRule, FaultPlacement, FaultProfile } from "../model/faults.js";
@@ -26,7 +26,7 @@ import { resolveExact, resolveMajor } from "../catalog/capabilities.js";
 import type { FrozenSet } from "../packs/merge.js";
 import type { MergeResult } from "../safety/policy/merge.js";
 import { Redactor, redactionRules } from "../safety/redaction/redactor.js";
-import { runReplay, type ReplayInput, type ReplayOutcome } from "../replay/executor.js";
+import { runReplay, type ReplayDeps, type ReplayInput, type ReplayOutcome } from "../replay/executor.js";
 import { actionTimesFromRunLog, buildRouteMap, type RouteMap } from "./route-map.js";
 import { requestStepsFor, resolveAnchor } from "./anchors.js";
 import { ScriptedOperator } from "./scripted-operator.js";
@@ -79,6 +79,13 @@ export type CertifyCaseInput = {
    * case testable. Omitted (like a plain `runReplay` call) means no pack files exist
    * (docs/decisions.md, M06): an empty set, not an error. */
   frozenSet?: FrozenSet;
+  /** `--models off`: no rung 2, no rung 3. The batch is then a drill (section 8 §7.1). */
+  modelsOff?: boolean;
+  /**
+   * Runs the suite's setup runs right after a reset, before the fault is armed (section 8 §7.4
+   * step 2). The caller builds it; a failure makes the case `void` (section 8 §8.3).
+   */
+  beforeRun?: (signal?: AbortSignal) => Promise<Outcome<void, "setup_failed">>;
 };
 
 /** The part of the case input a whole batch shares: everything but the one case's selection. */
@@ -99,6 +106,14 @@ export type CertifyDeps = {
   policy: MergeResult;
   settings: { doc: Settings; rev: string; hash: string };
   engineVersion: string;
+  /**
+   * The models rungs 2 and 3 may use (section 5 §8.7, §8.8). Omitted: no model is ever called, so
+   * the batch tests the ladder without rungs 2 and 3. A real caller passes only what a live run
+   * would have, so the batch tests the same ladder (section 8 §7.1). `input.modelsOff` wins.
+   */
+  models?: ReplayDeps["models"];
+  /** The jev version batch `under` records when jev is on, like `jev@1.4.2` (section 8 §5.1). */
+  jevVersion?: string;
   signal?: AbortSignal;
 };
 
@@ -113,12 +128,14 @@ export type CertifyFailure =
   | "needs_at"
   | "no_commit_point"
   | "no_request"
-  | "harness_unreachable";
+  | "harness_unreachable"
+  /** A setup run failed, so the case could not start (section 8 §7.4 step 2). */
+  | "setup_failed";
 
 /** One resolved fault, with its own placement (for a suite `extra` case's several faults). */
 type Placed = { placement: FaultPlacement; resolved: { route: string; nth: number } };
 
-const BASELINE_CASE_ID = "baseline";
+export const BASELINE_CASE_ID = "baseline";
 const CASE_ID = "case";
 
 /** `app/capability@major`. */
@@ -128,7 +145,7 @@ function capabilityLink(app: string, capability: string, major: number): string 
 
 /** Picks pool values at one fixed index (docs/decisions.md, M06: "the baseline and the case
  * share one pool index"). A literal value (no leading `@`) passes through unchanged. */
-function resolveInputs(
+export function resolveInputs(
   raw: Readonly<Record<string, ContractValue>>,
   pools: Readonly<Record<string, readonly string[]>>,
   index: number,
@@ -173,7 +190,7 @@ function syntheticAuthorization(
 /** Runs one internal replay for certify: `mode: "supervised"`, but `isChildRun: true` skips the
  * start confirmation outright (section 8 §7.5: "Certify runs behave as unattended. No start
  * confirmation."; docs/decisions.md, M06, the same flag "child runs ask no start confirmation"). */
-async function runOne(
+export async function runOne(
   runId: string,
   caseId: string,
   link: string,
@@ -228,6 +245,9 @@ async function runOne(
         operator === "mailbox" && deps.mailboxOperator !== undefined
           ? deps.mailboxOperator
           : (): OperatorPort => new ScriptedOperator(),
+      ...(deps.models === undefined && input.modelsOff !== true
+        ? {}
+        : { models: { ...(deps.models ?? {}), ...(input.modelsOff === true ? { off: true } : {}) } }),
       ...(deps.signal === undefined ? {} : { signal: deps.signal }),
     },
   );
@@ -287,7 +307,7 @@ async function escalationDetail(
 }
 
 /** Section 8 §8.1: the run's result, classified. */
-async function classify(
+export async function classify(
   evidence: EvidenceStore,
   tenant: string,
   outcome: ReplayOutcome,
@@ -371,6 +391,8 @@ export async function prepareBatch(input: BatchInput, deps: CertifyDeps): Promis
   const baselineSeed = `${input.batchId}:${BASELINE_CASE_ID}`;
   const chaosBase = await deps.harness.setChaos({ entropy: 0, seed: baselineSeed }, deps.signal);
   if (!chaosBase.ok) return fail("harness_unreachable", chaosBase.detail);
+  const preparedSetup = await input.beforeRun?.(deps.signal);
+  if (preparedSetup !== undefined && !preparedSetup.ok) return fail("setup_failed", preparedSetup.detail);
 
   const poolIndex = 0;
   const inputs = input.rerun?.inputs ?? resolveInputs(cls.inputs, input.pools, poolIndex);
@@ -403,8 +425,76 @@ export async function prepareBatch(input: BatchInput, deps: CertifyDeps): Promis
   });
 }
 
+/** The truth checks of one finished run (section 8 §8.2), and its reported commit state. Plain code;
+ * only the match results leave this function, never the oracle's values. `baseline` is the batch's
+ * clean first run: the reference for a `read_only` capability's outputs, when `sameInputs` says the
+ * run used the baseline's inputs (other inputs give other data, so there is nothing to compare). */
+export async function collectTruth(
+  deps: CertifyDeps,
+  artifact: Artifact,
+  cls: SuiteClass,
+  inputs: Readonly<Record<string, string>>,
+  runId: string,
+  outcome: ReplayOutcome,
+  baseline: ReplayOutcome | null,
+): Promise<{ truth: { commit?: TruthResult; output?: TruthResult; outcome?: TruthResult }; commit: CommitState | null }> {
+  // Why on every status: `effect` sits on the shared envelope (section 3 §5.8), present on
+  // every non-rejected result of a `commits` capability, whatever its final status.
+  const commit: CommitState | null = outcome.result.effect?.commit ?? null;
+  const truth: { commit?: TruthResult; output?: TruthResult; outcome?: TruthResult } = {};
+  let oracleAccount: OracleAccount | undefined;
+  if (artifact.contract.effect === "commits") {
+    const notes = notesQueryFor(inputs, runId);
+    if (notes !== null) {
+      const answer = await deps.harness.oracle(new Secret(notes), deps.signal);
+      if (answer.ok) {
+        oracleAccount = answer.value.accounts[0];
+        if (commit !== null) truth.commit = commitTruth(commit, answer.value.count);
+      }
+    } else {
+      truth.commit = { match: null, note: "commit truth unavailable: the case names no notes input" };
+    }
+  }
+  if (outcome.result.status === "success") {
+    truth.output =
+      artifact.contract.effect === "commits"
+        ? outputTruthAgainstOracle(outcome.result.outputs, oracleAccount)
+        : baseline === null
+          ? { match: null, note: "the inputs differ from the baseline's, so its outputs are no reference" }
+          : baseline.result.status === "success"
+            ? outputTruthAgainstBaseline(outcome.result.outputs, baseline.result.outputs)
+            : { match: null, note: "the baseline did not succeed" };
+  }
+  if (outcome.result.status === "business_outcome") {
+    truth.outcome = outcomeTruth(outcome.result.outcome.code, cls.expect);
+  }
+  return { truth, commit };
+}
+
+/**
+ * True when rung 3 or a takeover helped the run (section 8 §8.3, `assisted`): a `ladder` line by
+ * the reviewer, or a `takeover` escalation. Reads the run's own log.
+ */
+export async function usedHelp(evidence: EvidenceStore, tenant: string, runId: string): Promise<boolean> {
+  const events = await evidence.events(tenant, runId);
+  if (!events.ok) return false;
+  return events.value.some((raw) => {
+    if (typeof raw !== "object" || raw === null || !("event" in raw)) return false;
+    const line = raw as { event?: unknown; by?: unknown; data?: { rung?: unknown; kind?: unknown } };
+    if (line.event === "ladder") return line.by === "reviewer" || line.data?.rung === 3;
+    return line.event === "escalation" && line.data?.kind === "takeover";
+  });
+}
+
 /** One fault case, run and judged: its plan entry and its report entry. */
-export type FaultCaseRun = { planCase: BatchPlanCase; reportCase: BatchReportCase };
+export type FaultCaseRun = {
+  planCase: BatchPlanCase;
+  reportCase: BatchReportCase;
+  /** How many of this case's named faults the harness reports as fired (section 8 §9.4, coverage). */
+  fired: number;
+  /** The case run's own log lines, for margins and step traces. Empty when the log could not be read. */
+  lines: unknown[];
+};
 
 /**
  * Runs one fault case after the baseline (section 8 §7.4 steps 1 to 9): place the faults through
@@ -419,6 +509,7 @@ export async function runFaultCase(
   at: string | undefined,
   caseId: string,
   caseSeed: string,
+  opts?: { group?: CaseGroup; truthOnly?: boolean },
 ): Promise<Outcome<FaultCaseRun, CertifyFailure>> {
   const { artifact, cls, link, pin, inputs, routeMap, commitStepId, baselineOutcome } = p;
   const placements: readonly FaultPlacement[] =
@@ -454,6 +545,9 @@ export async function runFaultCase(
 
   const chaosCase = await deps.harness.setChaos({ entropy: 0, seed: caseSeed }, deps.signal);
   if (!chaosCase.ok) return fail("harness_unreachable", chaosCase.detail);
+  // Section 8 §7.4 step 2: setup runs come after the reset, before the fault is armed.
+  const setup = await input.beforeRun?.(deps.signal);
+  if (setup !== undefined && !setup.ok) return fail("setup_failed", setup.detail);
   const armed = await deps.harness.addFaults(namedFaults, deps.signal);
   if (!armed.ok) return fail("harness_unreachable", armed.detail);
 
@@ -467,41 +561,16 @@ export async function runFaultCase(
   const fullLog = await deps.harness.faultLog(deps.signal);
   const caseLog = fullLog.ok ? fullLog.value : [];
   await writeFaultsFile(deps, input.tenant, caseRunId, caseLog);
+  const armedIds = new Set(namedFaults.map((f) => f.id));
+  const fired = new Set(caseLog.flatMap((e) => (e.named_id !== null && armedIds.has(e.named_id) ? [e.named_id] : []))).size;
 
   await deps.harness.clearFaults(deps.signal);
   await deps.harness.setChaos({ entropy: 0, seed: "0" }, deps.signal);
   await deps.harness.reset(deps.signal);
 
   const resultClass = await classify(deps.evidence, input.tenant, caseOutcome, caseOperator === "mailbox");
-  // Why on every status: `effect` sits on the shared envelope (section 3 §5.8), present on
-  // every non-rejected result of a `commits` capability, whatever its final status.
-  const commit: CommitState | null = caseOutcome.result.effect?.commit ?? null;
-
-  const truth: { commit?: TruthResult; output?: TruthResult; outcome?: TruthResult } = {};
-  let oracleAccount: OracleAccount | undefined;
-  if (artifact.contract.effect === "commits") {
-    const notes = notesQueryFor(inputs, caseRunId);
-    if (notes !== null) {
-      const answer = await deps.harness.oracle(new Secret(notes), deps.signal);
-      if (answer.ok) {
-        oracleAccount = answer.value.accounts[0];
-        if (commit !== null) truth.commit = commitTruth(commit, answer.value.count);
-      }
-    } else {
-      truth.commit = { match: null, note: "commit truth unavailable: the case names no notes input" };
-    }
-  }
-  if (caseOutcome.result.status === "success") {
-    truth.output =
-      artifact.contract.effect === "commits"
-        ? outputTruthAgainstOracle(caseOutcome.result.outputs, oracleAccount)
-        : baselineOutcome.result.status === "success"
-          ? outputTruthAgainstBaseline(caseOutcome.result.outputs, baselineOutcome.result.outputs)
-          : { match: null, note: "the baseline did not succeed" };
-  }
-  if (caseOutcome.result.status === "business_outcome") {
-    truth.outcome = outcomeTruth(caseOutcome.result.outcome.code, cls.expect);
-  }
+  const { truth, commit } = await collectTruth(deps, artifact, cls, inputs, caseRunId, caseOutcome, baselineOutcome);
+  const helped = await usedHelp(deps.evidence, input.tenant, caseRunId);
 
   // Why: docs/decisions.md, M06. A waiver has no check, so a commit-step fault ends at a human.
   const waived =
@@ -509,11 +578,24 @@ export async function runFaultCase(
     artifact.recovery?.reconciliation?.waiver !== undefined &&
     isCommitStepFault(selection.profile, at, commitStepId);
 
-  const classMatches = waived
-    ? matchesWaivedEnding(resultClass, commit, commitStepId)
-    : selection.kind === "profile"
-      ? matchesExpectRule(expectRuleFor(selection.profile, at, commitStepId), resultClass, cls.expect, commit)
-      : matchesExtraExpect(resultClass, selection.extra.expect);
+  // Why `truthOnly`: section 8 §7.2, drills are "judged on truth only: any truthful result passes".
+  const classMatches =
+    opts?.truthOnly === true
+      ? true
+      : waived
+        ? matchesWaivedEnding(resultClass, commit, commitStepId)
+        : selection.kind === "profile"
+          ? matchesExpectRule(expectRuleFor(selection.profile, at, commitStepId), resultClass, cls.expect, commit)
+          : matchesExtraExpect(resultClass, selection.extra.expect);
+  // Section 8 §8.3: help is expected for a profile that may escalate, `unknown_popup` (the
+  // reviewer), a waived ending, and an extra case that expects an escalation (the supervisor case).
+  const expectsHelp =
+    opts?.truthOnly === true ||
+    waived ||
+    (selection.kind === "profile"
+      ? selection.profile.kind === "unknown_popup" ||
+        expectRuleFor(selection.profile, at, commitStepId) === "recovers_or_escalates"
+      : selection.extra.expect.status === "escalated");
 
   const verdict = judgeCase({
     classMatches,
@@ -522,12 +604,17 @@ export async function runFaultCase(
       output: truth.output?.match ?? null,
       outcome: truth.outcome?.match ?? null,
     },
+    unexpectedHelp: helped && !expectsHelp,
   });
 
+  const events = await deps.evidence.events(input.tenant, caseRunId, deps.signal);
   return ok({
+    fired,
+    lines: events.ok ? events.value : [],
     planCase: {
       case_id: caseId,
       run_id: caseRunId,
+      ...(opts?.group === undefined ? {} : { group: opts.group }),
       class: input.className,
       profile: profileId,
       inputs,
@@ -538,6 +625,7 @@ export async function runFaultCase(
     reportCase: {
       case_id: caseId,
       run_id: caseRunId,
+      ...(opts?.group === undefined ? {} : { group: opts.group }),
       class: input.className,
       result: resultClass,
       truth: {
@@ -637,12 +725,12 @@ export async function runCertifyCase(
 /** The fault-ending rule that applies to one profile placement (section 8 §6.3): `expect_commit`
  * when the fault landed on the artifact's own commit step, else `expect_window`. For
  * `@each_request_step`, `at` (the caller's `--at`) names the exact step. */
-function expectRuleFor(profile: FaultProfile, at: string | undefined, commitStepId: string | null): ExpectRule {
+export function expectRuleFor(profile: FaultProfile, at: string | undefined, commitStepId: string | null): ExpectRule {
   return isCommitStepFault(profile, at, commitStepId) ? profile.expect_commit : profile.expect_window ?? profile.expect_commit;
 }
 
 /** Whether the profile's fault lands on the artifact's own commit step. */
-function isCommitStepFault(profile: FaultProfile, at: string | undefined, commitStepId: string | null): boolean {
+export function isCommitStepFault(profile: FaultProfile, at: string | undefined, commitStepId: string | null): boolean {
   const stepId =
     profile.at === "@commit_point"
       ? commitStepId

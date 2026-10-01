@@ -128,6 +128,15 @@ describe("record rebuild: what each line does", () => {
     expect(two.certify).toMatchObject({ batch: "batch_b", gate: "failed" });
   });
 
+  test("a drill batch line leaves the record as it was, whatever its kind", () => {
+    const before = built([batch(1, "batch_a"), approved(2)]);
+    for (const kind of ["full", "regression"] as const) {
+      const drill = batch(3, "batch_d", { kind, drill: true, gate: "failed" });
+      expect(built([batch(1, "batch_a"), approved(2), drill])).toEqual(before);
+    }
+    expect(built([batch(1, "batch_d", { drill: true })])).toEqual(DRAFT);
+  });
+
   test("a regression batch fills regression only", () => {
     const r = built([batch(1, "batch_r", { kind: "regression" })]);
     expect(r.regression).toMatchObject({ batch: "batch_r", scores: null });

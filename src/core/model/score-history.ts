@@ -27,6 +27,8 @@ export const HistoryLine = z.discriminatedUnion("event", [
       ...common,
       batch: z.string().min(1),
       kind: z.enum(["quick", "full", "regression"]),
+      /** `true` for a drill batch: it is history only and never changes the record (section 8 §7.1). */
+      drill: z.literal(true).optional(),
       gate: z.enum(["passed", "failed"]),
       report_hash: Sha256Hash,
       under: Under,

@@ -66,6 +66,9 @@ export type ActContext = {
   /** The live eyes and the artifact's decoded sealed crops, for the `image` clue (section 7
    * §6.3). Without both, `image` is missing for every candidate. */
   pictures?: { eyes: Eyes; recorded: RecordedPictures };
+  /** Called with each target vote's facts, so the run can log a `target_vote` line (section 3
+   * §6.4). Certify reads these lines for locator margins (section 8 §9.2). */
+  onVote?: (stepId: string, targetId: string, facts: TargetVoteFacts) => void;
   signal?: AbortSignal;
 };
 
@@ -121,6 +124,7 @@ export async function actStep(action: StepAction, ctx: ActContext): Promise<ActS
       ? undefined
       : await candidateLikenesses(ctx.pictures, ctx.observation, wanted, ctx.targets, ctx.redactor, ctx.signal);
   const found = findTarget(wanted, ctx.observation, ctx.targets, ctx.refs, ctx.redactor, likenesses);
+  ctx.onVote?.(ctx.stepId, wanted.id, found.facts);
   if (found.kind !== "winner") {
     const kind = found.kind === "not_found" ? "target_not_found" : "target_ambiguous";
     return { outcome: { kind }, facts: found.facts };

@@ -52,6 +52,8 @@ export type CommitContext = {
   recorded?: RecordedPictures;
   /** A masked screenshot path for the approval request, if one was taken. */
   screenshot: string | null;
+  /** Passed to `actStep`: logs the commit target's vote (section 3 §6.4). */
+  onVote?: ActContext["onVote"];
   signal?: AbortSignal;
 };
 
@@ -110,6 +112,7 @@ function proposeCommit(
       ? {}
       : { confirmed: { risk: step.risk, words: confirmedWords(target), ...picOf(ctx.recorded, target) } }),
     ...(ctx.recorded === undefined ? {} : { pictures: { eyes: ctx.eyes, recorded: ctx.recorded } }),
+    ...(ctx.onVote === undefined ? {} : { onVote: ctx.onVote }),
     ...(approval === undefined ? {} : { approval }),
   };
   return actStep(step.action, actCtx);

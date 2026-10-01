@@ -131,18 +131,31 @@ describe("certify --kind quick: --plan-only", () => {
 });
 
 describe("certify --kind quick: refusals", () => {
-  test("--kind full, regression, and no --kind are usage errors; nothing runs", async () => {
+  test("--kind regression and --kind bogus are usage errors; nothing runs", async () => {
     const env = await readyEnv();
-    for (const argv of [
-      ["certify", CAP, "--kind", "full"],
-      ["certify", CAP, "--kind", "regression"],
-      ["certify", CAP],
-    ]) {
-      const r = await certifyCall(env, "op_017", argv);
-      expect(r.code).toBe(EXIT.usage);
-      expect(r.stderr).toContain("quick");
-      expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
-    }
+    const regression = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "regression"]);
+    expect(regression.code).toBe(EXIT.usage);
+    expect(regression.stderr).toContain("regression");
+    expect(regression.stderr).toContain("M11");
+    const bogus = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "bogus"]);
+    expect(bogus.code).toBe(EXIT.usage);
+    expect(bogus.stderr).toContain("bogus");
+    for (const r of [regression, bogus]) expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
+    const batches = join(env.root, "state", "evidence", "keystone", "batches");
+    expect(existsSync(batches) ? readdirSync(batches) : []).toEqual([]);
+  });
+
+  test.each([
+    ["--kind full", ["certify", CAP, "--kind", "full", "--json"]],
+    ["no --kind", ["certify", CAP, "--json"]],
+  ])("%s runs a full batch", LONG, async (_name, argv) => {
+    const env = await readyEnv();
+    const r = await certifyCall(env, "op_017", argv);
+    // Why 0 or 5: the double cannot fire a fault, so the gate may fail (exit 5).
+    expect([0, EXIT.failed]).toContain(r.code);
+    const body = JSON.parse(r.stdout) as Batch;
+    expect(batchFiles(env, body.batch_id).plan.kind).toBe("full");
+    expect(body.report.kind).toBe("full");
   });
 
   test("a bad --instance is a usage error", async () => {

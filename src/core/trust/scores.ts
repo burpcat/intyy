@@ -154,6 +154,8 @@ export function batchLine(input: {
   batch: string;
   kind: "quick" | "full" | "regression";
   gatePassed: boolean;
+  /** True for a drill batch: the line is history only (section 8 §7.1). */
+  drill?: boolean;
   report: unknown;
   under: Extract<HistoryLine, { event: "batch" }>["under"];
   scores?: Extract<HistoryLine, { event: "batch" }>["scores"];
@@ -165,6 +167,7 @@ export function batchLine(input: {
     reason: input.reason,
     batch: input.batch,
     kind: input.kind,
+    ...(input.drill === true ? { drill: true as const } : {}),
     gate: input.gatePassed ? "passed" : "failed",
     // Why: the hash covers the report's canonical JSON, so file formatting never changes it.
     report_hash: hashJson(input.report),
