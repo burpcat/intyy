@@ -21,7 +21,9 @@ import { ScriptedPlanner, type Step } from "../../../src/fakes/scripted-planner.
 import { MapSecrets } from "../../../src/fakes/secrets.js";
 import { snapshotFactory, type FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import { FakeOperator, type FakeAnswer } from "../../../src/fakes/operator.js";
+import type { Clock } from "../../../src/ports/clock.js";
 import type { Planner } from "../../../src/ports/models.js";
+import type { Secrets } from "../../../src/ports/secrets.js";
 import type { SurfaceFactory } from "../../../src/ports/surface.js";
 import { readTree, tempRoot } from "../safety/canary-kit.js";
 
@@ -250,6 +252,12 @@ export async function run(opts: {
   /** A sealed session artifact, resolvable at `kvfcu/sign_in@1` (section 6 §5.5, M05 task 11).
    * Left out, the store stays empty, so a spec's `session` link never resolves. */
   sealedSession?: Artifact;
+  /** A clock for the run, instead of the self-advancing {@link SteppingClock}. */
+  clock?: Clock;
+  /** A secrets port, instead of the map built from `secrets`. */
+  secretsPort?: Secrets;
+  /** The run's own signal (section 6 §10.4: an abort ends the run). */
+  signal?: AbortSignal;
 }): Promise<Ran> {
   const { root, remove } = await tempRoot("intyy-disc-");
   const evidence = new FileEvidenceStore({
@@ -258,7 +266,7 @@ export async function run(opts: {
   });
   const planner = opts.planner ?? new ScriptedPlanner(opts.steps ?? SIGN_IN_STEPS);
   const operator = new FakeOperator(opts.answers ?? []);
-  const clock = new SteppingClock("2026-09-28T14:00:00.000Z");
+  const clock = opts.clock ?? new SteppingClock("2026-09-28T14:00:00.000Z");
   const ids = new SeededIds(clock);
   // Why: `runDiscovery` resolves a spec's `session` link, if any, through the artifact store
   // (section 6 §5.5, M05 task 11). None of `run-kit.ts`'s own specs link one, so an empty store
@@ -297,17 +305,20 @@ export async function run(opts: {
       evidence,
       clock,
       ids,
-      secrets: new MapSecrets(
-        opts.secrets ?? {
-          INTYY_KEYSTONE_KVFCU_OPERATOR_USERNAME: "teller-one",
-          INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD: PASSWORD,
-        },
-      ),
+      secrets:
+        opts.secretsPort ??
+        new MapSecrets(
+          opts.secrets ?? {
+            INTYY_KEYSTONE_KVFCU_OPERATOR_USERNAME: "teller-one",
+            INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD: PASSWORD,
+          },
+        ),
       surface: opts.surface ?? snapshotFactory(opts.site ?? SITE),
       marker: new FakeMarker(),
       planner,
       operator: () => operator,
       artifacts,
+      ...(opts.signal === undefined ? {} : { signal: opts.signal }),
     },
   );
   const ev = await evidence.events("keystone", result.runId);

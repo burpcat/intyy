@@ -78,7 +78,11 @@ async function guard(
 function watchPage(s: BrowserState, page: Page): void {
   const hub = s.hub;
   page.on("request", (r) => {
-    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) {
+    // Why: a frameset keeps the top address and loads pages in a sub-frame. Section 7 §5.1 settles
+    // on navigation, so a sub-frame document load is a navigation too. It is never a `data`
+    // request: nothing would ever balance it. The event's `url` is only an address for logs;
+    // no consumer treats it as the top page's location.
+    if (r.isNavigationRequest()) {
       hub.emit({ kind: "navigation_started", url: r.url() });
     } else {
       hub.emit({ kind: "request_started", url: r.url(), resource: resourceKind(r.resourceType()) });
@@ -104,7 +108,9 @@ function watchPage(s: BrowserState, page: Page): void {
   page.on("framenavigated", (frame) => {
     // Why: a sub-frame that reloads re-numbers its elements, so any ref taken before would
     // point at a different element. Every frame change makes old refs stale (section 7 §6.1).
-    if (frame === page.mainFrame()) hub.emit({ kind: "navigation_done", url: frame.url() });
+    // Why: `framenavigated` fires when a frame's new document commits, so the new page is there to
+    // read. It fires for sub-frames too, which closes the `navigation_started` above.
+    hub.emit({ kind: "navigation_done", url: frame.url() });
     s.changed();
   });
   // Why: section 4 §6.10, a native box is never answered automatically. Holding it keeps it open.

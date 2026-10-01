@@ -7,9 +7,10 @@ import type { Marker } from "../../ports/marker.js";
 import type { Masked } from "../../ports/masked.js";
 import type { Planner, PlannerReply } from "../../ports/models.js";
 import type { RunFolder } from "../../ports/stores.js";
-import type { Eyes, LeaseToken, Observation, Png } from "../../ports/surface.js";
+import type { Eyes, LeaseToken, Observation, Png, SurfaceEvent } from "../../ports/surface.js";
 import { capture } from "../capture/capture.js";
 import type { FullLimits, RunSpec } from "../model/runspec.js";
+import { settleAfterAction } from "../replay/settle.js";
 import type { RunLog } from "../orchestrator/run-log.js";
 import type { Gate, GateResult, Proposal } from "../safety/gate/gate.js";
 import { masked, maskedTurn, wireBytes } from "../safety/redaction/compose.js";
@@ -25,7 +26,7 @@ import {
 import type { LastResult, PromptModule } from "./prompts/types.js";
 import { readOutput } from "./read.js";
 import { turnPicture } from "./screenshot.js";
-import { settle } from "./settle.js";
+import { SETTLE_CAP_MS, settle } from "./settle.js";
 import {
   checkCall,
   toolDefinitions,
@@ -538,29 +539,52 @@ async function act(
   if (fp === "write_failed") return { status: "failed", code: "evidence_write_failed" };
 
   const proposal: Proposal = { actor: "llm", lease: d.lease, action: c.action, step };
-  let result = await d.gate.act(proposal, d.signal);
-  let hint: RiskHint | null = null;
-  if (result.ok && result.value.decision === "needs_approval") {
-    const answered = await approval(d, s, c, name, result.value, c.action.type, shot);
-    if ("status" in answered) return answered;
-    if (answered.hint === null) {
-      s.last = "declined";
-      s.feedback = masked`The operator declined that action.`;
-      s.history.push(historyLine(d, s, c.tool, c.element, shown, masked`declined`, tag));
+  // Why: section 7 §5.1, subscribe before the call that can dispatch, so no early event is lost.
+  // The first call may only ask for approval, so that listener closes before the human is asked.
+  let tap = listen(d);
+  try {
+    let result = await d.gate.act(proposal, d.signal);
+    let hint: RiskHint | null = null;
+    if (result.ok && result.value.decision === "needs_approval") {
+      tap.stop();
+      const answered = await approval(d, s, c, name, result.value, c.action.type, shot);
+      if ("status" in answered) return answered;
+      if (answered.hint === null) {
+        s.last = "declined";
+        s.feedback = masked`The operator declined that action.`;
+        s.history.push(historyLine(d, s, c.tool, c.element, shown, masked`declined`, tag));
+        return null;
+      }
+      hint = answered.hint;
+      tap = listen(d);
+      result = await d.gate.act({ ...proposal, approval: { by: answered.staff } }, d.signal);
+    }
+    if (!result.ok) {
+      if (result.failure === "secret_unavailable")
+        return { status: "failed", code: "secret_unavailable" };
+      s.last = "failed";
+      s.feedback = masked`That element changed before the action ran. Look again.`;
+      s.history.push(historyLine(d, s, c.tool, c.element, shown, masked`failed`, tag));
       return null;
     }
-    hint = answered.hint;
-    result = await d.gate.act({ ...proposal, approval: { by: answered.staff } }, d.signal);
+    // Why: section 6 §10.1 step 1 and section 7 §5.1, wait for the page the action loads before
+    // the next look. Without it, the look may see the old page, unchanged, before the server answers.
+    if (result.value.decision === "allowed" && result.value.act?.dispatched !== false)
+      await settleAfterAction(tap.events, d.clock, SETTLE_CAP_MS, d.signal);
+    return await afterGate(d, s, c, result.value, { fp, shown, hint, tag, step });
+  } finally {
+    tap.stop();
   }
-  if (!result.ok) {
-    if (result.failure === "secret_unavailable")
-      return { status: "failed", code: "secret_unavailable" };
-    s.last = "failed";
-    s.feedback = masked`That element changed before the action ran. Look again.`;
-    s.history.push(historyLine(d, s, c.tool, c.element, shown, masked`failed`, tag));
-    return null;
-  }
-  return afterGate(d, s, c, result.value, { fp, shown, hint, tag, step });
+}
+
+/** One open surface subscription, and the way to close it (section 7 §5.1). */
+type Tap = { events: AsyncIterable<SurfaceEvent>; stop: () => void };
+
+/** Subscribes to surface events now. `stop` ends the subscription; the run's own signal ends it too. */
+function listen(d: LoopDeps): Tap {
+  const own = new AbortController();
+  const signal = d.signal === undefined ? own.signal : AbortSignal.any([d.signal, own.signal]);
+  return { events: d.eyes.events(signal), stop: () => { own.abort(); } };
 }
 
 /** Handles the gate's answer: a block, or a done action (section 6 §10.2). */

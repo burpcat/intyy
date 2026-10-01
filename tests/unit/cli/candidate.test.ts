@@ -409,6 +409,9 @@ function discoverCall(
       commands,
       wire: (root, config, wireEnv) => ({
         ...realWire(root, config, wireEnv),
+        // Why: discovery now settles after each dispatched action (section 7 §5.1). A stepping clock
+        // ends those waits at once; the real clock would make each action cost about a second.
+        clock: new SteppingClock("2026-09-28T14:00:00.000Z"),
         policy: env.policy,
         settings: env.settings,
         discovery: {

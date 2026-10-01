@@ -25,7 +25,9 @@ function stateKey(o: Observation): string {
  * "still loading": right after a click the page is often mid-navigation. So does a look with no
  * elements. Only a page that is
  * still unreadable at the cap is `page_gone`.
- * ponytail: a still screen, not the network's quiet; add request events if pages flicker.
+ * Why: a still screen alone settles on the old page before the server answers. The loop first
+ * waits for the action's own navigation and network quiet (`settleAfterAction`, section 7 §5.1);
+ * this look then guards a frameset that is empty or still reloading.
  */
 export async function settle(
   eyes: Eyes,
