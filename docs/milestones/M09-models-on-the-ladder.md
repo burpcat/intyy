@@ -76,9 +76,9 @@ Trouble that plain code cannot sort goes to jev, then to a one-step reviewer, be
 - [x] jev paths and reviewer paths (section 5 §16), with the table fakes.
 - [x] Helpers never act while the helper window is closed.
 - [x] Reconciliation: code first, then jev, then the second opinion; disagreement reaches a human.
-- [ ] Model call order for jev and the reviewer.
-- [ ] `--models off` freezes rungs 2 and 3 off in `ladder`.
-- [ ] LLM view: no canary value in any stored jev or reviewer input.
+- [x] Model call order for jev and the reviewer.
+- [x] `--models off` freezes rungs 2 and 3 off in `ladder`.
+- [x] LLM view: no canary value in any stored jev or reviewer input.
 
 ### Live (`npm run test:live`)
 
