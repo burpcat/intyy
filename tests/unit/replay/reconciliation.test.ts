@@ -9,7 +9,9 @@ import type { FrozenSet } from "../../../src/core/packs/merge.js";
 import type { Handler } from "../../../src/core/model/pack.js";
 import { sha256Hex } from "../../../src/core/model/canonical.js";
 import { FakeOperator } from "../../../src/fakes/operator.js";
-import type { FakeElement, FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import { snapshotFactory, type FakeElement, type FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import { fromFactory, toFactory, type Hands } from "../../../src/ports/hands.js";
+import type { SurfaceFactory } from "../../../src/ports/surface.js";
 import {
   ORIGIN,
   TENANT,
@@ -316,5 +318,110 @@ describe("the reconciliation_decision reason (section 3 §5.7; docs/decisions.md
     expect(recon.length).toBeGreaterThanOrEqual(2);
     expect(recon.every((l) => l.data.reason === "reconciliation_unclear")).toBe(true);
     expect(operator.requests[1]).toMatchObject({ kind: "reconciliation_decision", reason: "reconciliation_unclear" });
+  });
+});
+
+/**
+ * A surface whose first session loses the reply to its `n`-th click: the click still lands, but
+ * the answer is `dispatched: "unknown"` with `transport: "connection_closed"`, which is how the
+ * bank's `hang` fault reaches the hands (CONTRACT.md §6: no reply for 45 s, then the connection
+ * closes; section 7 §7.3). Later sessions (the check children) are untouched. `lost` counts the
+ * lost replies, `clicks` the clicks the first session sent.
+ */
+function hangOnClick(site: FakeSite, n: number): { surface: SurfaceFactory; lost: () => number; clicks: () => number } {
+  const inner = fromFactory(snapshotFactory(site));
+  let opens = 0;
+  let clicks = 0;
+  let lost = 0;
+  const surface = toFactory({
+    async open(cfg, signal) {
+      const first = opens === 0;
+      opens += 1;
+      const got = await inner.open(cfg, signal);
+      if (!first || !got.ok) return got;
+      const hands: Hands = {
+        async act(a, lease, sig) {
+          const r = await got.value.hands.act(a, lease, sig);
+          if (a.type !== "click" || !r.ok) return r;
+          clicks += 1;
+          if (clicks !== n) return r;
+          lost += 1;
+          return { ...r, value: { dispatched: "unknown", transport: "connection_closed" } };
+        },
+      };
+      return { ...got, value: { ...got.value, hands } };
+    },
+    close: () => inner.close(),
+  });
+  return { surface, lost: () => lost, clicks: () => clicks };
+}
+
+/** Reads a run's `run_start` log line data. */
+async function runStartOf(
+  h: Awaited<ReturnType<typeof buildHarness>>,
+  runId: string,
+): Promise<{ kind?: string; purpose?: string | null; parent_run_id?: string | null }> {
+  const events = await h.deps.evidence.events(TENANT, runId);
+  if (!events.ok) throw new Error("events missing");
+  const start = (events.value as { event?: string; data?: object }[]).find((e) => e.event === "run_start");
+  if (start?.data === undefined) throw new Error("no run_start line");
+  return start.data;
+}
+
+describe("the M06 gate row: a hang right after Confirm reconciles (section 5 §14; section 7 §7.3, §11)", () => {
+  test("the reply to Confirm is lost to a closed connection; Confirm is not clicked again, and a child check finds the change", async () => {
+    // Clicks of the parent session: login (1), Search (2), Confirm (3).
+    const hang = hangOnClick(siteChecked("found", "SH9999999"), 3);
+    const h = await buildHarness(siteChecked("found", "SH9999999"), { surface: hang.surface });
+    const { runId, result } = await runReplay(inputFor(h), h.deps);
+
+    expect(hang.lost()).toBe(1);
+    // Never retry an irreversible step (CLAUDE.md): the hang does not send a second Confirm.
+    expect(hang.clicks()).toBe(3);
+    expect(result.status).toBe("success");
+    if (result.status !== "success") throw new Error("expected success");
+    expect(result.outputs).toEqual({ account_number: "SH9999999" });
+    expect(result.effect).toMatchObject({ commit: "found_by_check", check: { decided_by: "code", staff_id: null } });
+
+    const childRunId = result.effect?.check?.run_id;
+    if (typeof childRunId !== "string") throw new Error("no child run id recorded");
+    expect(childRunId).not.toBe(runId);
+    const childRun = await h.deps.evidence.readRunJson(TENANT, childRunId);
+    if (!childRun.ok) throw new Error("child run.json missing");
+    expect(childRun.value).toMatchObject({ kind: "reconciliation", parent_run_id: runId });
+    expect(await runStartOf(h, childRunId)).toMatchObject({ kind: "reconciliation", purpose: "commit_check", parent_run_id: runId });
+  });
+});
+
+describe("the M06 gate row: a commit retry is a new child run with a new run ID (section 7 §11.3)", () => {
+  test("absent_by_check, then retry: the retry has its own ID, kind replay, purpose commit_retry, and the parent as parent", async () => {
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "retry" }]);
+    const h = await buildHarness(siteCheckedTwice("absent", "absent"), { operator: () => operator });
+    // A long-lived authorization, for the same reason as case 4 above.
+    const input = {
+      ...inputFor(h),
+      request: requestOf({
+        authorization: { ...authorizationFor("kvfcu/open_sub_checked@1"), granted_at: "2026-01-16T08:50:00.000Z", expires_at: "2026-01-16T09:00:00.000Z" },
+        capability: "kvfcu/open_sub_checked@1",
+      }),
+    };
+    const { runId, result } = await runReplay(input, h.deps);
+    expect(result.effect?.attempts).toEqual([{ run_id: runId, commit: "absent_by_check" }]);
+
+    // Parent, its check, the retry, and the retry's own check: four runs, four distinct IDs.
+    const ids = await h.deps.evidence.listRuns(TENANT);
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
+    const starts = await Promise.all(ids.map(async (id) => ({ id, ...(await runStartOf(h, id)) })));
+    const checkChild = starts.find((s) => s.kind === "reconciliation" && s.parent_run_id === runId);
+    const retryChild = starts.find((s) => s.purpose === "commit_retry");
+    if (checkChild === undefined || retryChild === undefined) throw new Error("expected a check child and a retry child");
+    expect(retryChild).toMatchObject({ kind: "replay", purpose: "commit_retry", parent_run_id: runId });
+    expect(retryChild.id).not.toBe(runId);
+    expect(retryChild.id).not.toBe(checkChild.id);
+    // The retry's own check hangs off the retry, not the original parent.
+    expect(starts.filter((s) => s.kind === "reconciliation" && s.parent_run_id === retryChild.id)).toHaveLength(1);
+    // The retry asks for no second start confirmation or retry decision.
+    expect(operator.requests).toHaveLength(2);
   });
 });

@@ -144,6 +144,30 @@ describe("runReplay: rejected requests never open the surface", () => {
       rejection: { errors: [{ code: "context_not_approved" }] },
     });
   });
+
+  test("a request failing several checks at once reports the first (check 6), with a run ID and the short three-line log (section 3 §4.8, §7.3)", async () => {
+    const h = await buildHarness(fixtureSite());
+    // Fails check 6 (no inputs), check 7 (unattended, nothing approved), and check 8 (a malformed authorization).
+    const input = replayInputOf(
+      h,
+      requestOf({ inputs: {}, mode: "unattended", authorization: { ...authorizationFor("kvfcu/open_sub@1"), capability: "kvfcu/other@1" } }),
+    );
+
+    const { runId, result } = await runReplay(input, h.deps);
+
+    expect(runId).toBe(input.runId);
+    expect(result).toMatchObject({ status: "rejected", run_id: runId });
+    if (result.status !== "rejected") throw new Error("expected rejected");
+    expect(result.rejection.errors.length).toBeGreaterThan(0);
+    expect(result.rejection.errors.every((e) => e.code === "invalid_input")).toBe(true);
+
+    const events = await h.deps.evidence.events(TENANT, runId);
+    if (!events.ok) throw new Error("events failed");
+    expect(eventNames(events.value)).toEqual(["run_start", "precheck", "run_end"]);
+    const precheck = (events.value as { event: string; data: { checks: { check: string; passed: boolean }[] } }[]).find((e) => e.event === "precheck");
+    expect(precheck?.data.checks.map((c) => c.check)).toEqual(["format", "request_id", "capability", "version", "inputs"]);
+    expect(precheck?.data.checks.at(-1)).toMatchObject({ check: "inputs", passed: false });
+  });
 });
 
 describe("runReplay: a known screen with no progress, on a location-only precondition (docs/decisions.md, M06)", () => {
