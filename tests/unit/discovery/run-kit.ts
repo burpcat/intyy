@@ -323,7 +323,11 @@ export async function run(opts: {
       artifacts,
       ...(opts.signal === undefined ? {} : { signal: opts.signal }),
     },
-  );
+  ).catch(async (error: unknown) => {
+    // Why: a throw leaves the caller no `remove` handle, so the temp root would leak.
+    await remove();
+    throw error instanceof Error ? error : new Error(String(error));
+  });
   const ev = await evidence.events("keystone", result.runId);
   const events = ev.ok ? (ev.value as Record<string, unknown>[]) : [];
   const files = await readTree(join(root, "evidence", "keystone", "runs", result.runId));
