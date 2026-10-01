@@ -6,6 +6,7 @@ import type { Artifact } from "./artifact.js";
 import type { ReconciliationCheck } from "./artifact/recovery.js";
 import {
   type ArtifactCheckContext,
+  type CapabilityShape,
   type Facts,
   type Reporter,
   checkNamespace,
@@ -108,14 +109,23 @@ export function checkRecovery(
       report(RECON_SHAPE, "recovery.reconciliation", "must hold exactly one of check or waiver");
     } else if (hasCheck && recon.check !== undefined) {
       const cap = context.resolveCapability?.(recon.check.capability);
-      if (context.resolveCapability !== undefined && (cap === undefined || cap.effect !== "read_only")) {
+      if (context.resolveCapability !== undefined && cap === undefined) {
+        // Why blocking: a check that is not sealed yet cannot be read here; seal it first (owner
+        // decisions, 2026-10-01: the check is a capability of its own).
+        report(
+          RECON_NOT_READONLY,
+          "recovery.reconciliation.check.capability",
+          `the reconciliation check ${recon.check.capability} is not sealed; seal the check capability first`,
+          true,
+        );
+      } else if (cap !== undefined && cap.effect !== "read_only") {
         report(
           RECON_NOT_READONLY,
           "recovery.reconciliation.check.capability",
           "the reconciliation capability must be read_only",
         );
       }
-      checkCountShape(recon.check, report);
+      checkCountShape(recon.check, report, cap);
       Object.entries(recon.check.inputs).forEach(([k, v]) => {
         checkNamespace(v, new Set(["input", "system"]), `recovery.reconciliation.check.inputs.${k}`, facts, report);
       });
@@ -145,13 +155,22 @@ export function checkRecovery(
  * `not_found_outcomes`: plain code decides from the count alone. A `reference` check names no
  * `count_output` (owner decisions, 2026-10-01).
  */
-function checkCountShape(check: ReconCheck, report: Reporter): void {
+function checkCountShape(check: ReconCheck, report: Reporter, cap: CapabilityShape | undefined): void {
   const path = "recovery.reconciliation.check";
   if (check.mode === "reference") {
     if (check.count_output !== undefined) report(RECON_COUNT_SHAPE, `${path}.count_output`, "only a count_diff check names a count_output");
     return;
   }
-  if (check.count_output === undefined) report(RECON_COUNT_SHAPE, `${path}.count_output`, "a count_diff check needs a count_output");
+  if (check.count_output === undefined) {
+    report(RECON_COUNT_SHAPE, `${path}.count_output`, "a count_diff check needs a count_output");
+  } else if (cap !== undefined) {
+    // Why: the count must be a declared integer output of the check capability, or replay reads nothing.
+    if (!cap.outputs.includes(check.count_output)) {
+      report(RECON_COUNT_SHAPE, `${path}.count_output`, `${check.count_output} is not an output of ${check.capability}`);
+    } else if (cap.outputTypes?.[check.count_output] !== undefined && cap.outputTypes[check.count_output] !== "integer") {
+      report(RECON_COUNT_SHAPE, `${path}.count_output`, `${check.count_output} must be an integer output`);
+    }
+  }
   if (Object.keys(check.outputs).length > 0) report(RECON_COUNT_SHAPE, `${path}.outputs`, "a count_diff check maps no outputs");
   if (check.not_found_outcomes.length > 0) {
     report(RECON_COUNT_SHAPE, `${path}.not_found_outcomes`, "a count_diff check lists no not_found_outcomes");

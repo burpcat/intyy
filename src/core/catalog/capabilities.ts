@@ -4,7 +4,7 @@
 // with none every state is `draft`. Every failure is a value.
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { Artifact } from "../model/artifact.js";
-import { matchesAnyPattern } from "../model/artifact-checks-shared.js";
+import { matchesAnyPattern, type CapabilityShape } from "../model/artifact-checks-shared.js";
 import type { TrustState } from "../model/score.js";
 import type { ContractInput } from "../model/artifact/contract.js";
 import { compareSemver, listArtifacts, newestVersion, readArtifact, type ArtifactStore } from "./artifacts.js";
@@ -51,6 +51,36 @@ export async function listCapabilities(
     (a, b) => a.app.localeCompare(b.app) || a.capability.localeCompare(b.capability) || a.major - b.major,
   );
   return ok(out);
+}
+
+/**
+ * The shape of every sealed capability, by link (`app/capability@major`), at the newest sealed
+ * version of each major. The seal and verify checks read it (section 2 §19.4, §19.7): the loader
+ * check is synchronous, so the CLI loads the shapes first and hands the loader a map lookup.
+ * A version that cannot be read is left out, so its link stays unresolved.
+ */
+export async function sealedCapabilityShapes(store: ArtifactStore): Promise<Map<string, CapabilityShape>> {
+  const newest = new Map<string, { app: string; capability: string; versions: string[] }>();
+  for (const a of await listArtifacts(store)) {
+    const link = `${a.app}/${a.capability}@${String(majorOf(a.version))}`;
+    const g = newest.get(link) ?? { app: a.app, capability: a.capability, versions: [] };
+    g.versions.push(a.version);
+    newest.set(link, g);
+  }
+  const shapes = new Map<string, CapabilityShape>();
+  for (const [link, g] of newest) {
+    const read = await readArtifact(store, g.app, g.capability, newestVersion(g.versions));
+    if (!read.ok) continue;
+    const c = read.value.contract;
+    shapes.set(link, {
+      effect: c.effect,
+      inputs: c.inputs.map((i) => i.name),
+      outputs: c.outputs.map((o) => o.name),
+      outputTypes: Object.fromEntries(c.outputs.map((o) => [o.name, o.type])),
+      session: read.value.runs_on.session,
+    });
+  }
+  return shapes;
 }
 
 /**

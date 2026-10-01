@@ -8,7 +8,13 @@ import { afterAll, describe, expect, test } from "vitest";
 import { commands } from "../../../src/cli/commands/index.js";
 import { EXIT } from "../../../src/cli/exit-codes.js";
 import { wire as realWire } from "../../../src/cli/wiring.js";
-import { FileEvidenceStore } from "../../../src/adapters/files/other-stores.js";
+import { FileCandidateStore, FileEvidenceStore } from "../../../src/adapters/files/other-stores.js";
+import { Artifact as ArtifactSchema, type Artifact } from "../../../src/core/model/artifact.js";
+import { CandidateDecision } from "../../../src/core/model/candidate-decision.js";
+import { CandidateIssues } from "../../../src/core/model/candidate-issues.js";
+import { CandidateRuns } from "../../../src/core/model/candidate-runs.js";
+import type { CandidateFiles } from "../../../src/core/recorder/candidates.js";
+import { CHECK_SUB } from "../replay/executor-harness.js";
 import { policyKind, settingsKind } from "../../../src/core/model/kinds.js";
 import { AppPolicy, type Policy } from "../../../src/core/model/policy.js";
 import type { Settings } from "../../../src/core/model/settings.js";
@@ -1042,5 +1048,96 @@ describe("capability list and describe", () => {
       readFileSync(fileURLToPath(new URL("../../fixtures/golden/sign_in.tool.json", import.meta.url)), "utf8"),
     ) as unknown;
     expect(tool).toEqual(golden);
+  });
+});
+
+// The seal and verify context now reads the sealed capabilities (section 2 §19.4, §19.7; owner
+// decisions, 2026-10-01: the reconciliation check is a capability of its own, sealed first).
+describe("seal and verify check the linked capabilities against the sealed library", () => {
+  const CHECK_LINK = "kvfcu/count_member_subaccounts@1";
+
+  /** A sealed read-only count capability with no inputs, whose `subaccount_count` output is an integer. */
+  function countCapability(outputType: "integer" | "string" = "integer"): Artifact {
+    return ArtifactSchema.parse({
+      ...CHECK_SUB,
+      identity: { ...CHECK_SUB.identity, capability: "count_member_subaccounts", version: "1.0.0" },
+      contract: {
+        inputs: [],
+        outputs: [{ name: "subaccount_count", type: outputType, description: "How many sub-accounts", sensitivity: "financial" }],
+        outcomes: [],
+        effect: "read_only",
+      },
+    });
+  }
+
+  /** Seals `art` straight into the root's artifact library (what an earlier `candidate seal` would have left). */
+  async function sealIntoLibrary(r: string, art: Artifact): Promise<void> {
+    const store = new FileCandidateStore<CandidateFiles, CandidateDecision>(
+      {
+        files: { "runs.json": CandidateRuns, "candidate.json": ArtifactSchema, "issues.json": CandidateIssues },
+        decision: CandidateDecision,
+      },
+      { dir: join(r, "library", "candidates"), artifactsDir: join(r, "library", "artifacts"), tmpDir: join(r, "state", "var", "tmp") },
+      new SteppingClock("2026-10-01T09:00:00.000Z"),
+    );
+    const sealed = await store.seal(`kvfcu/${art.identity.capability}/cand_2026-10-01_0000000001`, "1.0.0", "op_017", art, {});
+    if (!sealed.ok) throw new Error(`test setup: sealing ${art.identity.capability} failed`);
+  }
+
+  /** A commits `sign_in` candidate with every review decision made and a count_diff link to `CHECK_LINK`. */
+  async function readyCandidate(countOutput = "subaccount_count") {
+    const r = await commitsRoot();
+    const policy = await sealedPolicyStore([GLOBAL_LAYER, SEAL_APP_LAYER, TENANT_LAYER]);
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "irreversible");
+    expect((await cli(r, "op_022", ["candidate", "second-look", id, "click_login", "--agree"])).code).toBe(EXIT.ok);
+    const link = JSON.stringify({ capability: CHECK_LINK, mode: "count_diff", inputs: {}, count_output: countOutput });
+    expect((await cli(r, "op_017", ["candidate", "decide", id, "recovery", "recovery.reconciliation", link])).code).toBe(EXIT.ok);
+    return { r, policy, id };
+  }
+
+  test("seal refuses a task whose check capability is not sealed, in plain words naming the link", async () => {
+    const { r, policy, id } = await readyCandidate();
+    const got = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy);
+    expect(got.code).toBe(EXIT.invalid);
+    expect(got.stderr).toContain(CHECK_LINK);
+    expect(got.stderr).toContain("is not sealed; seal the check capability first");
+  });
+
+  test("once the check capability is sealed, the same candidate seals, and verify passes", async () => {
+    const { r, policy, id } = await readyCandidate();
+    await sealIntoLibrary(r, countCapability());
+    const sealed = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0", "--json"], policy);
+    expect(sealed.code).toBe(EXIT.ok);
+    const verified = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    expect(verified.code).toBe(EXIT.ok);
+    expect((JSON.parse(verified.stdout) as { ok: boolean }).ok).toBe(true);
+  });
+
+  test("seal refuses a count_output the sealed check does not declare, and one that is not an integer", async () => {
+    const wrongName = await readyCandidate("other_count");
+    await sealIntoLibrary(wrongName.r, countCapability());
+    const a = await sealCli(wrongName.r, "op_017", ["candidate", "seal", wrongName.id, "--version", "1.0.0"], wrongName.policy);
+    expect(a.code).toBe(EXIT.invalid);
+    expect(a.stderr).toContain("other_count is not an output of");
+
+    const wrongType = await readyCandidate();
+    await sealIntoLibrary(wrongType.r, countCapability("string"));
+    const b = await sealCli(wrongType.r, "op_017", ["candidate", "seal", wrongType.id, "--version", "1.0.0"], wrongType.policy);
+    expect(b.code).toBe(EXIT.invalid);
+    expect(b.stderr).toContain("must be an integer output");
+  });
+
+  test("verify on a sealed task whose check capability has no sealed version is not valid, and names the link", async () => {
+    const { r, policy, id } = await readyCandidate();
+    await sealIntoLibrary(r, countCapability());
+    expect((await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy)).code).toBe(EXIT.ok);
+    // The check capability's folder vanishes from the library after the task sealed.
+    rmSync(join(r, "library", "artifacts", "kvfcu", "count_member_subaccounts"), { recursive: true, force: true });
+    const got = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    expect(got.code).toBe(EXIT.invalid);
+    const data = JSON.parse(got.stdout) as { ok: boolean; problems: { code: string; message: string }[] };
+    expect(data.ok).toBe(false);
+    expect(data.problems.some((p) => p.code === "reconciliation_not_readonly" && p.message.includes(CHECK_LINK))).toBe(true);
   });
 });

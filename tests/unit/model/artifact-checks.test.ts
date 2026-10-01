@@ -174,6 +174,85 @@ describe("checkArtifact: §19.4 risk and recovery", () => {
   });
 });
 
+describe("checkArtifact: §19.4 the reconciliation check is a sealed capability (owner decisions, 2026-10-01)", () => {
+  const COUNT_LINK = "kvfcu/count_member_subaccounts@1";
+
+  /** The example with a `count_diff` check named `countOutput`. */
+  function countDiffDoc(countOutput = "subaccount_count"): Record<string, unknown> {
+    const doc = clone();
+    (doc.recovery as Record<string, unknown>).reconciliation = {
+      check: { capability: COUNT_LINK, mode: "count_diff", count_output: countOutput, inputs: { member_id: "{input.member_id}" }, not_found_outcomes: [], outputs: {} },
+    };
+    return doc;
+  }
+
+  /** A context where `COUNT_LINK` is `check`, and any other link (the compensation) is a sealed committing capability. */
+  function contextWith(check: ReturnType<NonNullable<ArtifactCheckContext["resolveCapability"]>>): ArtifactCheckContext {
+    return {
+      resolveCapability: (link) => (link === COUNT_LINK ? check : { effect: "commits", inputs: [], outputs: [], session: null }),
+    };
+  }
+  const countShape = (outputTypes?: Record<string, string>) => ({
+    effect: "read_only" as const,
+    inputs: ["member_id"],
+    outputs: ["subaccount_count"],
+    ...(outputTypes === undefined ? {} : { outputTypes }),
+    session: null,
+  });
+  /** Only the reconciliation codes, so unrelated example gaps cannot hide or fake a pass. */
+  const reconCodes = (doc: Record<string, unknown>, context: ArtifactCheckContext, mode: "strict" | "candidate" = "strict") =>
+    checkArtifact(parse(doc), mode, context).filter((p) => p.code.startsWith("reconciliation_"));
+
+  test("a sealed read_only check with an integer count_output has no reconciliation issue", () => {
+    expect(reconCodes(countDiffDoc(), contextWith(countShape({ subaccount_count: "integer" })))).toEqual([]);
+  });
+
+  test("a count_output that is not an output of the check capability is reconciliation_count_shape", () => {
+    const found = reconCodes(countDiffDoc("other"), contextWith(countShape({ subaccount_count: "integer" })));
+    expect(found.map((p) => p.code)).toEqual(["reconciliation_count_shape"]);
+    expect(found[0]?.message).toContain("other");
+  });
+
+  test("a count_output typed string is reconciliation_count_shape", () => {
+    const found = reconCodes(countDiffDoc(), contextWith(countShape({ subaccount_count: "string" })));
+    expect(found.map((p) => p.code)).toEqual(["reconciliation_count_shape"]);
+  });
+
+  test("with no output types known, only the name is checked", () => {
+    expect(reconCodes(countDiffDoc(), contextWith(countShape()))).toEqual([]);
+    expect(reconCodes(countDiffDoc("other"), contextWith(countShape())).map((p) => p.code)).toEqual(["reconciliation_count_shape"]);
+  });
+
+  test("a check capability that is not sealed is an error in strict mode, naming the link and the fix", () => {
+    const found = reconCodes(countDiffDoc(), contextWith(undefined));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ code: "reconciliation_not_readonly", level: "error" });
+    expect(found[0]?.message).toContain(COUNT_LINK);
+    expect(found[0]?.message).toContain("seal the check capability first");
+  });
+
+  test("the same unsealed check is blocking, not an error, in candidate mode", () => {
+    const found = reconCodes(countDiffDoc(), contextWith(undefined), "candidate");
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ code: "reconciliation_not_readonly", level: "blocking" });
+  });
+
+  test("a sealed check that commits keeps the old message", () => {
+    const found = reconCodes(countDiffDoc(), contextWith({ ...countShape({ subaccount_count: "integer" }), effect: "commits" }));
+    expect(found).toHaveLength(1);
+    expect(found[0]?.message).toBe("the reconciliation capability must be read_only");
+  });
+
+  test("a reference-mode check that is not sealed is also refused", () => {
+    const context: ArtifactCheckContext = { resolveCapability: (link) => (link.includes("find_account") ? undefined : { effect: "commits", inputs: [], outputs: [], session: null }) };
+    expect(reconCodes(clone(), context).map((p) => p.code)).toEqual(["reconciliation_not_readonly"]);
+  });
+
+  test("with no resolver at all (a context without resolveCapability), no link check runs", () => {
+    expect(reconCodes(countDiffDoc(), {})).toEqual([]);
+  });
+});
+
 describe("checkArtifact: §19.5, §19.6 portability and policy", () => {
   test("rejects an entry that matches no pattern in runs_on.paths", () => {
     const doc = clone();
@@ -202,6 +281,25 @@ describe("checkArtifact: §19.7 session link", () => {
       resolveCapability: () => ({ effect: "commits", inputs: [], outputs: [], session: null }),
     };
     expect(codesOf(doc, context)).toContain("session_link_invalid");
+  });
+
+  test("rejects a session link whose capability is not sealed at all (real seals now supply the resolver)", () => {
+    const doc = clone();
+    (doc.runs_on as Record<string, unknown>).session = "kvfcu/sign_in@1";
+    const context: ArtifactCheckContext = { resolveCapability: () => undefined };
+    expect(codesOf(doc, context)).toContain("session_link_invalid");
+  });
+
+  test("accepts a session link whose capability is sealed as a session (read_only, no session of its own)", () => {
+    const doc = clone();
+    (doc.runs_on as Record<string, unknown>).session = "kvfcu/sign_in@1";
+    const context: ArtifactCheckContext = {
+      resolveCapability: (link) =>
+        link === "kvfcu/sign_in@1"
+          ? { effect: "read_only", inputs: [], outputs: [], session: null }
+          : { effect: link.includes("close_account") ? "commits" : "read_only", inputs: [], outputs: ["account_number"], session: null },
+    };
+    expect(codesOf(doc, context)).not.toContain("session_link_invalid");
   });
 });
 

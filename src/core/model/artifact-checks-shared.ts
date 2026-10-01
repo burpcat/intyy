@@ -19,6 +19,8 @@ export type CapabilityShape = {
   readonly effect: "read_only" | "commits";
   readonly inputs: readonly string[];
   readonly outputs: readonly string[];
+  /** Each output's value type by name (like `{ subaccount_count: "integer" }`). Omitted: types unknown. */
+  readonly outputTypes?: Readonly<Record<string, string>>;
   readonly session: string | null;
 };
 

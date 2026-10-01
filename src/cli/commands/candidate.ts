@@ -12,6 +12,7 @@ import type { Artifact } from "../../core/model/artifact.js";
 import type { ArtifactCheckContext } from "../../core/model/artifact-checks.js";
 import { CandidateDecision, CandidateDecisionWhat } from "../../core/model/candidate-decision.js";
 import type { CandidateIssue } from "../../core/model/candidate-issues.js";
+import { sealedCapabilityShapes } from "../../core/catalog/capabilities.js";
 import { CandidateId, RunId } from "../../core/model/ids.js";
 import type { HandlerDraft } from "../../core/model/handler-draft.js";
 import { CapabilityName } from "../../core/model/runspec.js";
@@ -130,9 +131,12 @@ function writeDraftsAndFixtures(
  * with `artifact verify`, which runs the same strict check. */
 export async function sealCheckContext(ctx: Ctx, app: string): Promise<ArtifactCheckContext> {
   const policy = await effectivePolicy(ctx, app);
+  // Why: the loader's link checks (section 2 §19.4, §19.7) are synchronous, so read the sealed shapes first.
+  const shapes = await sealedCapabilityShapes(ctx.wiring.candidates);
   return {
     pathAllowed: (pattern) => policy.effective.paths.allow.includes(pattern),
     secretDeclared: (name) => name in policy.effective.secrets,
+    resolveCapability: (link) => shapes.get(link),
   };
 }
 
