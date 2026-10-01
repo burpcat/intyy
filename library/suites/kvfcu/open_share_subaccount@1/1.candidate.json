@@ -2,7 +2,7 @@
   "schema": "intyy.suite/1.0",
   "capability": "kvfcu/open_share_subaccount@1",
   "revision": 1,
-  "reason": "First suite. Three input classes (valid, missing member, member at the sub-account limit), the standard fault matrix on valid, and the supervisor case. The reply_lost profile in the matrix covers a lost commit reply: the count_diff check proves the commit but returns no outputs, so it must end failed outputs_unavailable with commit found_by_check.",
+  "reason": "First suite. Three input classes (valid, missing member, member at the sub-account limit), the standard fault matrix on valid, and the supervisor case. The reply_lost profile in the matrix covers a lost commit reply: the artifact carries a cited reconciliation waiver (no read-only check can count the sub-account rows), so it must end escalated, reconciliation_waived at click_confirm, with commit uncertain. The at_limit member is refused when the form opens, before Confirm, so its commit is not_sent (M05 demo, 2026-10-01).",
   "classes": [
     {
       "id": "valid",
@@ -17,7 +17,7 @@
     {
       "id": "at_limit",
       "inputs": { "member_id": "@members.at_limit", "deposit": "137.00" },
-      "expect": { "status": "business_outcome", "outcome": "limit_exceeded", "commit": "refused" }
+      "expect": { "status": "business_outcome", "outcome": "limit_exceeded", "commit": "not_sent" }
     }
   ],
   "matrix": { "class": "valid", "profiles": "standard" },
@@ -27,7 +27,7 @@
     {
       "id": "supervisor_needed",
       "class": "valid",
-      "faults": [{ "kind": "supervisor_required", "at": "@step:open_subaccount_form" }],
+      "faults": [{ "kind": "supervisor_required", "at": "@step:click_submit" }],
       "expect": { "status": "escalated", "kind": "takeover", "reason": "needs_human_handler", "step": "click_submit" }
     }
   ],
