@@ -2,6 +2,7 @@
 // Follows design section 8 §6.3 (the expected-ending rules), §8.1, and §8.3.
 import type { Verdict } from "../model/batch-report.js";
 import type { ExpectRule } from "../model/faults.js";
+import type { CheckMode } from "../model/artifact/recovery.js";
 import type { CommitState } from "../model/result.js";
 
 /** What a case's result class amounts to (section 8 §8.1): status, plus one detail. `detail` is
@@ -51,17 +52,24 @@ function matchesPlainExpect(rc: ResultClass, expect: ClassExpect): boolean {
 
 /**
  * Translates one fault profile's expected-ending rule into a match against the run's result
- * class (section 8 §6.3's table). `commit` is the run's own reported commit state.
+ * class (section 8 §6.3's table). `commit` is the run's own reported commit state. `checkMode`
+ * is the artifact's reconciliation check mode, `reference` when it has none.
  */
 export function matchesExpectRule(
   rule: ExpectRule,
   rc: ResultClass,
   classExpect: ClassExpect,
   commit: CommitState | null,
+  checkMode: CheckMode = "reference",
 ): boolean {
   if (rule === "recovers") return matchesPlainExpect(rc, classExpect);
   if (rule === "recovers_or_escalates") return matchesPlainExpect(rc, classExpect) || rc.status === "escalated";
   if (rule.startsWith("fails:")) return rc.status === "failed" && rc.detail === rule.slice("fails:".length);
+  if (rule === "reconciles_found" && checkMode === "count_diff") {
+    // Why: a count proves the commit but returns no outputs (owner decisions, 2026-10-01;
+    // section 7 §11.1, "Found, but outputs missing").
+    return rc.status === "failed" && rc.detail === "outputs_unavailable" && commit === "found_by_check";
+  }
   if (rule === "reconciles_found") return rc.status === "success" && commit === "found_by_check";
   // `reconciles_absent`: success, commit confirmed, with an earlier `absent_by_check` attempt
   // already folded into `effect.attempts` by the executor (section 7 §11.3).

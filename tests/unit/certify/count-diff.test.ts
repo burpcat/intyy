@@ -1,0 +1,291 @@
+// Proves certify understands a `count_diff` reconciliation check (owner decisions, 2026-10-01;
+// design section 8 §6.3, §6.4; section 7 §11.1): `reconciles_found` on such an artifact expects
+// failed `outputs_unavailable` with commit `found_by_check` (a count proves the commit but returns
+// no outputs); every other rule and the `reference` mode are unchanged; a commit-step fault case
+// through `runCertifyCase` passes with that ending; and the route map drops the baseline child's
+// earlier requests while the parent's steps keep the right nth. Synthetic values only.
+import { describe, expect, test } from "vitest";
+import { runCertifyCase, type CertifyCaseInput, type CertifyDeps } from "../../../src/core/certify/runner.js";
+import { buildRouteMap } from "../../../src/core/certify/route-map.js";
+import { matchesExpectRule, type ResultClass } from "../../../src/core/certify/verdicts.js";
+import { Artifact } from "../../../src/core/model/artifact.js";
+import { BatchReport } from "../../../src/core/model/batch-report.js";
+import type { ExpectRule, FaultProfile } from "../../../src/core/model/faults.js";
+import type { SuiteClass } from "../../../src/core/model/suite.js";
+import type { TestInstance } from "../../../src/core/model/testdata.js";
+import type { CommitState } from "../../../src/core/model/result.js";
+import { FakeHarness } from "../../../src/fakes/harness.js";
+import type { FakeElement, FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import type { Ids } from "../../../src/ports/clock.js";
+import type { FaultLogEntry } from "../../../src/ports/harness.js";
+import {
+  ACCOUNT_NUMBER,
+  CHECK_SUB,
+  MEMBER_FOUND,
+  OPEN_SUB,
+  TENANT,
+  buildHarness,
+  fixtureSite,
+} from "../replay/executor-harness.js";
+import { idsNotifying, OPEN_SUB_ROUTE_FOR, RouteMappingHarness } from "./route-mapping-harness.js";
+
+const SUCCESS: ResultClass = { status: "success", detail: null };
+const FAILED_NO_OUTPUTS: ResultClass = { status: "failed", detail: "outputs_unavailable" };
+const FAILED_APP_ERROR: ResultClass = { status: "failed", detail: "app_error" };
+const ESCALATED: ResultClass = { status: "escalated", detail: "takeover/stuck/click_confirm" };
+const successExpect = { status: "success" };
+
+describe("matchesExpectRule: reconciles_found with a count_diff check", () => {
+  test("matches failed outputs_unavailable with commit found_by_check", () => {
+    expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, "found_by_check", "count_diff")).toBe(true);
+  });
+
+  test("does not match success with found_by_check", () => {
+    expect(matchesExpectRule("reconciles_found", SUCCESS, successExpect, "found_by_check", "count_diff")).toBe(false);
+  });
+
+  test("does not match failed outputs_unavailable with any other commit state", () => {
+    for (const commit of ["uncertain", "confirmed", "absent_by_check", null] as const) {
+      expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, commit, "count_diff")).toBe(false);
+    }
+  });
+
+  test("does not match another failure code, even with found_by_check", () => {
+    expect(matchesExpectRule("reconciles_found", FAILED_APP_ERROR, successExpect, "found_by_check", "count_diff")).toBe(false);
+  });
+});
+
+describe("matchesExpectRule: reconciles_found in reference mode is unchanged", () => {
+  test.each([[undefined], ["reference" as const]])("check mode %s: success with found_by_check matches; the failed ending does not", (mode) => {
+    expect(matchesExpectRule("reconciles_found", SUCCESS, successExpect, "found_by_check", mode)).toBe(true);
+    expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, "found_by_check", mode)).toBe(false);
+  });
+});
+
+describe("matchesExpectRule: the other rules answer the same in either mode", () => {
+  const rules: ExpectRule[] = ["recovers", "recovers_or_escalates", "fails:app_error", "reconciles_absent"];
+  const classes: ResultClass[] = [SUCCESS, FAILED_NO_OUTPUTS, FAILED_APP_ERROR, ESCALATED];
+  const commits: (CommitState | null)[] = [null, "confirmed", "found_by_check", "uncertain"];
+
+  test.each(rules)("%s", (rule) => {
+    for (const rc of classes) {
+      for (const commit of commits) {
+        const reference = matchesExpectRule(rule, rc, successExpect, commit, "reference");
+        expect(matchesExpectRule(rule, rc, successExpect, commit, "count_diff")).toBe(reference);
+        expect(matchesExpectRule(rule, rc, successExpect, commit)).toBe(reference);
+      }
+    }
+  });
+});
+
+describe("buildRouteMap with a count_diff baseline child before the parent's first action", () => {
+  const entry = (time: string, route: string, nth: number): FaultLogEntry => ({
+    seq: nth,
+    time,
+    method: route.split(" ")[0] ?? "GET",
+    path: route.split(" ")[1] ?? "/",
+    route_count: nth,
+    decision: "pass",
+    fault_kind: null,
+    block_point: "none",
+    style: null,
+    named_id: null,
+    delay_ms: 0,
+  });
+
+  test("the child's earlier requests are dropped; the parent's steps keep the counters that include them", () => {
+    // The baseline child signs in and reads first: two requests, nth 1, before any parent action.
+    const actions = [
+      { step: "session:click_login", at: "2026-01-15T09:00:10.000Z" },
+      { step: "click_search", at: "2026-01-15T09:00:11.000Z" },
+      { step: "click_confirm", at: "2026-01-15T09:00:12.000Z" },
+    ];
+    const log = [
+      entry("2026-01-15T09:00:01.000Z", "POST /login", 1),
+      entry("2026-01-15T09:00:02.000Z", "GET /subaccounts", 1),
+      entry("2026-01-15T09:00:10.200Z", "POST /login", 2),
+      entry("2026-01-15T09:00:11.200Z", "POST /search", 1),
+      entry("2026-01-15T09:00:12.200Z", "POST /confirm", 1),
+    ];
+    const map = buildRouteMap(actions, log);
+    expect([...map.keys()]).toEqual(["session:click_login", "click_search", "click_confirm"]);
+    expect(map.get("session:click_login")).toEqual({ route: "POST /login", nth: 2 });
+    expect(map.get("click_search")).toEqual({ route: "POST /search", nth: 1 });
+    expect(map.get("click_confirm")).toEqual({ route: "POST /confirm", nth: 1 });
+  });
+
+  test("a baseline child's request on a route the parent shares does not become the parent's first", () => {
+    const actions = [{ step: "click_search", at: "2026-01-15T09:00:11.000Z" }];
+    const log = [
+      entry("2026-01-15T09:00:02.000Z", "POST /search", 1),
+      entry("2026-01-15T09:00:11.200Z", "POST /search", 2),
+    ];
+    expect(buildRouteMap(actions, log).get("click_search")).toEqual({ route: "POST /search", nth: 2 });
+  });
+});
+
+// ---- runner level: a lost Confirm reply on a count_diff artifact -------------------------------
+
+/** A count read: integer output `subaccount_count`, no outcomes, only `check_shown`. */
+const COUNT_SUB = Artifact.parse({
+  ...CHECK_SUB,
+  identity: { ...CHECK_SUB.identity, capability: "count_sub" },
+  contract: {
+    inputs: CHECK_SUB.contract.inputs,
+    outputs: [{ name: "subaccount_count", type: "integer", description: "How many sub-accounts the member has", sensitivity: "financial" }],
+    outcomes: [],
+    effect: "read_only",
+  },
+  targets: [{ id: "subaccount_count_display", description: "The sub-account count", clues: { role: "generic", label: "Sub-account count" } }],
+  conditions: CHECK_SUB.conditions.filter((c) => c.id === "check_shown"),
+  steps: [
+    {
+      id: "read_count",
+      intent: "Read the sub-account count",
+      action: { type: "read", target: "subaccount_count_display", source: "text", output: "subaccount_count" },
+      precondition: "check_shown",
+      checkpoint: "check_shown",
+      outcomes: [],
+      risk: "idempotent",
+      timeout_ms: 5000,
+    },
+  ],
+});
+
+/** `open_sub` (plus a `notes` input so commit truth can run) with a `count_diff` check. */
+const OPEN_SUB_COUNT = Artifact.parse({
+  ...OPEN_SUB,
+  identity: { ...OPEN_SUB.identity, capability: "open_sub_count" },
+  contract: {
+    ...OPEN_SUB.contract,
+    inputs: [
+      ...OPEN_SUB.contract.inputs,
+      { name: "notes", type: "string", description: "Free text", required: false, sensitivity: "none" },
+    ],
+  },
+  recovery: {
+    commit_point: "click_confirm",
+    reconciliation: {
+      check: {
+        capability: "kvfcu/count_sub@1",
+        mode: "count_diff",
+        count_output: "subaccount_count",
+        inputs: { member_id: "{input.member_id}" },
+        not_found_outcomes: [],
+        outputs: {},
+      },
+    },
+  },
+});
+
+const VALID_CLASS: SuiteClass = {
+  id: "valid",
+  inputs: { member_id: "@members.valid", notes: "attempt {system.run_id}" },
+  expect: { status: "success" },
+};
+const INSTANCE: TestInstance = { variant: "keystone", strip_semantics: false, drop_labels: 0, label_seed: "0" };
+const COMMIT_PROFILE: FaultProfile = {
+  id: "reply_lost",
+  kind: "drop_after_confirm",
+  at: "@commit_point",
+  expect_commit: "reconciles_found",
+  expect_window: "recovers",
+};
+
+/**
+ * The fixture flow plus a counting `/check`. Confirm works on the first visit to `/result` (the
+ * clean baseline run) and does nothing after (the lost reply). The n-th visit to `/check` shows
+ * `counts[n]`: the baseline run's own baseline child, then the case run's baseline child, then its
+ * check child.
+ */
+function siteCounting(counts: readonly number[]): FakeSite {
+  const good = fixtureSite();
+  const stuck = fixtureSite({ confirm: "stuck" });
+  let results = 0;
+  let checks = 0;
+  return {
+    ...good,
+    screens: {
+      ...good.screens,
+      get "/result"() {
+        results += 1;
+        return results === 1 ? good.screens["/result"] : stuck.screens["/result"];
+      },
+      get "/check"() {
+        const n = counts[Math.min(checks, counts.length - 1)] ?? 0;
+        checks += 1;
+        const shown: FakeElement = { id: "subaccount_count_display", role: "generic", roleGroup: "container", label: "Sub-account count", text: String(n) };
+        return { elements: [shown] };
+      },
+    },
+  } as FakeSite;
+}
+
+async function setup(site: FakeSite) {
+  const h = await buildHarness(site);
+  for (const [name, art, n] of [["count_sub", COUNT_SUB, "1000000031"], ["open_sub_count", OPEN_SUB_COUNT, "1000000032"]] as const) {
+    const sealed = await h.deps.artifacts.seal(`kvfcu/${name}/cand_2026-01-15_${n}`, "1.0.0", "op_017", art, {});
+    if (!sealed.ok) throw new Error(`test setup: ${name} seal failed`);
+  }
+  const harness = new RouteMappingHarness(new FakeHarness(), h.deps.evidence, TENANT, OPEN_SUB_ROUTE_FOR);
+  const notifying = idsNotifying(h.deps.ids, harness);
+  // Why: the oracle answers by the attempt's exact notes text, which holds the run ID.
+  const ids: Ids = {
+    ...notifying,
+    runId: () => {
+      const id = notifying.runId();
+      harness.seedOracle(`attempt ${id}`, {
+        exists: true,
+        count: 1,
+        accounts: [{ account_number: ACCOUNT_NUMBER, status: "OPEN" as const, confirmation_number: "C000000" }],
+      });
+      return id;
+    },
+  };
+  const deps: CertifyDeps = {
+    evidence: h.deps.evidence,
+    clock: h.deps.clock,
+    ids,
+    secrets: h.deps.secrets,
+    surface: h.deps.surface,
+    artifacts: h.deps.artifacts,
+    requestIndex: h.deps.requestIndex,
+    harness,
+    policy: h.policy,
+    settings: h.settings,
+    engineVersion: "0.1.0",
+  };
+  return { deps, ids, harness };
+}
+
+function inputFor(batchId: string): CertifyCaseInput {
+  return {
+    batchId,
+    tenant: TENANT,
+    app: "kvfcu",
+    capability: "open_sub_count",
+    major: 1,
+    appVersion: "8.4",
+    staff: "op_017",
+    className: "valid",
+    selection: { kind: "profile", profile: COMMIT_PROFILE },
+    at: undefined,
+    classes: [VALID_CLASS],
+    pools: { "members.valid": [MEMBER_FOUND] },
+    instance: INSTANCE,
+  };
+}
+
+describe("runCertifyCase on a count_diff artifact (M05 gate row: count_diff found)", () => {
+  test("a lost Confirm reply: the count rose by one, so the case ends failed outputs_unavailable, found_by_check, and passes", async () => {
+    const { deps, ids } = await setup(siteCounting([2, 2, 3]));
+    const result = await runCertifyCase(inputFor(ids.batchId()), deps);
+    if (!result.ok) throw new Error(`expected ok, got ${result.failure}`);
+    const c = result.value.report.cases[0];
+    expect(BatchReport.safeParse(result.value.report).success).toBe(true);
+    expect(c?.result).toEqual({ status: "failed", detail: "outputs_unavailable" });
+    expect(c?.truth.commit?.match).not.toBe(false);
+    expect(c?.verdict).toBe("pass");
+    expect(result.value.report.gate.passed).toBe(true);
+  });
+});

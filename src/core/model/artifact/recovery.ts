@@ -14,6 +14,9 @@ const ValueMap = z.record(z.string(), z.string().min(1));
  */
 export const CheckMode = z.enum(["reference", "count_diff"]);
 
+/** One check mode. */
+export type CheckMode = z.infer<typeof CheckMode>;
+
 /**
  * `recovery.reconciliation.check` (section 2 §16.2): a read-only capability that tells whether
  * the commit worked. `mode` defaults to `reference`, so older files load unchanged.

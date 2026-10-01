@@ -595,7 +595,13 @@ export async function runFaultCase(
       : waived
         ? matchesWaivedEnding(resultClass, commit, commitStepId)
         : selection.kind === "profile"
-          ? matchesExpectRule(expectRuleFor(selection.profile, at, commitStepId), resultClass, cls.expect, commit)
+          ? matchesExpectRule(
+              expectRuleFor(selection.profile, at, commitStepId),
+              resultClass,
+              cls.expect,
+              commit,
+              artifact.recovery?.reconciliation?.check?.mode,
+            )
           : matchesExtraExpect(resultClass, selection.extra.expect);
   // Section 8 §8.3: help is expected for a profile that may escalate, `unknown_popup` (the
   // reviewer), a waived ending, and an extra case that expects an escalation (the supervisor case).
