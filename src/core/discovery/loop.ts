@@ -413,7 +413,7 @@ async function oneTurn(
       return null;
     }
     case "read":
-      return doRead(d, s, view, c);
+      return doRead(d, s, o, view, c);
     default:
       return act(d, s, o, view, c, shot);
   }
@@ -457,7 +457,13 @@ async function stuck(
 }
 
 /** Plays `read` (section 6 §9.3): converts, learns the value, and replies with its reference. */
-async function doRead(d: LoopDeps, s: State, view: ScreenView, c: ReadCall): Promise<End | null> {
+async function doRead(
+  d: LoopDeps,
+  s: State,
+  o: Observation,
+  view: ScreenView,
+  c: ReadCall,
+): Promise<End | null> {
   s.actions += 1;
   const el = view.elements.get(c.element);
   const out = d.spec.outputs.find((x) => x.name === c.output);
@@ -479,6 +485,45 @@ async function doRead(d: LoopDeps, s: State, view: ScreenView, c: ReadCall): Pro
     label: "pii",
     type: out.type === "money" ? "money" : out.type === "date" ? "date" : "text",
     kind: out.type === "money" ? "money" : "account",
+  });
+  // Why: section 6 §14.7, each `read` becomes a `read` step, and a step needs a target, so the
+  // read control's fingerprint is captured as `act()` does (section 6 §13.1). It comes after
+  // `addKnown` above, so the value in the control's text is masked as `{output.<name>}`. The
+  // action line takes the seq this capture named its crop file with, so it goes first.
+  const fp = await captureFingerprint(
+    d.eyes,
+    d.redactor,
+    d.folder,
+    o,
+    el.ref,
+    { seq: d.log.nextSeq, id: c.element, label: view.labels.get(c.element) },
+    d.signal,
+  );
+  if (fp === "write_failed") return { status: "failed", code: "evidence_write_failed" };
+  await d.log.append({
+    event: "action",
+    step,
+    by: "llm",
+    data: {
+      type: "read",
+      target: c.element,
+      value: null,
+      format: c.format ?? null,
+      option: null,
+      checked: null,
+      key: null,
+      output: c.output,
+      source: c.source,
+      pattern: c.pattern ?? null,
+      result: "ok",
+      dispatched: false,
+      transport: null,
+      tag: c.meta.tag,
+      reason: c.meta.reason,
+      expected: c.meta.expected,
+      corrects: c.meta.corrects ?? null,
+      fingerprint: fp,
+    },
   });
   await d.log.append({
     event: "extract",

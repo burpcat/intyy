@@ -24,6 +24,10 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*\\/[a-z][a-z0-9_]*$"
         },
+        "spec": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*\\/[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)?$"
+        },
         "status": {
           "type": "string",
           "enum": [

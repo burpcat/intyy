@@ -1,11 +1,8 @@
 // Recorder step 7 (section 6 §14.2, §14.7): `contract.outputs`, and each run's `extract` lines.
 //
-// Known limit: building the `read` step itself (its target and checkpoint) is not done here.
-// Discovery's `read` tool never calls `captureFingerprint` for the read element (only `act()`
-// does, for `click`/`type`/`select`/`set_checked`/`press`/`navigate`/`scroll`), so the log holds
-// no clues for it. `sign_in`, this milestone's target, declares no outputs, so it does not need
-// this yet. Recommended fix for the gap: have `doRead` in `src/core/discovery/loop.ts` capture a
-// fingerprint too, the same way `act()` does.
+// The `read` step itself is built in `steps.ts` from the `read` action line that discovery's
+// `doRead` logs (with the control's fingerprint). Runs recorded before that line existed have no
+// such step; they need a re-run (docs/decisions.md, M05).
 import type { ContractOutput } from "../model/artifact/contract.js";
 import type { SpecOutput, ValueType } from "../model/runspec.js";
 import { parseLine } from "./log-lines.js";

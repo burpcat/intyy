@@ -73,6 +73,7 @@ function toHandlerAction(a: TaggedAction, targetId: string | null): HandlerActio
     }
     case "navigate":
     case "scroll":
+    case "read":
       return null;
   }
 }

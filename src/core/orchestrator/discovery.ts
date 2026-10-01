@@ -46,6 +46,10 @@ export type DiscoveryInput = {
   /** The run's ID. The caller makes it first, because the instance lock names its owner. */
   runId: string;
   spec: RunSpec;
+  /** The spec file's name, `<app>/<name>` (`kvfcu/open_share_subaccount.missing`), written to
+   * `run.json` so the recorder reads the right spec back (section 6 §14.8). Defaults to
+   * `<app>/<capability>`, the plain spec file. */
+  specName?: string;
   tenant: string;
   /** The operator who started it. */
   staff: string;
@@ -242,6 +246,7 @@ async function finish(
       tenant: input.tenant,
       kind: "discovery",
       capability: `${input.spec.app}/${input.spec.capability}`,
+      spec: fact(input.specName ?? `${input.spec.app}/${input.spec.capability}`),
       status: facts.status,
       code: facts.code,
       started_at: fact(facts.startedAt),

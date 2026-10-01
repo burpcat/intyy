@@ -73,7 +73,11 @@ async function loadOneRun(
 ): Promise<Outcome<RunLines, "not_found" | "invalid">> {
   const summary = await readRunSummary(deps.evidence, ref.tenant, ref.run_id);
   if (!summary.ok) return summary;
-  const [app, name] = summary.value.capability.split("/");
+  // Why `spec` first: a negative run shares its capability with the positive run, so only the
+  // spec file's own name finds its `expected_outcome` (section 6 §14.8). A run from before the
+  // field existed falls back to the plain capability spec, as it always did.
+  const specName = (summary.value.kind === "discovery" ? summary.value.spec : undefined) ?? summary.value.capability;
+  const [app, name] = specName.split("/");
   if (app === undefined || name === undefined) {
     return fail("invalid", `run ${ref.run_id}: run.json names no capability`);
   }

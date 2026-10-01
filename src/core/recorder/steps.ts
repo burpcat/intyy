@@ -38,6 +38,7 @@ function stemOf(targetId: string): string {
 function stepIdFor(a: TaggedAction, targetId: string | null): string {
   if (a.tool === "navigate") return `navigate_${slugify(a.afterLocation ?? a.beforeLocation)}`;
   if (a.tool === "press") return `press_${slugify(a.key ?? "key")}`;
+  if (a.tool === "read") return `read_${a.output ?? "value"}`;
   if (targetId === null) throw new Error(`${a.tool} step needs a target`);
   return `${a.tool}_${stemOf(targetId)}`;
 }
@@ -67,11 +68,34 @@ function actionShapeFor(a: TaggedAction, targetId: string | null): StepAction {
       return { type: "set_checked", target: must(targetId), checked: a.checked === true };
     case "press":
       return { type: "press", key: a.key ?? "" };
+    case "read": {
+      const pattern = readPattern(a);
+      return {
+        type: "read",
+        target: must(targetId),
+        source: a.source ?? "text",
+        output: a.output ?? "",
+        ...(pattern === null ? {} : { pattern }),
+        ...(a.format === null ? {} : { format: a.format }),
+      };
+    }
     case "navigate":
       return { type: "navigate", location: toPathPattern(a.afterLocation ?? a.beforeLocation) };
     default:
       throw new Error(`${a.tool} is not a supported step action`);
   }
+}
+
+/** A `read` step's pattern (section 6 §14.7): the LLM's own, else drafted from the control's
+ * masked text, with the output reference turned into `*`. `null` when the text is only the
+ * reference (the whole text is the value, so no pattern is needed), or holds no reference. */
+function readPattern(a: TaggedAction): string | null {
+  if (a.pattern !== null && a.pattern !== undefined) return a.pattern;
+  const text = a.fingerprint?.text ?? null;
+  const ref = `{output.${a.output ?? ""}}`;
+  if (a.source !== "text" || text === null || !text.includes(ref)) return null;
+  const drafted = text.replace(ref, "*").trim();
+  return drafted === "*" ? null : drafted;
 }
 
 /** Milliseconds between an action and the next observation, or `null` when there is none. */
@@ -105,6 +129,8 @@ function hasRequiredValue(a: TaggedAction): boolean {
       return typeof a.checked === "boolean";
     case "press":
       return typeof a.key === "string";
+    case "read":
+      return typeof a.output === "string" && typeof a.source === "string";
     default:
       return true;
   }
@@ -306,6 +332,7 @@ export function buildSteps(
     usedStepIds.add(stepId);
 
     const isFill = FILL_TOOLS.has(a.tool);
+    const isRead = a.tool === "read";
     // Why no separate "first step" case: the owner decision (docs/decisions.md, M04) only swaps
     // `entry` for the observed location; `beforeLocation` already is that location for every
     // step, including the first. With no prior fill on this page, `fillsSincePageChange` is
@@ -313,7 +340,9 @@ export function buildSteps(
     // Why the target-visible leaf on click/press too (section 6 §14.5): its "screen condition"
     // is the same as any other step's, location plus the target visible; `press` has no target
     // to add (its action names a key, not a control).
-    const precondition: NestedLeaf = isFill
+    // Why a read has the screen condition too (section 6 §14.5's table): it changes nothing, so
+    // it needs no earlier fill's checkpoint.
+    const precondition: NestedLeaf = isFill || isRead
       ? allOf([locationCheck(toPathPattern(a.beforeLocation)), elementVisibleCheck(must(targetId))])
       : allOf([
           locationCheck(toPathPattern(a.beforeLocation)),
@@ -328,7 +357,13 @@ export function buildSteps(
 
     const afterLocation = a.afterLocation ?? a.beforeLocation;
     let checkpoint: NestedLeaf;
-    if (a.tool === "type") {
+    if (isRead) {
+      // Why: section 6 §14.5, a `read` checkpoint is "same as its precondition". It is true
+      // before the read too, so the "false before" rule skips it below. The run's `done.proof`
+      // then adds nothing here: it points at the value just read, and an output reference
+      // becomes `*`, which proves nothing (section 6 §14.5, "Keeping conditions stable").
+      checkpoint = precondition;
+    } else if (a.tool === "type") {
       checkpoint = fieldValueCheck(must(targetId), a.value ?? "", a.format ?? undefined);
     } else if (a.tool === "select") {
       checkpoint = fieldValueCheck(must(targetId), a.option ?? "");
@@ -354,15 +389,18 @@ export function buildSteps(
       `${stepId}_checkpoint`,
       `After ${stepId.replace(/_/g, " ")}.`,
     );
-    checkFalseBefore(a, checkpoint, checkpointId, stepId, evalCtx, snapshots, issues);
+    if (!isRead) checkFalseBefore(a, checkpoint, checkpointId, stepId, evalCtx, snapshots, issues);
     if (isFill) fillsSincePageChange.push(checkpointId);
 
-    const timeoutMs = draftTimeoutMs(isFill ? "fill" : "request", observedMs(a));
+    const timeoutMs = draftTimeoutMs(isFill || isRead ? "fill" : "request", observedMs(a));
     // Section 6 §14.9: the draft is the operator's approval hint when present, else the rules'
     // class from the gate line that let this action run. With neither, when unsure assume the
     // worst (section 4 §2.3) — never a silent lower default — and flag it for review.
     let risk: RiskKind;
-    if (a.riskHint !== null) risk = a.riskHint;
+    // Why: a read sends nothing, so it never passes the gate and has no gate line; it is
+    // `idempotent` (section 2 §15.1), safe to repeat.
+    if (isRead) risk = "idempotent";
+    else if (a.riskHint !== null) risk = a.riskHint;
     else if (a.gateRisk !== null) risk = a.gateRisk;
     else {
       risk = "irreversible";
@@ -373,7 +411,10 @@ export function buildSteps(
         message: `${stepId} has no approval hint and no gate line to draft its risk from; drafted irreversible.`,
       });
     }
-    if (a.gateRisk !== null) gateRiskByStepId.set(stepId, a.gateRisk);
+    // Why a read's rules' class is `idempotent` too: with none set, `applyRiskDecisions` would
+    // assume `irreversible` and block the step for a second look it can never need.
+    if (isRead) gateRiskByStepId.set(stepId, "idempotent");
+    else if (a.gateRisk !== null) gateRiskByStepId.set(stepId, a.gateRisk);
     if (a.riskHint !== null) riskHintByStepId.set(stepId, a.riskHintBy);
 
     steps.push({

@@ -100,6 +100,7 @@ export const registerDiscover: Register = (program: Command, ctxOf) => {
             {
               runId,
               spec,
+              specName: `${name.app}/${name.name}`,
               tenant: ctx.tenant,
               staff,
               policy,

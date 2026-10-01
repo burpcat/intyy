@@ -30,6 +30,11 @@ export type CollectedAction = {
   checked: boolean | null | undefined;
   /** The pressed key, for `press`. Same absent-on-old-logs rule. */
   key: string | null | undefined;
+  /** For `read`: the output it fills, where it reads (`text` or `value`), and the LLM's own
+   * pattern. `null` or absent for every other tool (absent too in a hand-built action). */
+  output?: string | null | undefined;
+  source?: "text" | "value" | null | undefined;
+  pattern?: string | null | undefined;
   result: "ok" | "failed";
   dispatched: boolean | "unknown";
   /** The tag the LLM gave at action time (section 6 §12.1). */
@@ -108,6 +113,9 @@ export function collectActions(runId: string, rawLines: readonly unknown[]): Col
         option: line.data.option,
         checked: line.data.checked,
         key: line.data.key,
+        output: line.data.output ?? null,
+        source: line.data.source ?? null,
+        pattern: line.data.pattern ?? null,
         result: line.data.result,
         dispatched: line.data.dispatched,
         tag: line.data.tag,

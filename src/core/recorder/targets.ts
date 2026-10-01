@@ -55,7 +55,11 @@ function wordBase(text: string): string {
 /** One collected fingerprint clue, cleaned of mask tokens, or `null` if it was captured null or
  * left nothing behind. */
 function cleanClue(raw: string | null): string | null {
-  return raw === null ? null : stripMaskTokens(raw);
+  // Why: section 6 §14.5, "Keeping conditions stable". An output reference stands for a value
+  // that changes every run, so a clue holding one (a `read` control's own text) would never
+  // match at replay. Drop it; the control keeps its role, path, and other clues.
+  if (raw === null || raw.includes("{output.")) return null;
+  return stripMaskTokens(raw);
 }
 
 /** One kept action's control, as the fingerprint alone can describe it (section 6 §13.1). */

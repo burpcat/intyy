@@ -50,6 +50,9 @@ export const ActionTool = z.enum([
   "press",
   "navigate",
   "scroll",
+  // Why: section 6 §14.7, "each `read` becomes a `read` step". The loop logs it as an `action`
+  // line (tool `read`) so it carries a fingerprint and a tag like every other kept action.
+  "read",
 ]);
 
 /** One screen tool. */
@@ -76,6 +79,11 @@ const ActionData = z
     checked: z.boolean().nullable().optional(),
     /** The pressed key, for `press`. Same absent-on-old-logs rule as `option`. */
     key: z.string().nullable().optional(),
+    /** The output a `read` fills, its `source`, and the LLM's own `pattern`. Only a `read` line
+     * carries them; absent on every other tool's line and on a log from before M05's fix. */
+    output: z.string().nullable().optional(),
+    source: z.enum(["text", "value"]).nullable().optional(),
+    pattern: z.string().nullable().optional(),
     result: z.enum(["ok", "failed"]),
     dispatched: z.union([z.boolean(), z.literal("unknown")]),
     transport: z.string().nullable(),

@@ -56,6 +56,11 @@ const DiscoveryRunJson = z
     tenant: TenantId,
     kind: z.literal("discovery"),
     capability: AppCapabilityName,
+    /** The spec file this run ran, `<app>/<name>`, where `name` may add a variant suffix (`kvfcu/
+     * open_share_subaccount.missing`). A negative run shares its capability with the positive
+     * one, so `capability` alone cannot name its spec (section 6 §14.8). Optional: runs written
+     * before this field have none. */
+    spec: z.string().regex(/^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/).optional(),
     status: RunStatus,
     code: z.string().min(1).nullable(),
     started_at: z.iso.datetime(),

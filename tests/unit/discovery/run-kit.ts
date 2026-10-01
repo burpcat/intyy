@@ -256,6 +256,8 @@ export async function run(opts: {
   clock?: Clock;
   /** A secrets port, instead of the map built from `secrets`. */
   secretsPort?: Secrets;
+  /** The spec file's name written to `run.json`; the run's own default is `<app>/<capability>`. */
+  specName?: string;
   /** The run's own signal (section 6 §10.4: an abort ends the run). */
   signal?: AbortSignal;
 }): Promise<Ran> {
@@ -293,6 +295,7 @@ export async function run(opts: {
     {
       runId: ids.runId(),
       spec: opts.spec ?? SIGN_IN,
+      ...(opts.specName === undefined ? {} : { specName: opts.specName }),
       tenant: "keystone",
       staff: "op_017",
       policy: testPolicy(),

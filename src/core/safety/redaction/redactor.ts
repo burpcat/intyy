@@ -56,6 +56,9 @@ const FACT_SHAPES = [
   // A prompt version, like `discovery@1.1` (section 6 §11.4; the RunSpec `prompt` pattern).
   // Why a fact: the email detector would turn `discovery@1.1` into `[email#1]` in `run_start`.
   /^discovery@\d+\.\d+$/,
+  // A run spec's name, like `kvfcu/open_share_subaccount.missing` (`run.json`'s `spec`, section 6
+  // §14.8). Why a fact: the dotted variant could look like a domain name to the masking rules.
+  /^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/,
 ];
 
 /**
