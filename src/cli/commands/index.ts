@@ -20,6 +20,7 @@ import { registerSpec } from "./spec.js";
 import { registerStaff } from "./staff.js";
 import { registerSuite } from "./suite.js";
 import { registerTestdata } from "./testdata.js";
+import { registerJev, registerThresholds } from "./thresholds.js";
 
 /** The real command list. `main.ts` passes it to `run`. */
 export const commands: readonly Register[] = [
@@ -31,6 +32,7 @@ export const commands: readonly Register[] = [
   registerEvidence,
   registerFaults,
   registerFixture,
+  registerJev,
   registerOperator,
   registerPack,
   registerPolicy,
@@ -42,4 +44,5 @@ export const commands: readonly Register[] = [
   registerStaff,
   registerSuite,
   registerTestdata,
+  registerThresholds,
 ];

@@ -55,7 +55,7 @@ Trouble that plain code cannot sort goes to jev, then to a one-step reviewer, be
 ## Tasks, in order
 
 - [ ] 1. Stop. Ask the owner for jev's official SDK docs and key. Write the adapter only from those docs.
-- [ ] 2. Write the table fakes first. Write the jev path tests: each bucket, each threshold edge, timeout, bad output.
+- [x] 2. Write the table fakes first. Write the jev path tests: each bucket, each threshold edge, timeout, bad output.
 - [ ] 3. Write the jev adapter and the threshold loader.
 - [ ] 4. Write the reviewer adapter. Test: allowed action, blocked action, give up, no landing.
 - [ ] 5. Wire rungs 2 and 3 into the ladder. Test that helpers never act while the window is closed.

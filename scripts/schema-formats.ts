@@ -31,6 +31,7 @@ import { Settings } from "../src/core/model/settings.js";
 import { StaffFile } from "../src/core/model/staff.js";
 import { IndexLine } from "../src/core/model/store-index.js";
 import { Suite } from "../src/core/model/suite.js";
+import { Thresholds } from "../src/core/model/thresholds.js";
 import { Testdata } from "../src/core/model/testdata.js";
 
 /** Every file format, by its schema name (its `schema` literal, with `/` written as `-`). */
@@ -67,6 +68,7 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.faults-1.0": Faults,
   "intyy.batch_plan-1.0": BatchPlan,
   "intyy.batch_report-1.0": BatchReport,
+  "intyy.thresholds-1.0": Thresholds,
   "intyy.jev.step-1.0": JevTroubleInput,
   "intyy.jev.reconcile-1.0": JevReconcileInput,
   "intyy.reviewer.step-1.0": ReviewerInput,

@@ -22,7 +22,15 @@ import { CandidateRuns } from "../core/model/candidate-runs.js";
 import type { Config } from "../core/model/config.js";
 import type { Faults } from "../core/model/faults.js";
 import { HandlerDraft } from "../core/model/handler-draft.js";
-import { faultsKind, packKind, policyKind, settingsKind, suiteKind, testdataKind } from "../core/model/kinds.js";
+import {
+  faultsKind,
+  packKind,
+  policyKind,
+  settingsKind,
+  suiteKind,
+  testdataKind,
+  thresholdsKind,
+} from "../core/model/kinds.js";
 import type { Pack } from "../core/model/pack.js";
 import type { Policy } from "../core/model/policy.js";
 import type { CandidateFiles } from "../core/recorder/candidates.js";
@@ -30,6 +38,7 @@ import { RequestIndexLine } from "../core/model/request-index.js";
 import type { Settings } from "../core/model/settings.js";
 import type { Suite } from "../core/model/suite.js";
 import type { Testdata } from "../core/model/testdata.js";
+import type { Thresholds } from "../core/model/thresholds.js";
 import { LockManager } from "../core/locks/manager.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Locks } from "../ports/locks.js";
@@ -53,6 +62,8 @@ export type Wiring = {
   suites: DocumentStore<Suite>;
   testdata: DocumentStore<Testdata>;
   faults: DocumentStore<Faults>;
+  /** jev confidence cutoffs per app and jev version (section 8 §14.1). */
+  thresholds: DocumentStore<Thresholds>;
   locks: Locks;
   evidence: EvidenceStore;
   candidates: CandidateStore<CandidateFiles, CandidateDecision>;
@@ -103,6 +114,11 @@ export function wire(
     suites: new FileDocumentStore(suiteKind, { dir: join(library, "suites"), tmpDir }, clock),
     testdata: new FileDocumentStore(testdataKind, { dir: join(library, "testdata"), tmpDir }, clock),
     faults: new FileDocumentStore(faultsKind, { dir: join(library, "faults"), tmpDir }, clock),
+    thresholds: new FileDocumentStore(
+      thresholdsKind,
+      { dir: join(library, "thresholds"), tmpDir },
+      clock,
+    ),
     locks: new LockManager(new FileLockSlots(join(state, "var", "locks")), clock, systemLockEnv()),
     evidence: new FileEvidenceStore({ root: join(state, "evidence"), tmpDir }),
     candidates: new FileCandidateStore<CandidateFiles, CandidateDecision>(

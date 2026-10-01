@@ -7,6 +7,7 @@ import { parsePolicy, policyDocId, type Policy } from "./policy.js";
 import type { DocKind } from "./sealing.js";
 import { Settings } from "./settings.js";
 import { Suite } from "./suite.js";
+import { Thresholds, thresholdsId } from "./thresholds.js";
 import { Testdata } from "./testdata.js";
 
 /** Policy layers in `library/policy/`. IDs: `global`, `app/<app>`, `tenant/<tenant>`. */
@@ -56,4 +57,12 @@ export const faultsKind: DocKind<Faults> = {
   parse: (raw) => Faults.safeParse(raw),
   revOf: (f) => String(f.revision),
   idOf: (f) => f.app,
+};
+
+/** jev threshold records in `library/thresholds/`. ID: `<app>/<jev_version>` (section 8 §14.1). */
+export const thresholdsKind: DocKind<Thresholds> = {
+  name: "thresholds",
+  parse: (raw) => Thresholds.safeParse(raw),
+  revOf: (t) => String(t.revision),
+  idOf: thresholdsId,
 };
