@@ -29,6 +29,7 @@ import {
   type Prepared,
 } from "./runner.js";
 import { batchScores, fragileSteps, marginSummary, stepTrace, tracesMatch, votesOf, type VoteSample } from "./score.js";
+import { cleanSamples, stepDelays, timeoutsReport, type StepKind, type TimedRun } from "./timeouts.js";
 import { runStabilityCase, stabilityCurve, type StabilityMeta, type StabilityRun } from "./stability.js";
 import { judgeCase, matchesExpectRule } from "./verdicts.js";
 
@@ -186,7 +187,8 @@ async function baselineRun(
   const { truth, commit } = await collectTruth(deps, p.artifact, cls, inputs, runId, outcome, referenceInputs ? p.baselineOutcome : null);
   const helped = await usedHelp(deps.evidence, input.tenant, runId);
   const events = await deps.evidence.events(input.tenant, runId, deps.signal);
-  return ok(baselineResult(cls, caseId, group, runId, seed, inputs, resultClass, commit, truth, helped, events.ok ? events.value : []));
+  const faultLog = await deps.harness.faultLog(deps.signal);
+  return ok(baselineResult(cls, caseId, group, runId, seed, inputs, resultClass, commit, truth, helped, events.ok ? events.value : [], faultLog.ok ? faultLog.value : []));
 }
 
 /** Builds a baseline case's two entries from its judged facts. */
@@ -202,6 +204,7 @@ function baselineResult(
   truth: Awaited<ReturnType<typeof collectTruth>>["truth"],
   helped: boolean,
   lines: unknown[],
+  log: FaultCaseRun["log"],
 ): FaultCaseRun {
   const verdict = judgeCase({
     classMatches: matchesExpectRule("recovers", resultClass, cls.expect, commit),
@@ -212,6 +215,7 @@ function baselineResult(
   return {
     fired: 0,
     lines,
+    ...(log === undefined ? {} : { log }),
     planCase: { case_id: caseId, run_id: runId, group, class: cls.id, profile: null, inputs, faults: [], seed, expect: cls.expect },
     reportCase: {
       case_id: caseId,
@@ -290,6 +294,15 @@ export async function runCertifyFull(
   const matrixClass = p.cls;
 
   const cases: FaultCaseRun[] = [];
+  // Samples for tuned timeouts come from the baseline, matrix, and stability runs (section 8 §9.6).
+  const timed: TimedRun[] = [];
+  const track = (c: FaultCaseRun, faultedStep?: string): void => {
+    if (c.reportCase.verdict === "void") return;
+    timed.push({
+      samples: cleanSamples(c.lines).filter((s) => s.step !== faultedStep),
+      delays: stepDelays(c.lines, c.log ?? []),
+    });
+  };
   const add = (c: FaultCaseRun): void => {
     cases.push(c);
     input.progress?.(`${c.reportCase.case_id}: ${c.reportCase.verdict}`);
@@ -301,7 +314,9 @@ export async function runCertifyFull(
   const firstResult = await classify(deps.evidence, input.tenant, p.baselineOutcome);
   const first = await collectTruth(deps, p.artifact, matrixClass, p.inputs, p.baselineRunId, p.baselineOutcome, p.baselineOutcome);
   const firstHelped = await usedHelp(deps.evidence, input.tenant, p.baselineRunId);
-  add(baselineResult(matrixClass, BASELINE_CASE_ID, "baseline", p.baselineRunId, p.baselineSeed, p.inputs, firstResult, first.commit, first.truth, firstHelped, firstLines));
+  const firstCase = baselineResult(matrixClass, BASELINE_CASE_ID, "baseline", p.baselineRunId, p.baselineSeed, p.inputs, firstResult, first.commit, first.truth, firstHelped, firstLines, p.baselineLog);
+  add(firstCase);
+  track(firstCase);
 
   for (const cls of input.classes) {
     for (let n = 0; n < BASELINE_REPEATS; n += 1) {
@@ -309,7 +324,9 @@ export async function runCertifyFull(
       const caseId = `baseline_${cls.id}_${String(n + 1)}`;
       const seed = `${input.batchId}:${caseId}`;
       const inputs = resolveInputs(cls.inputs, input.pools, n);
-      add(await withVoidReruns(base, p, cls, caseId, "baseline", null, seed, () => baselineRun(base, deps, p, cls, caseId, "baseline", seed, inputs, false)));
+      const repeat = await withVoidReruns(base, p, cls, caseId, "baseline", null, seed, () => baselineRun(base, deps, p, cls, caseId, "baseline", seed, inputs, false));
+      add(repeat);
+      track(repeat);
     }
   }
   // The twin repeats the first valid run: same seed, same inputs (section 8 §7.2, §9.3).
@@ -317,6 +334,7 @@ export async function runCertifyFull(
     baselineRun(base, deps, p, matrixClass, "twin", "twin", p.baselineSeed, p.inputs, true),
   );
   add(twin);
+  track(twin);
   const twinMatch = twin.lines.length === 0 ? null : tracesMatch(stepTrace(firstLines), stepTrace(twin.lines));
 
   // Matrix: every single known fault, placed exactly (section 8 §7.2).
@@ -329,6 +347,7 @@ export async function runCertifyFull(
       runFaultCase(base, deps, p, { kind: "profile", profile: cell.profile }, cell.at, caseId, seed, { group: "matrix" }),
     );
     add(ran);
+    track(ran, cell.step);
     if (ran.reportCase.verdict === "void") gaps.push(`${cell.profile.kind} on ${cell.step}: the case is void (${ran.reportCase.result.detail ?? "void"})`);
     else if (ran.fired === 0) gaps.push(`${cell.profile.kind} on ${cell.step}: the fault never fired`);
   }
@@ -379,11 +398,18 @@ export async function runCertifyFull(
           return ok(got.value.run);
         });
         add(ran);
+        track(ran);
         if (ran.reportCase.verdict === "void") gaps.push(`stability ${caseId}: the case is void (${ran.reportCase.result.detail ?? "void"})`);
         else if (seen.meta !== null) stabilityRuns.push({ meta: seen.meta, verdict: ran.reportCase.verdict });
       }
     }
   }
+
+  // Step kinds for the floors (section 8 §9.6): the commit step, steps that sent a request, the rest are fills.
+  const requestStepIds = new Set(p.routeMap.keys());
+  const stepKinds: Record<string, StepKind> = Object.fromEntries(
+    p.artifact.steps.map((s): [string, StepKind] => [s.id, s.id === p.commitStepId ? "commit" : requestStepIds.has(s.id) ? "request" : "fill"]),
+  );
 
   const judged: GateCase[] = cases.map((c) => ({ group: c.reportCase.group ?? "baseline", verdict: c.reportCase.verdict }));
   const drill = isDrill(input.declaration) || input.modelsOff === true;
@@ -444,6 +470,7 @@ export async function runCertifyFull(
     margin,
     fragile,
     coverage_gaps: gaps,
+    timeouts: timeoutsReport(timed, stepKinds, input.timeouts ?? { values: {}, from: null }),
     stability: stab === null ? null : stabilityCurve(stabilityRuns),
     ...(drill ? { drill: true as const } : {}),
     ...(input.modelsOff === true ? { models_off: true as const } : {}),

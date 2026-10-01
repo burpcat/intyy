@@ -45,6 +45,8 @@ export async function approveKey(
     note: string | null;
     /** The values the batch ran with. Empty means the defaults (section 8 §9.6). */
     timeouts?: Record<string, number>;
+    /** The batch's own proposals, which become the key's candidates (section 8 §9.6). Empty: none. */
+    candidate?: Record<string, number>;
     /** The context's other approved keys for this capability and major. */
     prior: readonly ScoreKey[];
   },
@@ -70,6 +72,7 @@ export async function approveKey(
       reason: `Installed with the approval of batch ${o.batch}.`,
       batch: o.batch,
       values: o.timeouts ?? {},
+      candidate: o.candidate ?? {},
     },
     d.who,
   );

@@ -70,7 +70,15 @@ export const HistoryLine = z.discriminatedUnion("event", [
   z.object({ event: z.literal("reinstated"), ...common }).strict(),
   z.object({ event: z.literal("excluded"), ...common, runs: z.array(z.string().min(1)).min(1) }).strict(),
   z
-    .object({ event: z.literal("timeouts"), ...common, batch: z.string().min(1), values: Timeouts })
+    .object({
+      event: z.literal("timeouts"),
+      ...common,
+      batch: z.string().min(1),
+      /** What the batch ran with. It becomes `approved`. */
+      values: Timeouts,
+      /** The batch's own proposals. They become `candidate` (section 8 §9.6). Absent: leave `candidate` as it is. */
+      candidate: Timeouts.optional(),
+    })
     .strict(),
   z
     .object({

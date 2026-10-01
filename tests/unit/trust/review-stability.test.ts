@@ -1,6 +1,6 @@
 // Proves the approval screen's stability line (design section 9 §9.3's example screen; section 8
 // §9.3 the curve; build decision of M10 task 10): a batch report with a curve prints one entry per
-// level (`<level>: <pass>% pass`, then unexplained, assisted, or wrong counts) and the worst twin
+// level (`<level>: <pass>% pass`, two decimals like `0.30`, then unexplained, assisted, or wrong counts) and the worst twin
 // mismatch with its level; a report with no curve, or an empty one, prints `not run`. No files, no
 // clock. M10 task 10.
 import { describe, expect, test } from "vitest";
@@ -48,7 +48,7 @@ function factsWith(stability: StabilityLevel[] | null | undefined): ReviewFacts 
 describe("the review screen's stability line", () => {
   test("a curve prints each level, its unexplained count, and the worst twin mismatch with its level", () => {
     const curve = [level(0.05), level(0.3, { pass: 0.8, unexplained: 0.2, twin_mismatch: 0.2 })];
-    expect(buildReview(factsWith(curve)).stability).toBe("0.05: 100% pass   0.3: 80% pass, 1 unexplained   twins 0.2 at 0.3");
+    expect(buildReview(factsWith(curve)).stability).toBe("0.05: 100% pass   0.30: 80% pass, 1 unexplained   twins 0.2 at 0.30");
   });
 
   test("assisted and wrong runs are named; a clean curve says no twin mismatch level", () => {

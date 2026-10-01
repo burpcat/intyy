@@ -231,6 +231,7 @@ export async function runStabilityCase(
     run: {
       fired: fired.count,
       lines,
+      log,
       planCase: { case_id: caseId, run_id: runId, group: "stability", class: cls.id, profile: null, inputs, faults: [], seed: seedText, expect: cls.expect },
       reportCase,
     },

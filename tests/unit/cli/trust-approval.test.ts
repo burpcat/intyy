@@ -6,7 +6,9 @@
 // not_latest_batch, report_missing, report_changed, not_approval_grade, illegal_move); usage errors
 // exit 1; quick, regression, and drill batch lines never earn an approval; the first-approval hash;
 // approval retires only the same tenant, app version, capability, and major; and reject, restore,
-// reinstate, demote, retire, list, show, history. Temporary data roots only. M10 task 5.
+// reinstate, demote, retire, list, show, history; and a report with timeouts installs the values the
+// batch ran with and makes its proposals the record's candidates (section 8 §9.6; M10 task 11).
+// Temporary data roots only. M10 task 5.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
@@ -184,6 +186,24 @@ describe("trust approve: the happy path", () => {
     expect(rec.state).toBe("approved");
     expect(rec.approval).toMatchObject({ by: "op_022", batch: "batch_a", acknowledged: ["open_member"], note: "Read the margin." });
     expect(rec.timeouts.approved_from).toBe("batch_a");
+  });
+
+  test("a report with timeouts: approval installs what the batch ran with, and its proposals become the candidates (section 8 §9.6)", LONG, async () => {
+    const timeouts = { ran_with: { click_search: 9000 }, ran_with_from: null, proposed: { click_search: 10000, click_submit: 15000 }, not_proposed: {} };
+    const fx = await fixture({ batches: [{ id: "batch_a", minute: 1, report: { timeouts } }] });
+    const r = await approve(fx);
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(EXIT.ok);
+
+    const line = (await historyOf(fx.env, KEY)).find((l) => l.event === "timeouts");
+    expect(line).toMatchObject({ event: "timeouts", batch: "batch_a", values: { click_search: 9000 }, candidate: { click_search: 10000, click_submit: 15000 } });
+    const rec = await recordOf(fx.env, KEY);
+    expect(rec.timeouts).toEqual({
+      approved: { click_search: 9000 },
+      approved_from: "batch_a",
+      candidate: { click_search: 10000, click_submit: 15000 },
+      candidate_from: "batch_a",
+    });
   });
 
   test("an approver on every tenant (*) may approve too", LONG, async () => {

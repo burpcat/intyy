@@ -81,6 +81,9 @@ export type CertifyCaseInput = {
   frozenSet?: FrozenSet;
   /** `--models off`: no rung 2, no rung 3. The batch is then a drill (section 8 §7.1). */
   modelsOff?: boolean;
+  /** The key's candidate timeouts: every run of the batch uses them, so the batch tests what it may
+   * ship (section 8 §9.6). Omitted: the artifact's own values. */
+  timeouts?: { values: Readonly<Record<string, number>>; from: string | null };
   /**
    * Runs the suite's setup runs right after a reset, before the fault is armed (section 8 §7.4
    * step 2). The caller builds it; a failure makes the case `void` (section 8 §8.3).
@@ -230,6 +233,7 @@ export async function runOne(
       batchId: input.batchId,
       caseId,
       pin,
+      ...(input.timeouts === undefined ? {} : { timeouts: input.timeouts }),
       // Section 5 §7.4: the same merged handler set a production replay of this key would load.
       ...(input.frozenSet === undefined ? {} : { frozenSet: input.frozenSet }),
     },
@@ -262,11 +266,12 @@ async function routeMapFor(
   tenant: string,
   runId: string,
   signal?: AbortSignal,
-): Promise<RouteMap> {
+): Promise<{ routeMap: RouteMap; log: FaultLogEntry[] }> {
   const events = await evidence.events(tenant, runId, signal);
   const lines = events.ok ? events.value : [];
   const log = await harness.faultLog(signal);
-  return buildRouteMap(actionTimesFromRunLog(lines), log.ok ? log.value : []);
+  const entries = log.ok ? log.value : [];
+  return { routeMap: buildRouteMap(actionTimesFromRunLog(lines), entries), log: entries };
 }
 
 /** Writes the case run's own `faults.jsonl` (section 8 §7.4 step 7): one fault log line per
@@ -359,6 +364,8 @@ export type Prepared = {
   baselineSeed: string;
   baselineOutcome: ReplayOutcome;
   routeMap: RouteMap;
+  /** The first baseline's fault log, for the timeout cross-check (section 8 §9.6). */
+  baselineLog: readonly FaultLogEntry[];
   commitStepId: string | null;
 };
 
@@ -409,7 +416,7 @@ export async function prepareBatch(input: BatchInput, deps: CertifyDeps): Promis
     "scripted",
   );
 
-  const routeMap = await routeMapFor(deps.evidence, deps.harness, input.tenant, baselineRunId, deps.signal);
+  const { routeMap, log: baselineLog } = await routeMapFor(deps.evidence, deps.harness, input.tenant, baselineRunId, deps.signal);
   const commitStepId = artifact.recovery?.commit_point ?? null;
   return ok({
     artifact,
@@ -421,6 +428,7 @@ export async function prepareBatch(input: BatchInput, deps: CertifyDeps): Promis
     baselineSeed,
     baselineOutcome,
     routeMap,
+    baselineLog,
     commitStepId,
   });
 }
@@ -494,6 +502,8 @@ export type FaultCaseRun = {
   fired: number;
   /** The case run's own log lines, for margins and step traces. Empty when the log could not be read. */
   lines: unknown[];
+  /** The case run's fault log, for the timeout cross-check (section 8 §9.6). Absent for a void case. */
+  log?: readonly FaultLogEntry[];
 };
 
 /**
@@ -611,6 +621,7 @@ export async function runFaultCase(
   return ok({
     fired,
     lines: events.ok ? events.value : [],
+    log: caseLog,
     planCase: {
       case_id: caseId,
       run_id: caseRunId,

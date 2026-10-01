@@ -322,6 +322,22 @@ function loweredFlags(decisions: readonly Decision[]): string[] {
     });
 }
 
+/** `click_search 10 s, click_submit 12.5 s`: step IDs with their values in seconds. */
+function secondsList(values: Readonly<Record<string, number>>): string {
+  return Object.entries(values).map(([step, ms]) => `${step} ${String(ms / 1000)} s`).join(", ");
+}
+
+/**
+ * The timeouts line (section 9 §9.3's example): what approval installs (the values the batch ran
+ * with, or the defaults), and the candidates the batch proposes for the next batch to test.
+ */
+function timeoutsLine(t: BatchReport["timeouts"]): string {
+  if (t === undefined) return "installs defaults; no candidates";
+  const installs = Object.keys(t.ran_with).length === 0 ? "installs defaults" : `installs ${secondsList(t.ran_with)}`;
+  if (t.scaled === true) return `${installs}; no candidates, the batch ran with shortened delays`;
+  return Object.keys(t.proposed).length === 0 ? `${installs}; no candidates` : `${installs}; candidates ${secondsList(t.proposed)}`;
+}
+
 /**
  * The stability line (section 9 §9.3's example): per level the pass share and any unexplained,
  * assisted, or wrong runs, then the worst twin mismatch. `not run` when the batch had none.
@@ -334,10 +350,10 @@ function stabilityLine(curve: BatchReport["stability"]): string {
       l.assisted > 0 ? `${String(Math.round(l.assisted * l.runs))} assisted` : "",
       l.wrong > 0 ? `${String(l.wrong)} WRONG` : "",
     ].filter((x) => x !== "");
-    return `${String(l.entropy)}: ${String(Math.round(l.pass * 100))}% pass${extra.map((x) => `, ${x}`).join("")}`;
+    return `${l.entropy.toFixed(2)}: ${String(Math.round(l.pass * 100))}% pass${extra.map((x) => `, ${x}`).join("")}`;
   });
   const worst = curve.reduce((a, b) => (b.twin_mismatch > a.twin_mismatch ? b : a));
-  return `${levels.join("   ")}   twins ${String(worst.twin_mismatch)}${worst.twin_mismatch > 0 ? ` at ${String(worst.entropy)}` : ""}`;
+  return `${levels.join("   ")}   twins ${String(worst.twin_mismatch)}${worst.twin_mismatch > 0 ? ` at ${worst.entropy.toFixed(2)}` : ""}`;
 }
 
 /** Builds the screen's data from the facts. `batchId` falls back to the record's latest full batch. */
@@ -382,8 +398,7 @@ export function buildReview(f: ReviewFacts): Review {
     })),
     gaps: report?.coverage_gaps ?? [],
     stability: stabilityLine(report?.stability),
-    // Why: no batch records the timeouts it ran with yet, so approval installs the defaults (section 8 §9.6).
-    timeouts: "installs defaults; no candidates",
+    timeouts: timeoutsLine(report?.timeouts),
     lowered: loweredFlags(f.decisions),
     record: recordHash(f.record),
   };

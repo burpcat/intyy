@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { AppId, TenantId } from "./common.js";
 import { CaseGroup } from "./batch-plan.js";
-import { ScoreKey, Under, VerdictCounts } from "./score.js";
+import { ScoreKey, Timeouts, Under, VerdictCounts } from "./score.js";
 
 /** Status plus one detail (section 8 §8.1): an outcome code, a failure code, or
  * `<kind>/<reason>/<step>` for `escalated`. */
@@ -87,6 +87,24 @@ export const StabilityLevel = z
 /** One stability level. */
 export type StabilityLevel = z.infer<typeof StabilityLevel>;
 
+/**
+ * The batch's timeout facts (section 8 §9.6, §9.7). `ran_with` is what the batch's runs used
+ * (approval installs it); `proposed` are the new candidate values; `not_proposed` names each step
+ * with too few samples. `scaled`: the batch ran with shortened delays, so no proposal was made.
+ */
+export const BatchTimeouts = z
+  .object({
+    ran_with: Timeouts,
+    ran_with_from: z.string().min(1).nullable(),
+    proposed: Timeouts,
+    not_proposed: z.record(z.string(), z.string()),
+    scaled: z.literal(true).optional(),
+  })
+  .strict();
+
+/** The batch's timeout facts. */
+export type BatchTimeouts = z.infer<typeof BatchTimeouts>;
+
 /** The six gate rules (section 8 §9.5). Each is true or false on its own, so a failed gate says which. */
 export const GateRules = z
   .object({
@@ -160,6 +178,8 @@ export const BatchReport = z
     coverage_gaps: z.array(z.string().min(1)).optional(),
     /** The stability curve, one entry per entropy level (section 8 §9.3). `null`: no stability runs. */
     stability: z.array(StabilityLevel).nullable().optional(),
+    /** Tuned timeouts: what the batch ran with and what it proposes (section 8 §9.6). */
+    timeouts: BatchTimeouts.optional(),
     /** `true` when the batch ran with `--models off`: a drill (section 8 §7.1). */
     models_off: z.literal(true).optional(),
     /** `true` for a drill batch (section 8 §7.1): the plan's instance facts differ from the test

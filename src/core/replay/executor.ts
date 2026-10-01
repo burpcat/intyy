@@ -141,6 +141,12 @@ export type ReplayInput = {
    * §4.9, the certify run spec's `pin`). The task capability resolves to this version, not the
    * newest of its major. `null`/omitted for every other run. */
   pin?: string | null;
+  /**
+   * Tuned step timeouts to apply, in milliseconds by step ID (section 8 §9.6). Certify passes the
+   * key's candidate values, so a batch tests what it may ship. Omitted: a live run reads the
+   * record's approved values (approved and degraded keys only); a certify run uses the artifact's.
+   */
+  timeouts?: { values: Readonly<Record<string, number>>; from: string | null };
 };
 
 /** The ports one replay run uses. */
@@ -222,6 +228,29 @@ function knownInput(input: Artifact["contract"]["inputs"][number], value: Contra
   return { ref: `input.${input.name}`, value: String(value), label: input.sensitivity, type, kind };
 }
 
+/**
+ * The tuned timeouts this run uses (section 8 §9.6): the caller's own (certify: the candidate values),
+ * else, for a live run, the approved values of an approved or degraded key. A draft key and a
+ * certify run with no candidate use the artifact's defaults. Why live reads approved only: "Live
+ * replay, for approved and degraded keys".
+ */
+function effectiveTimeouts(
+  input: ReplayInput,
+  record: ScoreRecord | null,
+): { values: Readonly<Record<string, number>>; from: string | null } {
+  if (input.timeouts !== undefined) return input.timeouts;
+  if (input.batchId == null && record !== null && (record.state === "approved" || record.state === "degraded")) {
+    return { values: record.timeouts.approved, from: record.timeouts.approved_from };
+  }
+  return { values: {}, from: null };
+}
+
+/** The artifact with its steps' `timeout_ms` replaced by the tuned values. A copy: the original is untouched. */
+function withTimeouts(artifact: Artifact, values: Readonly<Record<string, number>>): Artifact {
+  if (Object.keys(values).length === 0) return artifact;
+  return { ...artifact, steps: artifact.steps.map((s) => ({ ...s, timeout_ms: values[s.id] ?? s.timeout_ms })) };
+}
+
 /** The frozen facts for a replay `run_start` line (section 3 §6.5). `artifact`/`session` are
  * null when pre-run checks stopped before resolving them. */
 function frozenFacts(
@@ -268,8 +297,8 @@ function frozenFacts(
       evidence_level: input.policy.effective.evidence.level,
       // Why from the record: section 8 §11.8. Every unattended run can prove it ran under approval,
       // and an auditor can prove what the resolver saw. No record means a draft with the defaults.
-      timeouts: record?.timeouts.approved ?? {},
-      timeouts_from: protectId(record?.timeouts.approved_from ?? null),
+      timeouts: effectiveTimeouts(input, record).values,
+      timeouts_from: protectId(effectiveTimeouts(input, record).from),
       approval: {
         state: record?.state ?? "draft",
         batch: protectId(record?.approval?.batch ?? null),
@@ -603,7 +632,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
 
   // pre.outcome.status === "ok" from here: a fresh, narrowed destructure (the artifact is never
   // null on this path).
-  const { artifact, sessionArtifact } = pre.outcome;
+  const { sessionArtifact } = pre.outcome;
+  // Why a copy, made after `run_start`: the frozen hash names the sealed artifact, not the tuned one (section 8 §9.6).
+  const artifact = withTimeouts(pre.outcome.artifact, effectiveTimeouts(input, pre.outcome.record).values);
 
   // Section 3 §5.8: present on every non-rejected result of a `commits` capability. Starts
   // `not_sent`; the commit step (below) updates it once it actually runs.
@@ -1930,6 +1961,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
             ...(effect === null ? {} : { effect }),
           });
           return await endRun("business_outcome", outcome.code, result, step.id);
+        }
+        // Why: section 3 §6.4 lists `step_end`; certify reads `observed_ms` for tuned timeouts (section 8 §9.6).
+        if (outcome.observedMs !== undefined) {
+          void log.append({ event: "step_end", step: step.id, by: "engine", data: { result: "passed", observed_ms: outcome.observedMs } });
         }
         if (outcome.read !== undefined) {
           const out = outputs.get(outcome.read.output);

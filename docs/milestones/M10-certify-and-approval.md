@@ -67,7 +67,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 - [ ] 8. Add a `quick` batch to the CI `live` job, with jev and the reviewer faked.
 - [ ] 9. Stop. Ask the owner to run the batches and approvals below. This is the minimum for B3 and B4.
 - [x] 10. Write stability, twins, and the fault-aware judge.
-- [ ] 11. Write tuned timeouts.
+- [x] 11. Write tuned timeouts.
 - [ ] 12. Write the guided walk for `trust approve`.
 
 **Batches and approvals, for the owner.** Order matters: sign-in and the check come first, because the commit capability links to them.

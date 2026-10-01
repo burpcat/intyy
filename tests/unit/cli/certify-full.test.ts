@@ -4,7 +4,8 @@
 // on an approved key appends a `degraded` line by `certify` while a passed gate leaves it approved,
 // a drill (`--models off`) cannot pass rule 1, `--plan-only` writes and contacts nothing, and the
 // refusals of the quick kind still hold. The harness is the route-mapping double, which cannot
-// fire a fault. Temporary data roots only. M10 tasks 3 and 4.
+// fire a fault. A key whose record holds candidate timeouts runs the batch with them (frozen in run.json,
+// shown as `ran_with` in the report; section 8 §9.6, M10 task 11). Temporary data roots only. M10 tasks 3 and 4.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
@@ -15,7 +16,8 @@ import type { BatchReport } from "../../../src/core/model/batch-report.js";
 import { HistoryLine } from "../../../src/core/model/score-history.js";
 import { ScoreRecord, type ScoreKey } from "../../../src/core/model/score.js";
 import { keyPath } from "../../../src/core/trust/keys.js";
-import { approved } from "../trust/kit.js";
+import { rebuild } from "../../../src/core/trust/rebuild.js";
+import { approved, batch as batchLine, HASHES } from "../trust/kit.js";
 import { CAP, certifyCall, editWith, sealQuickInputs } from "./certify-kit.js";
 import { cleanRoots } from "./helpers.js";
 import { realWiringOf, replayRoot, type ReplayEnv } from "./replay-harness.js";
@@ -215,5 +217,41 @@ describe("certify (full): refusals", () => {
     expect(r.code).toBe(EXIT.usage);
     expect(r.stderr).toContain("suite");
     expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
+  });
+});
+
+describe("certify (full): candidate timeouts (section 8 §9.6)", () => {
+  test("a key whose record has a candidate runs the batch with it, and the report says so", LONG, async () => {
+    const env = await readyEnv();
+    const lines: HistoryLine[] = [
+      batchLine(1, "batch_prior"),
+      approved(2, "op_022", "batch_prior"),
+      { event: "timeouts", at: "2026-01-15T09:03:00.000Z", by: "op_022", reason: "Installed.", batch: "batch_prior", values: {}, candidate: { click_search: 12000 } },
+    ];
+    const scores = realWiringOf(env).scores;
+    for (const l of lines) {
+      const r = await scores.append(keyPath(KEY), l);
+      if (!r.ok) throw new Error("test setup: append failed");
+    }
+    const rebuilt = rebuild(KEY, HASHES, lines);
+    if (!rebuilt.ok) throw new Error("test setup: rebuild failed");
+    const put = await scores.putRecord(keyPath(KEY), rebuilt.value);
+    if (!put.ok) throw new Error("test setup: putRecord failed");
+
+    const r = await full(env);
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.body.report.timeouts).toMatchObject({ ran_with: { click_search: 12000 }, ran_with_from: "batch_prior" });
+    const first = r.body.plan.cases[0];
+    const runJson = await realWiringOf(env).evidence.readRunJson("keystone", first?.run_id ?? "");
+    if (!runJson.ok) throw new Error("no run.json");
+    const frozen = (runJson.value as { frozen: { frozen: { timeouts: unknown; timeouts_from: unknown } } }).frozen.frozen;
+    expect(frozen.timeouts).toEqual({ click_search: 12000 });
+    expect(JSON.stringify(frozen.timeouts_from)).toContain("batch_prior");
+  });
+
+  test("a key with no candidate runs with the artifact's values", LONG, async () => {
+    const env = await readyEnv();
+    const r = await full(env);
+    expect(r.body.report.timeouts).toMatchObject({ ran_with: {}, ran_with_from: null });
   });
 });

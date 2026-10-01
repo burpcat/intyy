@@ -230,7 +230,10 @@ export function registerApproval(trust: Command, ctxOf: () => Ctx): void {
             batch,
             acknowledged: [...new Set(acks)],
             note: note === "" ? null : note,
-            // Why: no batch records the timeouts it ran with yet (task 11), so approval installs the defaults.
+            // Why: section 8 §9.6. Approval installs the timeouts the batch ran with (tested), and the
+            // batch's own proposals become the next candidates.
+            timeouts: { ...(facts.report?.timeouts?.ran_with ?? {}) },
+            candidate: { ...(facts.report?.timeouts?.proposed ?? {}) },
             prior: priorApproved(await tenantRecords(ctx, scoreDeps(ctx)), facts.key),
           }),
         );

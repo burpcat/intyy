@@ -11,6 +11,7 @@ import type { Faults } from "../../core/model/faults.js";
 import { issueText } from "../../core/model/sealing.js";
 import type { Suite } from "../../core/model/suite.js";
 import type { Testdata } from "../../core/model/testdata.js";
+import { resolveExact, resolveMajor } from "../../core/catalog/capabilities.js";
 import { declareInstance } from "../../core/certify/instance.js";
 import { BASELINE_REPEATS, runCertifyFull, type SetupSpec } from "../../core/certify/full.js";
 import { isDrill, matrixProfiles, runCertifyQuick } from "../../core/certify/quick.js";
@@ -25,6 +26,7 @@ import { load, type DocTarget } from "./documents.js";
 import { CliExit, EXIT } from "../exit-codes.js";
 import { answer, progress, type Answer } from "../output.js";
 import { act, readVersion, type Register } from "../program.js";
+import { keyPath } from "../../core/trust/keys.js";
 import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
 import { replayModels } from "./replay.js";
@@ -267,6 +269,32 @@ function instanceLine(i: Testdata["instance"]): string {
   ].join(" ");
 }
 
+/**
+ * The key's candidate timeouts, which a full batch runs with so it tests what it may ship (section
+ * 8 §9.6). `undefined` when the key has no record or no candidate: the batch then uses the
+ * artifact's own values. The exact key is the pinned version, or the newest of the major.
+ */
+async function candidateTimeouts(
+  ctx: Ctx,
+  artifacts: Parameters<typeof resolveMajor>[0],
+  q: { app: string; capability: string; major: number; version: string | undefined; appVersion: string },
+): Promise<{ values: Record<string, number>; from: string | null } | undefined> {
+  const found =
+    q.version === undefined
+      ? await resolveMajor(artifacts, q.app, q.capability, q.major, q.appVersion)
+      : await resolveExact(artifacts, q.app, q.capability, q.version, q.appVersion);
+  if (!found.ok) return undefined;
+  const key = {
+    capability: `${q.app}/${q.capability}@${found.value.identity.version ?? ""}`,
+    tenant: ctx.tenant,
+    app_version: q.appVersion,
+    patch_revision: null,
+  };
+  const record = await ctx.wiring.scores.getRecord(keyPath(key));
+  const candidate = record.ok ? record.value.timeouts.candidate : null;
+  return candidate === null ? undefined : { values: { ...candidate }, from: record.ok ? record.value.timeouts.candidate_from : null };
+}
+
 /** The suite's setup runs, each with its own suite's class (section 8 §6.1). */
 async function loadSetups(ctx: Ctx, suite: Suite): Promise<SetupSpec[]> {
   const out: SetupSpec[] = [];
@@ -387,6 +415,7 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
   ];
   try {
     if (kind === "full") {
+      const tuned = await candidateTimeouts(ctx, deps.artifacts, { app, capability, major, version, appVersion });
       const result = await runCertifyFull(
         {
           batchId,
@@ -408,6 +437,7 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
           drills: suite.drills.count,
           setup: await loadSetups(ctx, suite),
           stability: suite.stability,
+          ...(tuned === undefined ? {} : { timeouts: tuned }),
           ...(faults.explained_endings === undefined ? {} : { explainedEndings: faults.explained_endings }),
           businessDate: testdata.business_date,
           modelsOff,

@@ -12,6 +12,10 @@
 // curve (null with no setting), the harness gets entropy and seed, a wrong run fails `no_wrong`
 // only, a void run `no_void` only, an unexplained run neither the gate nor the outcome score, and
 // a listed ending for a style that fired is `explained`.
+// M10 task 11 adds tuned timeouts (section 8 §9.6, §9.7): the report's `timeouts` proposes a value
+// per step from 20 or more clean samples, leaves out a faulted step's matrix sample, lists a step
+// with too few samples, echoes the timeouts the batch ran with (and every run freezes them), and
+// proposes nothing when the fault log's nominal delays show the batch ran scaled.
 import { describe, expect, test } from "vitest";
 import { matrixCells, runCertifyFull, VOID_RERUNS, type CertifyFullInput } from "../../../src/core/certify/full.js";
 import { BatchPlan } from "../../../src/core/model/batch-plan.js";
@@ -651,5 +655,68 @@ describe("runCertifyFull: stability runs (section 8 §7.2, §9.3)", () => {
     expect(stabCases(otherStyle.report.cases).every((c) => c.verdict === "unexplained")).toBe(true);
     const noTable = await stabilityBatch("stuck", {}, (h) => { h.fire = ["maintenance"]; });
     expect(stabCases(noTable.report.cases).every((c) => c.verdict === "unexplained")).toBe(true);
+  });
+});
+
+/** Wraps the harness so every logged request shows a nominal delay of `delayMs`. */
+class DelayHarness implements Harness {
+  constructor(private readonly inner: RouteMappingHarness, private readonly delayMs: number) {}
+  features() { return this.inner.features(); }
+  reset() { return this.inner.reset(); }
+  setChaos(c: { entropy?: number; seed?: string }) { return this.inner.setChaos(c); }
+  addFaults(f: NamedFault[]) { return this.inner.addFaults(f); }
+  clearFaults() { return this.inner.clearFaults(); }
+  async faultLog() {
+    const log = await this.inner.faultLog();
+    return log.ok ? { ...log, value: log.value.map((e) => ({ ...e, delay_ms: this.delayMs })) } : log;
+  }
+  oracle(notes: Parameters<Harness["oracle"]>[0]) { return this.inner.oracle(notes); }
+  setClock(date: string | null) { return this.inner.setClock(date); }
+}
+
+const FIVE_SEEDS = { "members.valid": ["700114", "700115", "700116", "700117", "700118"] };
+
+describe("runCertifyFull: tuned timeouts (section 8 §9.6)", () => {
+  test("30 stability runs and the baseline give 20 or more clean samples: every step gets its floor", async () => {
+    const stability = { class: "valid", levels: [0.05, 0.15, 0.3], seeds: 5, twins: true };
+    const b = await batchOf((id) => fullInput(id, { pools: FIVE_SEEDS, profiles: [], stability }));
+    expect(BatchReport.safeParse(b.report).success).toBe(true);
+    expect(b.report.timeouts).toEqual({
+      ran_with: {},
+      ran_with_from: null,
+      proposed: { type_member_id: 5000, click_search: 10000, click_confirm: 15000, read_account_number: 5000 },
+      not_proposed: {},
+    });
+  });
+
+  test("a step with too few samples is listed with its count, and the matrix leaves out the faulted step", async () => {
+    // Four baseline runs, then four matrix cells: click_search is faulted in two and click_confirm in two.
+    const b = await batchOf((id) => fullInput(id));
+    expect(b.report.timeouts?.proposed).toEqual({});
+    expect(b.report.timeouts?.not_proposed).toEqual({
+      type_member_id: "8 samples",
+      click_search: "6 samples",
+      click_confirm: "6 samples",
+      read_account_number: "8 samples",
+    });
+  });
+
+  test("the timeouts the batch ran with show as ran_with, and every run freezes them", async () => {
+    const timeouts = { values: { click_search: 12000 }, from: "batch_2026-01-15_aaaaaaaaaa" };
+    const b = await batchOf((id) => fullInput(id, { profiles: [], timeouts }));
+    expect(b.report.timeouts).toMatchObject({ ran_with: { click_search: 12000 }, ran_with_from: "batch_2026-01-15_aaaaaaaaaa" });
+    const first = b.plan.cases[0];
+    const json = await b.deps.evidence.readRunJson(TENANT, first?.run_id ?? "");
+    if (!json.ok) throw new Error("no run.json");
+    expect((json.value as { frozen: { frozen: { timeouts: unknown } } }).frozen.frozen.timeouts).toEqual({ click_search: 12000 });
+  });
+
+  test("a batch whose fault log shows 6 s delays against 1 s step times ran scaled: no proposals", async () => {
+    const stability = { class: "valid", levels: [0.05, 0.15, 0.3], seeds: 5, twins: true };
+    const { deps, ids } = await fullDeps(fixtureSite(), {}, (h) => new DelayHarness(h, 6000));
+    const r = await runCertifyFull(fullInput(ids.batchId(), { pools: FIVE_SEEDS, profiles: [], stability }), deps);
+    if (!r.ok) throw new Error(`full batch failed: ${r.failure}`);
+    expect(r.value.report.timeouts).toMatchObject({ proposed: {}, scaled: true });
+    expect(BatchReport.safeParse(r.value.report).success).toBe(true);
   });
 });

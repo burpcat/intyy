@@ -91,7 +91,12 @@ export type StepFailure = { code: FailureCode; phase: string; message: string; t
 /** One step's outcome (section 7 §4 point 7): it passed, a declared outcome fired, or it failed
  * hard. A `read` step's value rides along on `ok`. */
 export type StepOutcome =
-  | { kind: "ok"; read?: { output: string; raw: string; masked: Masked<string> } }
+  | {
+      kind: "ok";
+      read?: { output: string; raw: string; masked: Masked<string> };
+      /** Milliseconds from the action to the checkpoint passing: certify's timeout sample (section 8 §9.6). */
+      observedMs?: number;
+    }
   | { kind: "outcome"; code: string }
   | { kind: "failed"; failure: StepFailure };
 
@@ -199,6 +204,8 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
   };
   const acted = await actStep(step.action, actCtx);
+  // Why here: section 8 §9.6, "a step's observed time runs from its action to its checkpoint passing".
+  const actedAtMs = ctx.clock.now().getTime();
   if (acted.outcome.kind === "target_not_found" || acted.outcome.kind === "target_ambiguous") {
     return { kind: "failed", failure: { code: acted.outcome.kind, phase: "target", message: `step ${step.id} could not find its target` } };
   }
@@ -208,7 +215,9 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
   if (acted.outcome.kind === "read") {
     if (step.action.type !== "read") throw new Error("act: a read outcome from a non-read action");
     const raced = await raceStep(step, ctx);
-    return raced.kind === "ok" ? { kind: "ok", read: { output: step.action.output, ...acted.outcome } } : raced;
+    return raced.kind === "ok"
+      ? { kind: "ok", read: { output: step.action.output, ...acted.outcome }, observedMs: ctx.clock.now().getTime() - actedAtMs }
+      : raced;
   }
 
   // acted.outcome.kind === "acted": a gated action.
@@ -226,7 +235,7 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
   if (raced.kind === "failed" && transport.seen !== null) {
     return { kind: "failed", failure: { ...raced.failure, transportEvent: transport.seen } };
   }
-  return raced;
+  return raced.kind === "ok" ? { ...raced, observedMs: ctx.clock.now().getTime() - actedAtMs } : raced;
 }
 
 /** What one prelude run needs, on top of a step's own context (built once, reused per step). */

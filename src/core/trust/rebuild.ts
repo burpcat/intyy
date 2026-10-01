@@ -103,7 +103,17 @@ function applyLine(
     case "timeouts":
       return ok({
         ...next,
-        timeouts: { ...next.timeouts, approved: line.values, approved_from: line.batch },
+        timeouts: {
+          ...next.timeouts,
+          approved: line.values,
+          approved_from: line.batch,
+          // Why: section 8 §9.6, "the batch's own proposals become the new candidates"; none means none.
+          ...(line.candidate === undefined
+            ? {}
+            : Object.keys(line.candidate).length === 0
+              ? { candidate: null, candidate_from: null }
+              : { candidate: line.candidate, candidate_from: line.batch }),
+        },
       });
     case "thresholds":
       return ok({ ...next, thresholds: { ...line.values, batch: line.batch } });

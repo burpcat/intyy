@@ -570,6 +570,66 @@
         }
       ]
     },
+    "timeouts": {
+      "type": "object",
+      "properties": {
+        "ran_with": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "ran_with_from": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proposed": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "not_proposed": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "scaled": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "ran_with",
+        "ran_with_from",
+        "proposed",
+        "not_proposed"
+      ],
+      "additionalProperties": false
+    },
     "models_off": {
       "type": "boolean",
       "const": true
