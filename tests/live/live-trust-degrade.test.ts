@@ -4,7 +4,7 @@
 // key at once, with a `degraded` line by `live_score`): each run writes one live line, the key stays
 // `approved` after two runs and is `degraded` after the third, and the `degraded` line names the
 // streak rule and the three run IDs. The sealed `kvfcu/sign_in@1.0.0` is copied into a temporary
-// library with one target changed so it can never be found; scores, locks, and evidence live in a
+// library with its first checkpoint changed so it can never pass; scores, locks, and evidence live in a
 // temporary data root, never in the real `state/`. No secret value lands in any file. Fails loudly in
 // `beforeAll`, never skips, until the sealed sign_in, the approved policy and settings, and the
 // operator secrets in `.env` exist. M11 task 2.
@@ -72,13 +72,22 @@ async function approved<T>(store: DocumentStore<T>, id: string): Promise<{ doc: 
   return { doc: got.value.doc, rev, hash: got.value.hash };
 }
 
-/** The sealed sign_in with its first target made impossible to find: a recipe failure at the first step. */
+/**
+ * The sealed sign_in with its first checkpoint made impossible: the screen after typing the user ID must
+ * be a page that does not exist. Why a checkpoint and not a target: with a missing target, the step's own
+ * precondition (`element_visible`) fails too, so the screen is not "known" and the ladder climbs to a
+ * takeover, which the scripted operator ends (`ended_by_operator`, not counted). With the precondition
+ * still true and no progress, the ladder ends the step `failed` with a recipe code after its retries
+ * (section 5 §8.4 step 5), which is the failure the streak rule counts.
+ */
 function broken(sealed: unknown): unknown {
   const art = Artifact.parse(sealed);
-  const targets = art.targets.map((t, i) =>
-    i === 0 ? { ...t, clues: { role: "tab" as const, name: "Zz Missing Field", label: "Zz Missing Field" } } : t,
+  const first = art.steps[0];
+  if (first === undefined) throw new Error("sign_in has no steps");
+  const conditions = art.conditions.map((c) =>
+    c.id === first.checkpoint ? { id: c.id, description: c.description, check: "location" as const, pattern: "/never_there.do" } : c,
   );
-  return Artifact.parse({ ...art, targets });
+  return Artifact.parse({ ...art, conditions });
 }
 
 beforeAll(async () => {
