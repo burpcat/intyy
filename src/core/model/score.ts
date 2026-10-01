@@ -93,6 +93,26 @@ export type BatchSummary = z.infer<typeof BatchSummary>;
 /** Tuned timeouts in milliseconds, by step ID (section 8 §9.6). */
 export const Timeouts = z.record(z.string().min(1), z.number().int().positive());
 
+/** Rolling live counts over one handler set's last 50 counted runs (section 8 §5.3, §12.3). */
+export const LiveBlock = z
+  .object({
+    /** The handler set hash these runs ran under. `null`: not recorded. */
+    handler_set: Sha256Hash.nullable(),
+    window: z.number().int().positive(),
+    counted: z.number().int().nonnegative(),
+    clean: z.number().int().nonnegative(),
+    assisted: z.number().int().nonnegative(),
+    recipe_failures: z.number().int().nonnegative(),
+    app_failures: z.number().int().nonnegative(),
+    score: z.number().min(0).max(1).nullable(),
+    /** The trailing recipe failures at one step and code, or `null` for none. */
+    streak: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+/** One live block. */
+export type LiveBlock = z.infer<typeof LiveBlock>;
+
 /** The score record (section 8 §5.3). */
 export const ScoreRecord = z
   .object({
@@ -148,18 +168,9 @@ export const ScoreRecord = z
       })
       .strict()
       .nullable(),
-    /** The rolling live score (M11). */
+    /** The rolling live score for the current handler set and the one before it (section 8 §5.3, §15.3). */
     live: z
-      .object({
-        window: z.number().int().positive(),
-        counted: z.number().int().nonnegative(),
-        clean: z.number().int().nonnegative(),
-        assisted: z.number().int().nonnegative(),
-        recipe_failures: z.number().int().nonnegative(),
-        app_failures: z.number().int().nonnegative(),
-        score: z.number().min(0).max(1).nullable(),
-        streak: z.number().int().nonnegative().nullable(),
-      })
+      .object({ current: LiveBlock, previous: LiveBlock.nullable() })
       .strict()
       .nullable(),
     alerts: z.array(z.string().min(1)),

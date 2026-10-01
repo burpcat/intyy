@@ -2,8 +2,10 @@
 // Follows design section 8 §5.2 (the record is a pure function of the logs) and §5.3.
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import { hashJson } from "../model/canonical.js";
+import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreKey, ScoreRecord, TrustState } from "../model/score.js";
+import { excludedRuns, liveField } from "./live-rules.js";
 import { transition, type Move } from "./state.js";
 
 /** Hashes from the store index, not from the logs (section 8 §5.3: `hashes`). */
@@ -117,20 +119,23 @@ function applyLine(
       });
     case "thresholds":
       return ok({ ...next, thresholds: { ...line.values, batch: line.batch } });
-    // Why: `excluded` and `autonomy` feed the live window and the autonomy record. M11 builds both.
+    // Why: `excluded` feeds the live block (rebuild, below). `autonomy` feeds the autonomy record (M11, later).
     default:
       return ok(next);
   }
 }
 
 /**
- * Rebuilds the record from the history lines, in order. `bad_history` names the first line that
- * makes an illegal move, such as an approval from `retired`. Pure: no clock, no files.
+ * Rebuilds the record from the history lines and the live lines, in order (section 8 §5.2: a pure
+ * function of the two logs). `bad_history` names the first line that makes an illegal move, such as
+ * an approval from `retired`. Live lines never move the state: the drift reader writes a `degraded`
+ * line for that. They fill `live`, with excluded runs left out. Pure: no clock, no files.
  */
 export function rebuild(
   key: ScoreKey,
   hashes: ScoreHashes,
   history: readonly HistoryLine[],
+  live: readonly LiveLine[] = [],
 ): Outcome<ScoreRecord, "bad_history"> {
   let rec = draftRecord(key, hashes);
   for (const [i, line] of history.entries()) {
@@ -140,7 +145,7 @@ export function rebuild(
     }
     rec = next.value;
   }
-  return ok(rec);
+  return ok({ ...rec, live: liveField(live, excludedRuns(history)) });
 }
 
 /**

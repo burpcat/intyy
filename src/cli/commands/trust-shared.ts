@@ -17,10 +17,13 @@ export function exitFor(failure: DecisionFailure): ExitCode {
     case "busy":
       return EXIT.busy;
     case "write_failed":
+    case "unknown_run":
       return EXIT.usage;
     case "role":
     case "illegal_move":
     case "needs_staff":
+    case "no_exclusion":
+    case "rule_still_fires":
       return EXIT.refused;
     default:
       return EXIT.invalid;

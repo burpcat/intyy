@@ -5,10 +5,13 @@ import type { LockRequest, Locks } from "../../ports/locks.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { ScoreStore } from "../../ports/scores.js";
 import { canonicalJson, hashJson } from "../model/canonical.js";
+import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreKey, ScoreRecord } from "../model/score.js";
 import { sealHash } from "../model/sealing.js";
 import { keyPath, parseKeyPath } from "./keys.js";
+import { mergeLive } from "./live-evidence.js";
+import { evaluateRules, type RuleHit } from "./live-rules.js";
 import { rebuild, type ScoreHashes } from "./rebuild.js";
 
 /** How long a writer waits for the score lock. The lock is held for seconds at most (section 9 §12). */
@@ -25,7 +28,7 @@ export interface SealedArtifacts {
 
 /** What score writers need. */
 export type ScoreDeps = {
-  scores: ScoreStore<HistoryLine, ScoreRecord>;
+  scores: ScoreStore<HistoryLine, ScoreRecord, LiveLine>;
   locks: Locks;
   artifacts: SealedArtifacts;
 };
@@ -80,12 +83,89 @@ export function appendHistory(
   return locked(deps, key, who, async () => {
     const lines = await deps.scores.history(path);
     if (!lines.ok) return fail("invalid", lines.detail);
-    const record = rebuild(key, await hashesFor(deps.artifacts, key), [...lines.value, line]);
+    const live = await deps.scores.liveLines(path);
+    if (!live.ok) return fail("invalid", live.detail);
+    const record = rebuild(key, await hashesFor(deps.artifacts, key), [...lines.value, line], live.value);
     if (!record.ok) return record;
     const written = await deps.scores.append(path, line);
     if (!written.ok) return written;
     const put = await deps.scores.putRecord(path, record.value);
     return put.ok ? ok(record.value) : put;
+  });
+}
+
+/** What one live write did: the new record, and the rule that degraded the key (`null`: none did). */
+export type LiveWritten = { record: ScoreRecord; degraded: RuleHit | null };
+
+/**
+ * Appends one live line, rebuilds the record, and checks the two demotion rules (section 8 §5.6,
+ * §12.3), all under the score lock. When a rule fires on an approved key, a `degraded` line by
+ * `live_score` follows at once, with the runs listed. The state machine checks it like any move.
+ * Why the line goes first: if the degrade write fails, the next live run evaluates every line again
+ * and degrades then, so no trust is kept by a failed write.
+ */
+export function recordLive(
+  deps: ScoreDeps,
+  key: ScoreKey,
+  line: LiveLine,
+  who: ScoreWriter,
+  now: Date,
+): Promise<Outcome<LiveWritten, ScoreFailure>> {
+  const path = keyPath(key);
+  return locked(deps, key, who, async () => {
+    const history = await deps.scores.history(path);
+    if (!history.ok) return fail("invalid", history.detail);
+    const before = await deps.scores.liveLines(path);
+    if (!before.ok) return fail("invalid", before.detail);
+    const written = await deps.scores.appendLive(path, line);
+    if (!written.ok) return written;
+    const live = [...before.value, line];
+    const hashes = await hashesFor(deps.artifacts, key);
+    const record = rebuild(key, hashes, history.value, live);
+    if (!record.ok) return record;
+    const hit = evaluateRules(record.value.state, history.value, live);
+    let final = record.value;
+    if (hit !== null) {
+      const degraded: HistoryLine = {
+        event: "degraded",
+        at: now.toISOString(),
+        by: "live_score",
+        reason: hit.reason,
+        rule: hit.rule,
+        runs: hit.runs,
+      };
+      const next = rebuild(key, hashes, [...history.value, degraded], live);
+      if (!next.ok) return next;
+      const appended = await deps.scores.append(path, degraded);
+      if (!appended.ok) return appended;
+      final = next.value;
+    }
+    const put = await deps.scores.putRecord(path, final);
+    return put.ok ? ok({ record: final, degraded: hit }) : put;
+  });
+}
+
+/**
+ * Replaces a key's `live.jsonl` with the evidence's lines merged into it (section 9 §9.8,
+ * `--from-evidence`), under the score lock. Returns how many lines the file holds and how many are new.
+ */
+export function repairLive(
+  deps: ScoreDeps,
+  key: ScoreKey,
+  fromEvidence: readonly LiveLine[],
+  who: ScoreWriter,
+): Promise<Outcome<{ total: number; added: number }, ScoreFailure>> {
+  const path = keyPath(key);
+  return locked(deps, key, who, async () => {
+    const existing = await deps.scores.liveLines(path);
+    if (!existing.ok) return fail("invalid", existing.detail);
+    const merged = mergeLive(existing.value, fromEvidence);
+    // Why no write when nothing is new: an unchanged repair leaves the file's bytes alone.
+    if (merged.length === existing.value.length && existing.value.every((l, i) => canonicalJson(l) === canonicalJson(merged[i]))) {
+      return ok({ total: merged.length, added: 0 });
+    }
+    const put = await deps.scores.putLive(path, merged);
+    return put.ok ? ok({ total: merged.length, added: Math.max(0, merged.length - existing.value.length) }) : put;
   });
 }
 
@@ -117,12 +197,14 @@ export function rebuildKey(
   return locked<Rebuilt>(deps, key, who, async () => {
     const lines = await deps.scores.history(path);
     if (!lines.ok) return fail("invalid", lines.detail);
-    const after = rebuild(key, await hashesFor(deps.artifacts, key), lines.value);
+    const live = await deps.scores.liveLines(path);
+    if (!live.ok) return fail("invalid", live.detail);
+    const after = rebuild(key, await hashesFor(deps.artifacts, key), lines.value, live.value);
     if (!after.ok) return after;
     const old = await deps.scores.getRecord(path);
     const before = old.ok ? old.value : null;
     // Why: section 8 §5.2, "no record file means draft". An empty key gets no files from a rebuild.
-    if (lines.value.length === 0 && !old.ok && old.failure === "not_found") {
+    if (lines.value.length === 0 && live.value.length === 0 && !old.ok && old.failure === "not_found") {
       return ok({ key, before, after: after.value, changed: [], written: false });
     }
     const put = await deps.scores.putRecord(path, after.value);
@@ -133,7 +215,7 @@ export function rebuildKey(
 
 /** Every key of a tenant that has score files, and the folders that fit no key. */
 export async function listKeys(
-  scores: ScoreStore<HistoryLine, ScoreRecord>,
+  scores: ScoreStore<HistoryLine, ScoreRecord, LiveLine>,
   tenant: string,
 ): Promise<{ keys: ScoreKey[]; skipped: string[] }> {
   const keys: ScoreKey[] = [];

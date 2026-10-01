@@ -1,6 +1,6 @@
 # M11 — Live trust and drift
 
-> **Phase:** B · **Size:** M · **Depends on:** M10 · **Status:** not started
+> **Phase:** B · **Size:** M · **Depends on:** M10 · **Status:** in progress
 
 ## Read first
 
@@ -52,8 +52,8 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 
 ## Tasks, in order
 
-- [ ] 1. Write live lines and the live score. Test that each failure code lands in its class.
-- [ ] 2. Write the window and streak rules. Test degrading at the edges, exclusion, and restore.
+- [x] 1. Write live lines and the live score. Test that each failure code lands in its class.
+- [x] 2. Write the window and streak rules. Test degrading at the edges, exclusion, and restore.
 - [ ] 3. Write early warnings, the drift reader, and alerts. Test the handler set tie-in with fixtures.
 - [ ] 4. Write major records and `major_retired`.
 - [ ] 5. Write `pack impact`, regression batches, and the coverage check.
@@ -73,7 +73,7 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 
 ### Automated (CI `check` job)
 
-- [ ] Live classes; window and streak rules; exclusion and restore (section 8 §18).
+- [x] Live classes; window and streak rules; exclusion and restore (section 8 §18).
 - [ ] Handler set tie-in: a drop after a hash change names the pack revision.
 - [ ] Autonomy: the balance rule; each revocation path resets the evidence.
 - [ ] `pack approve` refuses without regression coverage, once a key is approved.

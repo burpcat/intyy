@@ -365,6 +365,12 @@ export class FakeLogStore<L, R> implements LogStore<L, R> {
     return Promise.resolve(ok(undefined));
   }
 
+  /** Replaces every line of one log (the fake of an atomic whole-file write). */
+  replace(key: string, lines: readonly L[]): void {
+    assertSafeRelPath(key);
+    this.#logs.set(key, lines.map((l) => roundTrip(l)));
+  }
+
   /** Reads every line. */
   lines(key: string): Promise<Outcome<L[], "invalid">> {
     assertSafeRelPath(key);

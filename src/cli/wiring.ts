@@ -37,6 +37,7 @@ import type { Pack } from "../core/model/pack.js";
 import type { Policy } from "../core/model/policy.js";
 import type { CandidateFiles } from "../core/recorder/candidates.js";
 import { RequestIndexLine } from "../core/model/request-index.js";
+import type { LiveLine } from "../core/model/live-line.js";
 import { HistoryLine } from "../core/model/score-history.js";
 import { ScoreRecord } from "../core/model/score.js";
 import type { Settings } from "../core/model/settings.js";
@@ -93,7 +94,7 @@ export type Wiring = {
    * Replay is the only reader; `runReplay` never touches `node:fs` itself. */
   requestIndexStore: LogStore<RequestIndexLine, never>;
   /** Trust state per key: history lines and the rebuilt record, in `state/trust/scores/` (section 8 §5.2). */
-  scores: ScoreStore<HistoryLine, ScoreRecord>;
+  scores: ScoreStore<HistoryLine, ScoreRecord, LiveLine>;
   /** The bank app's test-mode controls, for one app's settings (section 8 §6.5). Only certify uses it. */
   harness: (app: KvfcuHarnessConfig) => KvfcuHarness;
   /** The folders evidence publish reads and writes (section 9 §6.6): `state/evidence`, `state/trust/scores`,

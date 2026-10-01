@@ -148,6 +148,10 @@ describe("what a run freezes (section 8 §11.8)", () => {
       approved(2, "op_022", "batch_a"),
       { event: "timeouts", at: "2026-01-15T09:03:00.000Z", by: "op_022", reason: "Installed.", batch: "batch_a", values: { click_search: 12000 } },
     ]);
+    // Why before the run: the run writes a live line, which rebuilds the record (section 8 §5.6). The run froze the record as it was.
+    const shown = await replayCall(env, ["trust", "show", "kvfcu/open_sub@1.0.0", "--json"]);
+    const hash = (JSON.parse(shown.stdout) as { hash: string }).hash;
+    expect(hash).toBe(hashJson((JSON.parse(shown.stdout) as { record: unknown }).record));
     const got = await supervised(env);
     expect(got.code).toBe(EXIT.ok);
     const f = approvalOf(env, got.runId);
@@ -156,9 +160,6 @@ describe("what a run freezes (section 8 §11.8)", () => {
     expect(f.timeouts).toEqual({ click_search: 12000 });
     expect(JSON.stringify(f.timeouts_from)).toContain("batch_a");
     // The record hash is the hash of the record the resolver read.
-    const shown = await replayCall(env, ["trust", "show", "kvfcu/open_sub@1.0.0", "--json"]);
-    const hash = (JSON.parse(shown.stdout) as { hash: string }).hash;
-    expect(hash).toBe(hashJson((JSON.parse(shown.stdout) as { record: unknown }).record));
     expect(JSON.stringify(f.approval.record)).toContain(hash);
   });
 

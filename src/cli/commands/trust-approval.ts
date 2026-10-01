@@ -21,8 +21,10 @@ import {
 import {
   approveKey,
   demoteKey,
+  excludeRuns,
   rejectKey,
   reinstateKey,
+  restoreAfterExclusion,
   restoreKey,
   retireKey,
   type Decider,
@@ -213,6 +215,32 @@ async function guidedApprove(ctx: Ctx, staff: string, keyArg: string | undefined
   return approveWith(ctx, staff, fresh, batch, acks, note);
 }
 
+/**
+ * `trust restore --after-exclusion` (section 8 §10.8, section 9 §9.4). The quoted hash must be the
+ * record's now. The batch rules do not apply: the key needs no new batch, and `restoreAfterExclusion`
+ * checks that a live rule degraded it, that a run which did so is excluded, and that no rule still fires.
+ */
+async function restoreAfterExclusionWith(ctx: Ctx, staff: string, keyArg: string | undefined, quoted: string): Promise<Answer> {
+  const deps = scoreDeps(ctx);
+  const record = await currentRecord(deps, await keyFromText(ctx, keyArg));
+  const now = recordHash(record);
+  if (quoted !== now) {
+    throw new CliExit(
+      EXIT.refused,
+      `trust restore refused:\n  record_changed: the record is ${now} now (state ${record.state}), not ${quoted}; run intyy trust show again`,
+    );
+  }
+  const note = await stdinText(ctx, null);
+  const result = done(
+    "restore",
+    await restoreAfterExclusion(deps, record, decider(ctx, "restore", staff, whoIs(ctx)?.roles ?? []), { note: note === "" ? null : note }),
+  );
+  return answer(
+    { key: keyText(record.key), state: result.state, record: recordHash(result) },
+    `restored ${keyText(record.key)} after excluded runs\nRECORD ${recordHash(result)}`,
+  );
+}
+
 /** Registers the approval family under `trust`. */
 export function registerApproval(trust: Command, ctxOf: () => Ctx): void {
   trust
@@ -329,14 +357,15 @@ export function registerApproval(trust: Command, ctxOf: () => Ctx): void {
     .command("restore")
     .argument("<key>", "app/capability@x.y.z, with +p<n> for a patch")
     .option("--batch <id>", "a new full batch that passed the gate")
-    .option("--after-exclusion", "restore after excluded runs, without a new batch (M11)")
+    .option("--after-exclusion", "restore after excluded runs, without a new batch (the key must have degraded on a live rule)")
     .option("--expect-record <hash>", "the record hash the review screen ended with")
     .description("restore a degraded key (approver); a piped standard input becomes the note")
     .action(
       act(ctxOf, async (ctx, args, opts) => {
         const staff = requireRole(ctx, ctx.tenant, "approver");
         if (opts.afterExclusion === true) {
-          throw new CliExit(EXIT.usage, "--after-exclusion is not built yet; excluded runs arrive in M11");
+          if (opts.batch !== undefined) throw new CliExit(EXIT.usage, "give --batch or --after-exclusion, not both");
+          return restoreAfterExclusionWith(ctx, staff, args[0], needed(opts, "expectRecord", "--expect-record"));
         }
         const batch = needed(opts, "batch", "--batch");
         const quoted = needed(opts, "expectRecord", "--expect-record");
@@ -351,6 +380,26 @@ export function registerApproval(trust: Command, ctxOf: () => Ctx): void {
           }),
         );
         return answer({ key: keyText(facts.key), state: result.state, record: recordHash(result) }, `restored ${keyText(facts.key)} on ${batch}\nRECORD ${recordHash(result)}`);
+      }),
+    );
+
+  trust
+    .command("exclude")
+    .argument("<key>", "app/capability@x.y.z, with +p<n> for a patch")
+    .argument("[run_ids...]", "live runs to remove from the window")
+    .description("remove live runs from the key's window (approver); the reason comes from standard input")
+    .action(
+      act(ctxOf, async (ctx, args) => {
+        const staff = requireRole(ctx, ctx.tenant, "approver");
+        const named = args.slice(1);
+        if (named.length === 0) throw new CliExit(EXIT.usage, "name the runs to exclude: trust exclude <key> <run_id>…");
+        const record = await currentRecord(scoreDeps(ctx), await keyFromText(ctx, args[0]));
+        const reason = await reasonText(ctx);
+        const result = done("exclude", await excludeRuns(scoreDeps(ctx), record, decider(ctx, "exclude", staff, ["approver"]), { runs: named, reason }));
+        return answer(
+          { key: keyText(record.key), excluded: [...new Set(named)], record: recordHash(result) },
+          `excluded ${String(new Set(named).size)} run(s) from ${keyText(record.key)}\nRECORD ${recordHash(result)}`,
+        );
       }),
     );
 

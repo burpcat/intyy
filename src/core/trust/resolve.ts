@@ -6,6 +6,7 @@ import type { ScoreStore } from "../../ports/scores.js";
 import { compareSemver } from "../catalog/artifacts.js";
 import type { Artifact } from "../model/artifact.js";
 import type { Mode } from "../model/request.js";
+import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreRecord, TrustState } from "../model/score.js";
 import { capabilityParts } from "./keys.js";
@@ -116,7 +117,7 @@ export function contextState(
  * is left out, so it counts as a draft and no unattended run uses it (fail closed). `trust rebuild` repairs it.
  */
 export async function loadRecords(
-  scores: ScoreStore<HistoryLine, ScoreRecord>,
+  scores: ScoreStore<HistoryLine, ScoreRecord, LiveLine>,
   tenant: string,
   signal?: AbortSignal,
 ): Promise<ScoreRecord[]> {

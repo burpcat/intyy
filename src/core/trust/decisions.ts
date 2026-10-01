@@ -6,12 +6,23 @@ import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreKey, ScoreRecord } from "../model/score.js";
 import type { Role } from "../model/staff.js";
-import { keyText } from "./keys.js";
+import { keyPath, keyText } from "./keys.js";
+import { evaluateRules } from "./live-rules.js";
 import { appendHistory, type ScoreDeps, type ScoreFailure, type ScoreWriter } from "./scores.js";
 import { decide, type Move } from "./state.js";
 
 /** Why a decision did not happen: a score write failure, or the state machine's refusal. */
-export type DecisionFailure = ScoreFailure | "illegal_move" | "needs_staff" | "role";
+export type DecisionFailure =
+  | ScoreFailure
+  | "illegal_move"
+  | "needs_staff"
+  | "role"
+  /** `exclude` named a run that is not in the key's live lines. */
+  | "unknown_run"
+  /** `restore --after-exclusion`: no live rule degraded the key, or none of its runs was excluded. */
+  | "no_exclusion"
+  /** `restore --after-exclusion`: a rule still fires with the exclusions applied. */
+  | "rule_still_fires";
 
 /** Who decides, when, and under which lock identity. */
 export type Decider = { at: Date; staff: string; roles: readonly Role[]; who: ScoreWriter };
@@ -135,6 +146,77 @@ export function restoreKey(
     batch: o.batch,
     exclusion: null,
   });
+}
+
+/**
+ * Excludes live runs from the key's window (section 8 §12.5). Only an approver may: it can give trust
+ * back. Every run must be one of the key's live lines. The runs stay in `live.jsonl`; the `excluded`
+ * line marks them, and a rebuild leaves them out of the score.
+ */
+export async function excludeRuns(
+  deps: ScoreDeps,
+  record: ScoreRecord,
+  d: Decider,
+  o: { runs: readonly string[]; reason: string },
+): Promise<Outcome<ScoreRecord, DecisionFailure>> {
+  if (!d.roles.includes("approver")) return fail("role", `${d.staff} needs the approver role to exclude runs`);
+  const live = await deps.scores.liveLines(keyPath(record.key));
+  if (!live.ok) return fail("invalid", live.detail);
+  const known = new Set(live.value.map((l) => l.run_id));
+  const missing = o.runs.filter((r) => !known.has(r));
+  if (missing.length > 0) return fail("unknown_run", `no live line for ${missing.join(", ")} in ${keyText(record.key)}`);
+  return appendHistory(
+    deps,
+    record.key,
+    { event: "excluded", at: d.at.toISOString(), by: d.staff, reason: o.reason, runs: [...new Set(o.runs)] },
+    d.who,
+  );
+}
+
+/**
+ * Restores a degraded key without a new batch (section 8 §10.8, "excluded runs"). The key must have been
+ * degraded by a live rule, and a human must have excluded at least one of the runs that degraded it. With
+ * the exclusions applied, no rule may still fire (the rules read lines since the last approval or restore).
+ * The `restored` line carries the exclusion's ID, the `at` of the latest `excluded` line that took one of those runs.
+ */
+export async function restoreAfterExclusion(
+  deps: ScoreDeps,
+  record: ScoreRecord,
+  d: Decider,
+  o: { note: string | null },
+): Promise<Outcome<ScoreRecord, DecisionFailure>> {
+  const allowed = decide(record.state, "restore", d.staff, d.roles);
+  if (!allowed.ok) return fail(allowed.failure, allowed.detail);
+  const path = keyPath(record.key);
+  const history = await deps.scores.history(path);
+  if (!history.ok) return fail("invalid", history.detail);
+  const live = await deps.scores.liveLines(path);
+  if (!live.ok) return fail("invalid", live.detail);
+  const degraded = history.value.findLast((l) => l.event === "degraded");
+  if (degraded?.event !== "degraded" || degraded.by !== "live_score") {
+    return fail("no_exclusion", "the key was not degraded by a live rule, so excluded runs cannot restore it");
+  }
+  const took = new Set(degraded.runs);
+  const exclusion = history.value.findLast((l) => l.event === "excluded" && l.runs.some((r) => took.has(r)));
+  if (exclusion === undefined) {
+    return fail("no_exclusion", "no run that degraded the key is excluded; run intyy trust exclude first");
+  }
+  // Why "approved": the key is degraded now, but the rules ask whether it would stand if it were approved again.
+  const hit = evaluateRules("approved", history.value, live.value);
+  if (hit !== null) return fail("rule_still_fires", `${hit.reason} Exclude more runs, or run a new full batch.`);
+  return appendHistory(
+    deps,
+    record.key,
+    {
+      event: "restored",
+      at: d.at.toISOString(),
+      by: d.staff,
+      reason: o.note ?? `Restored after excluding runs (exclusion ${exclusion.at}).`,
+      batch: null,
+      exclusion: exclusion.at,
+    },
+    d.who,
+  );
 }
 
 /** Sends a retired key back to `draft` (section 8 §10.9). It then needs a fresh batch and an approval. */

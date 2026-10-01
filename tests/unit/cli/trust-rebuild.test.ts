@@ -2,7 +2,7 @@
 // (design section 9 §9.8 score rebuild, §7.5 exit codes; section 8 §5.2 record rebuilt from the
 // history, §5.4 `batch` line, §5.6 a failed score write never changes a result): rebuild --all and
 // one key, equal bytes on a second run, a tampered record repaired, a key with no files stays
-// draft, `--from-evidence` and a missing or doubled target exit 1, a non-operator exits 6, a bad
+// draft, `--from-evidence` rebuilds (M11; its own file is trust-live.test.ts) and a missing or doubled target exit 1, a non-operator exits 6, a bad
 // history names its line, the artifact hash is the seal hash, and `certify` quick, case, and rerun
 // each write a `batch` line (a failing score store prints a warning and leaves the exit code).
 // Temporary data roots only. M10 task 1.
@@ -155,13 +155,13 @@ describe("trust rebuild", () => {
 });
 
 describe("trust rebuild: refusals", () => {
-  test("--from-evidence exits 1 and writes nothing", async () => {
+  test("--from-evidence rebuilds the record (M11): exit 0, and with no runs the record is the plain rebuild", async () => {
     const env = await replayRoot();
     await seed(env, KEY, LINES);
     const r = await rebuildCall(env, "op_017", "--all", "--from-evidence");
-    expect(r.code).toBe(EXIT.usage);
-    expect(r.stderr).toContain("--from-evidence");
-    expect(existsSync(recordFile(env, KEY))).toBe(false);
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.stderr).toBe("");
+    expect(readRecord(env, KEY)).toEqual(expectedRecord(KEY, LINES));
   });
 
   test("neither a key nor --all exits 1; both exit 1", async () => {

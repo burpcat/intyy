@@ -30,7 +30,9 @@ import { fact, Redactor, redactionRules, type Fact, type KnownValue } from "../s
 import type { SecretSources } from "../safety/secrets/injector.js";
 import type { RequestIndexDeps } from "../orchestrator/request-index.js";
 import { catalogRequestIndex, catalogResolve, catalogTrust, runPrechecks } from "../orchestrator/prechecks.js";
+import type { Locks } from "../../ports/locks.js";
 import type { ScoreStore } from "../../ports/scores.js";
+import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreRecord } from "../model/score.js";
 import { recordHash } from "../trust/rebuild.js";
@@ -52,6 +54,7 @@ import type { Cutoffs } from "./jev-verdict.js";
 import { matchDetectors, resumeSearch, runLadder, type LadderStep } from "./ladder.js";
 import { screenOf, type RungDeps, type StepFacts } from "./rung-input.js";
 import { reconcileInput, reconcileWithModels, runReconciliationCheck, type CheckFacts, type ReconciliationVerdict } from "./reconciliation.js";
+import { writeLiveLines } from "./live-hook.js";
 import { PRECONDITION_TIMEOUT_MS, runPrelude, runStep, type StepFailure, type StepRunnerContext } from "./prelude.js";
 import { waitForCondition } from "./wait.js";
 import type { EvalCtx } from "../targets/evaluate.js";
@@ -160,7 +163,14 @@ export type ReplayDeps = {
   requestIndex: RequestIndexDeps;
   /** The score store, for pre-run check 7 and the key choice (section 8 §11). Omitted: no records,
    * so every key is a draft and an unattended request is rejected (docs/decisions.md, M05). */
-  scores?: ScoreStore<HistoryLine, ScoreRecord>;
+  scores?: ScoreStore<HistoryLine, ScoreRecord, LiveLine>;
+  /** The score lock, for live-line writes (section 8 §5.6). Omitted with `scores`: no live line is written. */
+  locks?: Locks;
+  /**
+   * Hears each live-line write that failed, for a warning and, later, an alert (section 8 §5.6: "a
+   * failed score write never changes a run's result"). Never changes the run's result.
+   */
+  onLiveFailure?: (failure: { key: string; runId: string; reason: string }) => void;
   operator: (run: { runId: string; tenant: string }) => OperatorPort;
   /** Overrides the real reconciliation check (section 7 §11.1) with a scripted answer: mostly
    * for tests, so a case need not seal a whole second, read-only check capability. Omitted, the
@@ -292,6 +302,8 @@ function frozenFacts(
       session: session === null ? null : { ...artifactRef(session), patch: null },
       app_version: input.appVersion ?? null,
       engine_version: input.engineVersion,
+      // Why: section 8 §5.5, live lines carry the handler set hash, and `trust rebuild --from-evidence` reads it back from here.
+      handler_set: fact((input.frozenSet ?? EMPTY_FROZEN_SET).runStart.hash),
       policy: { layers: input.policy.layers, hash: fact(input.policy.hash) },
       settings: { revision: Number(input.settings.rev), hash: fact(input.settings.hash) },
       evidence_level: input.policy.effective.evidence.level,
@@ -670,6 +682,14 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     // Why the artifact and session: section 3 §7.3, `run.json.frozen` is a copy of `run_start`'s
     // frozen facts, so it names the artifacts the run used (evidence publish copies them).
     await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles, artifactForFacts, sessionForFacts, recordForFacts);
+    // Why after `finish`: section 8 §5.6, "replay, after `run_end`". A failed write never changes the result.
+    await writeLiveLines(deps, input, {
+      runId,
+      result: final,
+      artifact: artifactForFacts,
+      session: sessionForFacts,
+      handlerSet: (input.frozenSet ?? EMPTY_FROZEN_SET).runStart.hash,
+    });
     return { runId, result: final };
   };
 

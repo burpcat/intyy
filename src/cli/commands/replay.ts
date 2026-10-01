@@ -373,6 +373,12 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           artifacts: ctx.wiring.candidates,
           requestIndex: { store: ctx.wiring.requestIndexStore, clock: ctx.wiring.clock, secrets: ctx.wiring.secrets, keys },
           scores: ctx.wiring.scores,
+          locks: ctx.wiring.locks,
+          // Why: section 8 §5.6. A live line that cannot be written is said once; the run's result stands.
+          // `trust rebuild --from-evidence` repairs it.
+          onLiveFailure: (f) => {
+            progress(ctx.io, `run ${f.runId}: could not write the live line for ${f.key}: ${f.reason}. Repair with: intyy trust rebuild ${f.key} --from-evidence`);
+          },
           operator: ctx.wiring.discovery.operator,
           models: replayModels(ctx, policy.effective.llm.replay_reviewer),
           signal: stop.signal,
