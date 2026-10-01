@@ -312,3 +312,25 @@ describe("runReplay: a failed session prelude (section 3 §5.5, §6.4)", () => {
     await expectSessionFailure(await buildHarness(site, { surface: toFactory(new InputDuringSignIn(site)) }));
   });
 });
+
+describe("runReplay: run.json names the artifacts it used (section 3 §7.3)", () => {
+  test("frozen copies run_start's facts: the artifact and session IDs are plain text, never a mask token", async () => {
+    const h = await buildHarness(fixtureSite());
+    const { runId, result } = await runReplay(replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH })), h.deps);
+    expect(result.status).toBe("success");
+
+    const runJson = await h.deps.evidence.readRunJson(TENANT, runId);
+    if (!runJson.ok) throw new Error("no run.json");
+    const frozen = (runJson.value as { frozen: { frozen: { artifact: { id: string }; session: { id: string } } } }).frozen;
+    expect(frozen.frozen.artifact.id).toBe("kvfcu/open_sub@1.0.0");
+    expect(frozen.frozen.session.id).toBe("kvfcu/sign_in@1.0.0");
+    expect(JSON.stringify(runJson.value)).not.toContain("[email#");
+
+    // The same facts the log's run_start line holds.
+    const events = await h.deps.evidence.events(TENANT, runId);
+    if (!events.ok) throw new Error("events failed");
+    const start = events.value.find((e) => (e as { event?: string }).event === "run_start") as { data: { frozen: unknown } };
+    expect(frozen.frozen).toMatchObject({ artifact: { id: "kvfcu/open_sub@1.0.0" }, session: { id: "kvfcu/sign_in@1.0.0" } });
+    expect(start.data.frozen).toMatchObject({ artifact: { id: "kvfcu/open_sub@1.0.0" } });
+  });
+});

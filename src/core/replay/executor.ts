@@ -294,6 +294,8 @@ async function finish(
   code: string | null,
   result: Result,
   files: readonly string[],
+  artifact: Artifact | null = null,
+  session: Artifact | null = null,
 ): Promise<void> {
   const at = deps.clock.now().toISOString();
   const nowMs = deps.clock.now().getTime();
@@ -310,7 +312,9 @@ async function finish(
     request_id: protectId(input.request.request_id),
     status,
     result: { ...(result as unknown as Record<string, unknown>), run_id: fact(result.run_id), request_id: protectId(result.request_id) },
-    frozen: JSON.parse(JSON.stringify(r.value(frozenFacts(input, null, null)))) as Record<string, unknown>,
+    // Why not masked here: `r.value(raw)` below masks it once, and keeps each `fact(...)` whole. A
+    // second pass over the unwrapped text read `kvfcu/open_sub@1.0.0` as an email.
+    frozen: frozenFacts(input, artifact, session) as Record<string, unknown>,
     files: fileEntries.map((f) => ({
       path: isCapturePath(f.path) ? fact(f.path) : f.path,
       sha256: fact(f.sha256),
@@ -552,7 +556,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     await log.append({ event: "run_end", step, by: "engine", data: { status, code } }, true);
     // Why here: one place covers every ending, so no result site forgets the takeovers.
     const final: Result = interventions.length === 0 ? result : Result.parse({ ...result, interventions: [...interventions] });
-    await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles);
+    // Why the artifact and session: section 3 §7.3, `run.json.frozen` is a copy of `run_start`'s
+    // frozen facts, so it names the artifacts the run used (evidence publish copies them).
+    await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles, artifactForFacts, sessionForFacts);
     return { runId, result: final };
   };
 
