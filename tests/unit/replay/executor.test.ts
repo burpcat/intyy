@@ -181,11 +181,21 @@ describe("runReplay: a known screen with no progress, on a location-only precond
     const h = await buildHarness(fixtureSite({ homeMissingBox: true }), { operator: () => operator });
     const input = replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH }));
 
-    const { result } = await runReplay(input, h.deps);
+    const { runId, result } = await runReplay(input, h.deps);
 
     expect(result.status).toBe("failed");
     if (result.status !== "failed") throw new Error(`expected failed, got ${result.status}`);
     expect(result.failure.code).toBe("ended_by_operator");
+    // A ladder line names its capture files as they are on disk: the digit rule never masks the
+    // run-log number in them, since the takeover drafts read them back as files.
+    const folder = await h.deps.evidence.openRun(TENANT, runId);
+    const events = await h.deps.evidence.events(TENANT, runId);
+    if (!folder.ok || !events.ok) throw new Error("run folder missing");
+    const logged = (events.value as { event: string; data: { files?: string[] } }[])
+      .filter((e) => e.event === "ladder")
+      .flatMap((e) => e.data.files ?? []);
+    expect(logged.length).toBeGreaterThan(0);
+    for (const path of logged) expect((await folder.value.readFile(path)).ok).toBe(true);
     expect(result.failure.ladder).toEqual({ rung: 4, verdict: "needs_human", ref: "takeover" });
     // The commit point (click_confirm) was never reached: not_sent (state reached).
     expect(result.effect).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });

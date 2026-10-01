@@ -20,7 +20,7 @@ import type { FrozenSet } from "../packs/merge.js";
 import { breakTie } from "../packs/merge.js";
 import type { Gate, GateAction } from "../safety/gate/gate.js";
 import type { LogLine } from "../orchestrator/run-log.js";
-import type { Redactor } from "../safety/redaction/redactor.js";
+import { fact, type Redactor } from "../safety/redaction/redactor.js";
 import { evaluate, type AnyCheck, type EvalCtx } from "../targets/evaluate.js";
 import { fromObservation, type ScreenView } from "../targets/screen.js";
 import { resolveRefs } from "../targets/text.js";
@@ -388,7 +388,9 @@ function checkpointLanding(step: LadderStep, dispatched: boolean, checkpointPass
 function logLadder(deps: LadderDeps, step: string, data: LadderLogData, why: { kind: string; ref: string }): void {
   // Why `by`: section 3 §6.4, "jev verdicts are `ladder` lines with `by: jev`"; the reviewer's own line says `reviewer`.
   const by = data.rung === 2 ? "jev" : data.rung === 3 ? "reviewer" : "engine";
-  deps.log({ event: "ladder", step, by, why, data });
+  // Why `fact`: the digit rule would mask `a11y/00029_…` in the log, and the takeover drafts read
+  // these paths back as files. The paths are intyy's own (section 3 §7.2).
+  deps.log({ event: "ladder", step, by, why, data: { ...data, files: data.files.map(fact) } });
 }
 
 /** A `warning` line (section 3 §6.4): something to review, not fatal. */
