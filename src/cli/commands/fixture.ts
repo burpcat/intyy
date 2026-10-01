@@ -19,22 +19,32 @@ import { load } from "./documents.js";
 import { listFixtures, readFixture, readFixtureKind, writeFixtureFile, writeFixtureMeta } from "./fixtures-fs.js";
 import { settingsTarget } from "./settings.js";
 
-/** One run's observation event at log line `seq` (section 3 §7.1's `events.jsonl` shape). */
-type ObservationLine = { seq: number; event: string; data: { location: string; files: readonly string[] } };
-
-function isObservationLine(line: unknown): line is ObservationLine {
-  if (line === null || typeof line !== "object") return false;
-  const l = line as Record<string, unknown>;
-  return (
-    typeof l.seq === "number" &&
-    l.event === "observation" &&
-    l.data !== null &&
-    typeof l.data === "object" &&
-    typeof (l.data as Record<string, unknown>).location === "string"
-  );
+/** One run log line's data, when it is an object (section 3 §7.1's `events.jsonl` shape). */
+function dataOf(line: unknown): Record<string, unknown> | null {
+  if (line === null || typeof line !== "object") return null;
+  const d = (line as Record<string, unknown>).data;
+  return d !== null && typeof d === "object" ? (d as Record<string, unknown>) : null;
 }
 
-/** Reads one run's observation line at `seq`, and its saved capture files' bytes. */
+/** The capture files a log line names: a discovery `observation`, or a replay `ladder` or failure
+ * capture (section 3 §7.5). Empty when the line names none. */
+function filesOf(line: unknown): string[] {
+  const files = dataOf(line)?.files;
+  return Array.isArray(files) ? files.filter((f): f is string => typeof f === "string") : [];
+}
+
+/** A logged capture path as it is on disk. Why: runs logged before ladder paths were facts have
+ * the run-log number masked (`a11y/[digits#1]_x_ladder.yaml`); the one file in `run.json` with the
+ * same folder and name after the number is it. `undefined` when none or more than one fits. */
+function onDisk(path: string, runFiles: readonly string[]): string | undefined {
+  const m = /^([a-z0-9]+\/)\[[a-z]+#\d+\](_.+)$/.exec(path);
+  if (m === null) return path;
+  const fits = runFiles.filter((f) => f.startsWith(m[1] ?? "") && f.endsWith(m[2] ?? "") && /^[a-z0-9]+\/\d+_/.test(f));
+  return fits.length === 1 ? fits[0] : undefined;
+}
+
+/** Reads one run's capture line at `seq`, and its saved capture files' bytes. A replay capture
+ * line names no location, so the last one the log names before it stands in. */
 async function readCapture(
   ctx: Ctx,
   tenant: string,
@@ -43,20 +53,31 @@ async function readCapture(
 ): Promise<{ location: string; a11y: string; dom: string | undefined; screen: Uint8Array | undefined }> {
   const events = await ctx.wiring.evidence.events(tenant, runId);
   if (!events.ok) throw new CliExit(EXIT.usage, `run ${runId}: ${events.detail ?? events.failure}`);
-  const line = events.value.find((l) => isObservationLine(l) && l.seq === seq);
-  if (line === undefined || !isObservationLine(line)) {
-    throw new CliExit(EXIT.usage, `run ${runId} has no observation at seq ${String(seq)}`);
+  const at = events.value.findIndex((l) => (l as { seq?: unknown } | null)?.seq === seq);
+  const line = events.value[at];
+  if (at < 0 || !filesOf(line).some((f) => f.startsWith("a11y/"))) {
+    throw new CliExit(EXIT.usage, `run ${runId} has no capture at seq ${String(seq)}`);
+  }
+  let location = "";
+  for (let i = at; i >= 0 && location === ""; i--) {
+    const d = dataOf(events.value[i]);
+    const loc = d?.location ?? d?.path;
+    if (typeof loc === "string" && loc.startsWith("/")) location = loc;
   }
   const folder = await ctx.wiring.evidence.openRun(tenant, runId);
   if (!folder.ok) throw new CliExit(EXIT.usage, `run ${runId}: ${folder.detail ?? folder.failure}`);
-  const a11yPath = line.data.files.find((f) => f.startsWith("a11y/"));
-  const domPath = line.data.files.find((f) => f.startsWith("dom/"));
-  const screenPath = line.data.files.find((f) => f.startsWith("screens/"));
+  const runJson = await ctx.wiring.evidence.readRunJson(tenant, runId);
+  const listed = runJson.ok ? (runJson.value as { files?: { path?: unknown }[] }).files : undefined;
+  const runFiles = (listed ?? []).map((f) => f.path).filter((p): p is string => typeof p === "string");
+  const files = filesOf(line).map((f) => onDisk(f, runFiles)).filter((f): f is string => f !== undefined);
+  const a11yPath = files.find((f) => f.startsWith("a11y/"));
+  const domPath = files.find((f) => f.startsWith("dom/"));
+  const screenPath = files.find((f) => f.startsWith("screens/"));
   const a11y = a11yPath === undefined ? undefined : await folder.value.readFile(a11yPath);
   const dom = domPath === undefined ? undefined : await folder.value.readFile(domPath);
   const screen = screenPath === undefined ? undefined : await folder.value.readFile(screenPath);
   return {
-    location: line.data.location,
+    location,
     a11y: a11y?.ok === true ? new TextDecoder().decode(a11y.value) : "",
     dom: dom?.ok === true ? new TextDecoder().decode(dom.value) : undefined,
     screen: screen?.ok === true ? screen.value : undefined,

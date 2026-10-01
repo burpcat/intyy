@@ -147,3 +147,28 @@ describe("fixture list and show", () => {
     expect(got.stderr).toContain("no meta.json");
   });
 });
+
+describe("fixture new: a replay's ladder capture", () => {
+  test("takes the ladder line's files, the last logged location, and finds an old masked name in run.json", async () => {
+    const r = await root();
+    const evidence = new FileEvidenceStore({ root: `${r}/state/evidence`, tmpDir: `${r}/state/var/tmp` });
+    const folder = await evidence.openRun(TENANT, RUN_ID);
+    if (!folder.ok) throw new Error("openRun failed in test setup");
+    await folder.value.writeFile("a11y/00017_click_member_ladder.yaml", maskedCast('- heading "500 Internal Server Error"'));
+    await folder.value.writeFile(
+      "run.json",
+      maskedCast(JSON.stringify({ files: [{ path: "a11y/00017_click_member_ladder.yaml", sha256: "x", bytes: 1 }] })),
+    );
+    const line = (seq: number, event: string, data: Record<string, unknown>) =>
+      folder.value.appendEvent(maskedCast({ seq, at: "2026-09-30T10:00:01.000Z", run_id: RUN_ID, step: "click_member", by: "engine", event, data }));
+    await line(2, "gate", { actor: "engine", action: "click", decision: "allowed", path: "/main.do" });
+    await line(3, "ladder", { rung: 1, verdict: "climb", files: ["a11y/[digits#1]_click_member_ladder.yaml"] });
+    const got = await cli(r, "op_017", [
+      ...newArgv("trouble_server_error", ["--kind", "trouble", "--json"]).map((a) => (a === "1" ? "3" : a)),
+    ]);
+    expect(got.code).toBe(EXIT.ok);
+    expect(JSON.parse(got.stdout)).toMatchObject({ location: "/main.do", source: { run_id: RUN_ID, seq: 3 } });
+    const dir = join(r, "library", "fixtures", "kvfcu", "trouble_server_error");
+    expect(readFileSync(join(dir, "a11y.yaml"), "utf8")).toContain("500 Internal Server Error");
+  });
+});
