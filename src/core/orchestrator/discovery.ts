@@ -203,7 +203,7 @@ function frozenFacts(input: DiscoveryInput, runKind: "discovery"): unknown {
         entry: spec.entry,
         limits,
       },
-      models: { discovery: spec.model, prompt: spec.prompt },
+      models: { discovery: spec.model, prompt: fact(spec.prompt) },
     },
     fault_profile: null,
   };

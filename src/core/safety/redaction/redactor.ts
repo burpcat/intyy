@@ -53,6 +53,9 @@ const FACT_SHAPES = [
   // An artifact key: `<app>/<capability>@<major>` or `@<major>.<minor>.<patch>` (section 2 §9).
   // Why a fact: the email detector would turn `kvfcu/open_sub@1.0.0` into `kvfcu/[email#1]`.
   /^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+(\.\d+\.\d+)?$/,
+  // A prompt version, like `discovery@1.1` (section 6 §11.4; the RunSpec `prompt` pattern).
+  // Why a fact: the email detector would turn `discovery@1.1` into `[email#1]` in `run_start`.
+  /^discovery@\d+\.\d+$/,
 ];
 
 /**
