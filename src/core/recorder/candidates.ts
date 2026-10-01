@@ -181,6 +181,31 @@ export async function recordPositiveRun(
   return ok({ id, output: output.value });
 }
 
+/**
+ * Checks, before any browser or model work, that `discover --candidate <id>` names a real
+ * candidate of the spec's own capability. Plain code, so a typo costs no live run. Why: an
+ * owner once passed a bare `cand_...` ID; the run finished and silently attached to nothing.
+ * Every refusal is `not_found`; the detail names the full ID the owner probably meant.
+ */
+export async function checkAttachTarget(
+  deps: Pick<CandidateDeps, "candidates">,
+  specCapability: string,
+  id: string,
+): Promise<Outcome<void, "not_found">> {
+  const form = `--candidate ${id}: write the full <app>/<capability>/cand_... ID`;
+  if (!id.includes("/")) {
+    const known = await deps.candidates.list();
+    const meant = known.find((k) => k === `${specCapability}/${id}`);
+    return fail("not_found", meant === undefined ? form : `${form}. Did you mean ${meant}?`);
+  }
+  const got = await deps.candidates.getFile(id, "runs.json");
+  if (!got.ok) return fail("not_found", `--candidate ${id}: no such candidate`);
+  if (!id.startsWith(`${specCapability}/`)) {
+    return fail("not_found", `--candidate ${id}: this spec records ${specCapability}, not that capability`);
+  }
+  return ok(undefined);
+}
+
 /** Attaches a just-finished negative discovery run to an existing candidate (section 6 §14.8).
  * Shared by `discover --candidate` and, later, `candidate adopt`. */
 export async function attachNegativeRun(

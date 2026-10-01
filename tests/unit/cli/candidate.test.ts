@@ -1,7 +1,7 @@
 // Proves `candidate new | list | show | issues | decide | review`, and that `discover` records
 // a candidate at the end of a successful run. Design section 9 §8.1, §8.2; section 6 §14, §15.
 // Synthetic values only. No canary member.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, test } from "vitest";
@@ -106,16 +106,16 @@ async function seedRun(
 }
 
 /** The spec `library/specs/kvfcu/sign_in.json` needs (matches the golden fixture's run). */
-function writeSignInSpec(root: string): void {
+function writeSignInSpec(root: string, capability = "sign_in"): void {
   mkdirSync(`${root}/library/specs/kvfcu`, { recursive: true });
   writeFileSync(
-    `${root}/library/specs/kvfcu/sign_in.json`,
+    `${root}/library/specs/kvfcu/${capability}.json`,
     JSON.stringify({
       schema: "intyy.runspec/1.0",
       kind: "discovery",
       caller: { tenant: "keystone", agent_id: "op_017" },
       app: "kvfcu",
-      capability: "sign_in",
+      capability,
       goal: "Sign in as the operator and reach the home page.",
       inputs: [],
       outputs: [],
@@ -310,18 +310,23 @@ describe("candidate review", () => {
   });
 });
 
-/** The spec `library/specs/kvfcu/find_member.json` needs: a negative run on SITE that reports
- * "not found" from the sign-in page itself (section 6 §6.1, negative runs take no outputs). */
-function writeFindMemberSpec(root: string): void {
+const NEGATIVE_SPEC = "sign_in.not_found";
+
+/** The spec `library/specs/kvfcu/sign_in.not_found.json` needs: a negative run on SITE that
+ * reports "not found" from the sign-in page itself (section 6 §6.1, negative runs take no
+ * outputs). Why capability `sign_in`: `discover --candidate` refuses a candidate of any other
+ * capability, and the candidate here is the `sign_in` one. Why a dotted file name: the variant
+ * scenario shape of `library/specs/kvfcu/open_share_subaccount.missing.json`. */
+function writeNegativeSpec(root: string): void {
   mkdirSync(`${root}/library/specs/kvfcu`, { recursive: true });
   writeFileSync(
-    `${root}/library/specs/kvfcu/find_member.json`,
+    `${root}/library/specs/kvfcu/${NEGATIVE_SPEC}.json`,
     JSON.stringify({
       schema: "intyy.runspec/1.0",
       kind: "negative_discovery",
       caller: { tenant: "keystone", agent_id: "op_017" },
       app: "kvfcu",
-      capability: "find_member",
+      capability: "sign_in",
       goal: "Look up a member who does not exist.",
       inputs: [],
       outputs: [],
@@ -452,14 +457,14 @@ describe("discover records a candidate", () => {
   test("a negative spec that ends business_outcome attaches to --candidate", async () => {
     const env = await discoverRoot();
     writeSignInSpec(env.root);
-    writeFindMemberSpec(env.root);
+    writeNegativeSpec(env.root);
     const positive = await discoverCall(env, ["kvfcu/sign_in"], new ScriptedPlanner(SIGN_IN_STEPS), SITE);
     const id = (JSON.parse(positive.stdout) as { candidate: string }).candidate;
 
     const negativePlanner = new ScriptedPlanner([
       { name: "report_outcome", input: { summary: "No such member.", proof: ["e1"] } },
     ]);
-    const got = await discoverCall(env, ["kvfcu/find_member", "--candidate", id], negativePlanner, SITE);
+    const got = await discoverCall(env, [`kvfcu/${NEGATIVE_SPEC}`, "--candidate", id], negativePlanner, SITE);
 
     expect(got.code).toBe(EXIT.businessOutcome);
     const data = JSON.parse(got.stdout) as { status: string; candidate: string };
@@ -469,8 +474,8 @@ describe("discover records a candidate", () => {
 
   test("a negative spec without --candidate is refused before the browser opens", async () => {
     const env = await discoverRoot();
-    writeFindMemberSpec(env.root);
-    const got = await discoverCall(env, ["kvfcu/find_member"], new ScriptedPlanner([]), SITE);
+    writeNegativeSpec(env.root);
+    const got = await discoverCall(env, [`kvfcu/${NEGATIVE_SPEC}`], new ScriptedPlanner([]), SITE);
     expect(got.code).toBe(EXIT.usage);
     expect(got.stderr).toContain("--candidate");
   });
@@ -489,8 +494,74 @@ describe("discover records a candidate", () => {
   });
 });
 
-/** Runs the sign_in positive discovery, then the find_member negative discovery attached to
- * it (section 6 §15's table); returns the shared candidate ID. `find_member`'s spec never
+/** Files under `dir`, as relative paths; `[]` when `dir` does not exist. */
+function filesUnder(dir: string): string[] {
+  return existsSync(dir) ? readdirSync(dir, { recursive: true, encoding: "utf8" }) : [];
+}
+
+describe("discover --candidate checks the target before any live work (section 6 §14.8)", () => {
+  type Env = Awaited<ReturnType<typeof discoverRoot>>;
+
+  /** A root with a finished sign_in candidate, an other_cap candidate, and the negative spec. */
+  async function setup(): Promise<{ env: Env; id: string; other: string }> {
+    const env = await discoverRoot();
+    writeSignInSpec(env.root);
+    writeNegativeSpec(env.root);
+    const first = await discoverCall(env, ["kvfcu/sign_in"], new ScriptedPlanner(SIGN_IN_STEPS), SITE);
+    const id = (JSON.parse(first.stdout) as { candidate: string }).candidate;
+    // Why copy the folder: the test tenant's policy lists only sign_in, so a second capability
+    // cannot be discovered here; a copied candidate folder is enough for the existence check.
+    const other = id.replace("/sign_in/", "/other_cap/");
+    cpSync(join(env.root, "library", "candidates", id), join(env.root, "library", "candidates", other), {
+      recursive: true,
+    });
+    return { env, id, other };
+  }
+
+  /** Runs the negative spec with `target`; asserts the refusal cost no live work. */
+  async function refused(env: Env, target: string): Promise<Call> {
+    const planner = new ScriptedPlanner([]);
+    const evidenceBefore = filesUnder(join(env.root, "state", "evidence"));
+    const got = await discoverCall(env, [`kvfcu/${NEGATIVE_SPEC}`, "--candidate", target], planner, SITE);
+    expect(got.code).toBe(EXIT.usage);
+    // Why: the planner never ran, no new run folder exists, and no lock file was written.
+    expect(planner.seen).toHaveLength(0);
+    expect(filesUnder(join(env.root, "state", "evidence"))).toEqual(evidenceBefore);
+    expect(filesUnder(join(env.root, "state", "var", "locks")).filter((f) => f.endsWith(".lock"))).toEqual([]);
+    return got;
+  }
+
+  test("a bare suffix of an existing candidate is refused, with a did-you-mean", async () => {
+    const { env, id } = await setup();
+    const got = await refused(env, id.slice(id.lastIndexOf("/") + 1));
+    expect(got.stderr).toContain("full <app>/<capability>");
+    expect(got.stderr).toContain(`Did you mean ${id}?`);
+  });
+
+  test("a bare id that matches nothing is refused, with the hint and no did-you-mean", async () => {
+    const { env } = await setup();
+    const got = await refused(env, "cand_2026-10-01_0000000000");
+    expect(got.stderr).toContain("full <app>/<capability>");
+    expect(got.stderr).not.toContain("Did you mean");
+  });
+
+  test("a full id that does not exist is refused", async () => {
+    const { env } = await setup();
+    const got = await refused(env, "kvfcu/sign_in/cand_2026-10-01_0000000000");
+    expect(got.stderr).toContain("no such candidate");
+  });
+
+  test("a full id under another capability is refused", async () => {
+    const { env, other } = await setup();
+    expect(other).toMatch(/^kvfcu\/other_cap\/cand_/);
+    const got = await refused(env, other);
+    expect(got.stderr).toContain("not that capability");
+    expect(got.stderr).toContain("sign_in");
+  });
+});
+
+/** Runs the sign_in positive discovery, then the sign_in.not_found negative discovery attached to
+ * it (section 6 §15's table); returns the shared candidate ID. The negative spec never
  * navigates before `report_outcome`, so the negative run's own saved screen is SITE's `/`
  * page: "Teller Sign In". */
 async function candidateWithNegativeRun(env: {
@@ -503,7 +574,7 @@ async function candidateWithNegativeRun(env: {
   // approved settings on disk, not just `env.settings`'s in-memory fake.
   cpSync(join("library", "settings"), join(env.root, "library", "settings"), { recursive: true });
   writeSignInSpec(env.root);
-  writeFindMemberSpec(env.root);
+  writeNegativeSpec(env.root);
   const positive = await discoverCall(env, ["kvfcu/sign_in"], new ScriptedPlanner(SIGN_IN_STEPS), SITE);
   const id = (JSON.parse(positive.stdout) as { candidate: string }).candidate;
   // Why replay the positive run's first step: `alignNegativeRun` (section 6 §14.8) needs at
@@ -515,7 +586,7 @@ async function candidateWithNegativeRun(env: {
     firstStep,
     { name: "report_outcome", input: { summary: "No such member.", proof: ["e1"] } },
   ]);
-  await discoverCall(env, ["kvfcu/find_member", "--candidate", id], negativePlanner, SITE);
+  await discoverCall(env, [`kvfcu/${NEGATIVE_SPEC}`, "--candidate", id], negativePlanner, SITE);
   return id;
 }
 

@@ -7,7 +7,8 @@ import { requireRole, takeLock, type Ctx } from "../context.js";
 import { CliExit, EXIT, exitForStatus } from "../exit-codes.js";
 import { answer, progress } from "../output.js";
 import { act, readVersion, type Register } from "../program.js";
-import { attachNegativeRunOrExit, recordPositiveRunOrExit } from "./candidate.js";
+import { checkAttachTarget } from "../../core/recorder/candidates.js";
+import { attachNegativeRunOrExit, candidateDeps, recordPositiveRunOrExit } from "./candidate.js";
 import { load, orExit } from "./documents.js";
 import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
@@ -56,6 +57,13 @@ export const registerDiscover: Register = (program: Command, ctxOf) => {
           throw new CliExit(
             EXIT.usage,
             `${name.app}/${name.name} is a discovery spec; --candidate only attaches a negative_discovery run`,
+          );
+        }
+        // Why before the lock and the browser: a wrong ID must cost no live run.
+        if (attachTo !== undefined) {
+          orExit(
+            await checkAttachTarget(candidateDeps(ctx), `${spec.app}/${spec.capability}`, attachTo),
+            "discover",
           );
         }
         const t = settingsTarget(ctx);
