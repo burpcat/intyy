@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, test } from "vitest";
 import { commands } from "../../../src/cli/commands/index.js";
 import { EXIT } from "../../../src/cli/exit-codes.js";
+import { ok } from "../../../src/ports/outcome.js";
 import { wire as realWire } from "../../../src/cli/wiring.js";
 import { FileCandidateStore, FileEvidenceStore } from "../../../src/adapters/files/other-stores.js";
 import { Artifact as ArtifactSchema, type Artifact } from "../../../src/core/model/artifact.js";
@@ -313,6 +314,133 @@ describe("candidate review", () => {
     const shown = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
     const data = JSON.parse(shown.stdout) as { artifact: { runs_on: { paths: string[] } } };
     expect(data.artifact.runs_on.paths).toEqual(beforePaths);
+  });
+});
+
+describe("candidate review: a blocking issue the walk cannot clear is asked once, then skipped", () => {
+  /** Every review decision except `click_login`'s risk, so the walk meets only that question. */
+  async function resolveAllButClickRisk(r: string, id: string): Promise<void> {
+    for (const seq of [3, 6, 9]) {
+      await cli(r, "op_017", ["candidate", "decide", id, "tag", `${RUN_ID}#${String(seq)}`, "flow_step"]);
+    }
+    await cli(r, "op_017", ["candidate", "decide", id, "edit", "about.when_to_use", "Sign the operator in first."]);
+    await cli(r, "op_017", ["candidate", "decide", id, "edit", "about.limits", "Operator only."]);
+    await cli(r, "op_017", ["candidate", "decide", id, "risk", "type_user_id", "idempotent"]);
+    await cli(r, "op_017", ["candidate", "decide", id, "risk", "type_password", "idempotent"]);
+  }
+
+  const noteFor = (id: string): string =>
+    "click_login needs a second look from another reviewer. Run: " +
+    `intyy --staff <another reviewer> candidate second-look ${id} click_login --agree`;
+
+  const count = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+
+  /** The `risk` decisions on `click_login` that the candidate's provenance holds. */
+  async function riskDecisionsOf(r: string, id: string): Promise<{ what: string; subject: string }[]> {
+    const shown = JSON.parse((await cli(r, "op_017", ["candidate", "show", id, "--json"])).stdout) as {
+      artifact: { provenance: { decisions: { what: string; subject: string }[] } };
+    };
+    return shown.artifact.provenance.decisions.filter((d) => d.what === "risk" && d.subject === "click_login");
+  }
+
+  /** The blocking issues the candidate holds after the walk. */
+  async function blockingOf(r: string, id: string): Promise<{ code: string; subject?: string }[]> {
+    const got = JSON.parse((await cli(r, "op_017", ["candidate", "issues", id, "--json"])).stdout) as {
+      issues: { code: string; level: string; subject?: string }[];
+    };
+    return got.issues.filter((i) => i.level === "blocking");
+  }
+
+  test("a lowered-risk step is asked once; the walk ends with the second-look note and still blocks", async () => {
+    const r = await root({ irreversibleClick: true });
+    const id = await newCandidate(r);
+    await resolveAllButClickRisk(r, id);
+    const prompts: string[] = [];
+    const got = await call(["candidate", "review", id, "--json"], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands },
+      stdinTty: true,
+      prompts,
+      // Paths (blank keeps them), then the one risk question: lower the step.
+      answers: ["", "reversible"],
+    });
+    expect(got.code).toBe(EXIT.ok);
+    expect(prompts.filter((p) => p.startsWith("Risk for click_login"))).toHaveLength(1);
+    expect(prompts).toHaveLength(2);
+    expect(count(got.stderr, noteFor(id))).toBe(1);
+    expect((JSON.parse(got.stdout) as { blocking: number }).blocking).toBe(1);
+    expect(await blockingOf(r, id)).toContainEqual(
+      expect.objectContaining({ code: "risk_second_look", subject: "click_login" }),
+    );
+    expect(await riskDecisionsOf(r, id)).toHaveLength(1);
+  });
+
+  test("a risk decision already recorded: no risk question, the note is printed, the walk ends", async () => {
+    const r = await root({ irreversibleClick: true });
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "reversible");
+    const prompts: string[] = [];
+    const got = await call(["candidate", "review", id, "--json"], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands },
+      stdinTty: true,
+      prompts,
+      answers: [""],
+    });
+    expect(got.code).toBe(EXIT.ok);
+    expect(prompts.filter((p) => p.startsWith("Risk for"))).toHaveLength(0);
+    expect(prompts).toHaveLength(1);
+    expect(count(got.stderr, noteFor(id))).toBe(1);
+    expect((JSON.parse(got.stdout) as { blocking: number }).blocking).toBe(1);
+    expect(await riskDecisionsOf(r, id)).toHaveLength(1);
+  });
+
+  test("never twice: an issue that still blocks after its decision is asked once, noted, and counted", async () => {
+    const r = await root();
+    const id = await newCandidate(r);
+    // Everything but the three action tags is decided, so only undecided_tag issues block.
+    await cli(r, "op_017", ["candidate", "decide", id, "edit", "about.when_to_use", "Sign the operator in first."]);
+    await cli(r, "op_017", ["candidate", "decide", id, "edit", "about.limits", "Operator only."]);
+    for (const step of ["type_user_id", "type_password", "click_login"]) {
+      await cli(r, "op_017", ["candidate", "decide", id, "risk", step, "idempotent"]);
+    }
+    // Scripted fake: the store swallows every `tag` decision, so each undecided_tag issue is
+    // regenerated unchanged after the walk answers it.
+    const swallowTags: typeof realWire = (rootDir, config, env) => {
+      const w = realWire(rootDir, config, env);
+      const candidates = new Proxy(w.candidates, {
+        get(target, prop) {
+          if (prop === "appendDecision") {
+            return (cid: string, d: { what: string }) =>
+              d.what === "tag" ? Promise.resolve(ok(undefined)) : target.appendDecision(cid, d as never);
+          }
+          const v: unknown = Reflect.get(target, prop);
+          return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+        },
+      });
+      return { ...w, candidates };
+    };
+    const prompts: string[] = [];
+    const got = await call(["candidate", "review", id, "--json"], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands, wire: swallowTags },
+      stdinTty: true,
+      prompts,
+    });
+    expect(got.code).toBe(EXIT.ok);
+    // Three undecided tags, each asked exactly once (plus the paths question).
+    expect(prompts.filter((p) => p.startsWith("Confirm tag"))).toHaveLength(3);
+    expect(prompts).toHaveLength(4);
+    expect(count(got.stderr, "undecided_tag provenance.actions[0] still blocks after its decision; skipped.")).toBe(1);
+    expect(count(got.stderr, "undecided_tag provenance.actions[1] still blocks after its decision; skipped.")).toBe(1);
+    expect(count(got.stderr, "undecided_tag provenance.actions[2] still blocks after its decision; skipped.")).toBe(1);
+    // Skipped issues still count: the answer matches what the candidate holds, tags included.
+    const held = await blockingOf(r, id);
+    expect(held.filter((i) => i.code === "undecided_tag")).toHaveLength(3);
+    expect((JSON.parse(got.stdout) as { blocking: number }).blocking).toBe(held.length);
   });
 });
 

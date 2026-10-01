@@ -61,6 +61,8 @@ export async function call(
     stdin?: string;
     /** Scripted answers for the `review` walk's `question()` calls, in order. */
     answers?: readonly string[];
+    /** Receives each prompt text the `review` walk's `question()` asks, in order. */
+    prompts?: string[];
   },
 ): Promise<Call> {
   let stdout = "";
@@ -73,7 +75,10 @@ export async function call(
     stdin: {
       isTTY: opts.stdinTty ?? false,
       readAll: () => Promise.resolve(opts.stdin ?? ""),
-      question: () => Promise.resolve(answers.shift() ?? ""),
+      question: (q: string) => {
+        opts.prompts?.push(q);
+        return Promise.resolve(answers.shift() ?? "");
+      },
     },
     env,
     cwd: opts.cwd,

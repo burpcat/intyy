@@ -443,9 +443,34 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
           issuesFile = { schema: "intyy.candidate_issues/1.0", issues: [...output.issues] };
         }
 
+        // Why: a blocking issue the walk cannot clear itself (a `risk_second_look` needs another
+        // staff ID) would be asked again after every regenerate. Ask each issue once, then skip it.
+        const issueKey = (i: CandidateIssue): string => `${i.code}:${i.subject ?? ""}`;
+        const asked = new Set<string>();
+        const skipped = new Set<string>();
         for (;;) {
-          const next = issuesFile.issues.find((i) => i.level === "blocking");
+          const next = issuesFile.issues.find((i) => i.level === "blocking" && !skipped.has(issueKey(i)));
           if (next === undefined) break;
+          const key = issueKey(next);
+          if (next.code === "risk_second_look") {
+            const decisions = orExit(await ctx.wiring.candidates.decisions(id), id);
+            const subject = resolveSubject(artifact, decisions, "risk", next.subject ?? "") ?? next.subject ?? "";
+            if (decisions.some((d) => d.what === "risk" && d.subject === subject)) {
+              progress(
+                ctx.io,
+                `${next.subject ?? ""} needs a second look from another reviewer. Run: ` +
+                  `intyy --staff <another reviewer> candidate second-look ${id} ${next.subject ?? ""} --agree`,
+              );
+              skipped.add(key);
+              continue;
+            }
+          }
+          if (asked.has(key)) {
+            progress(ctx.io, `${next.code} ${next.subject ?? ""} still blocks after its decision; skipped. ${next.message}`);
+            skipped.add(key);
+            continue;
+          }
+          asked.add(key);
           const decided = await askForIssue(ctx, artifact, next);
           if (decided === null) {
             issuesFile = { ...issuesFile, issues: issuesFile.issues.filter((i) => i !== next) };
