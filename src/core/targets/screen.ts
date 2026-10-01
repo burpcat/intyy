@@ -4,6 +4,7 @@
 // see a port type. Follows design section 7 §6 (clue voting) and section 2 §14 (conditions).
 import type { Observation, RoleGroup } from "../../ports/surface.js";
 import { locationOf } from "../discovery/observation.js";
+import { visibleLabel } from "../surface/visible-label.js";
 
 /**
  * One screen element the voter and evaluator read. Any field may be absent when the source
@@ -66,7 +67,11 @@ export function fromObservation(o: Observation): ScreenView {
     const parentIndex = el.parent === undefined ? undefined : indexByRef.get(el.parent);
     if (parentIndex !== undefined) out.parent = String(parentIndex);
     if (el.clues.name !== undefined) out.name = el.clues.name;
-    if (el.clues.label !== undefined) out.label = el.clues.label;
+    // Why: the same rule discovery records a target's label with (section 6 §13.2): layout
+    // first, else markup. Markup alone can drop text the layout label holds ("Member No." vs
+    // "Member No. *"), and a differing label sinks the vote under 0.70.
+    const label = visibleLabel(el, o.elements) ?? el.clues.label;
+    if (label !== undefined) out.label = label;
     if (el.clues.text !== undefined) out.text = el.clues.text;
     if (el.box !== null) {
       out.region = {

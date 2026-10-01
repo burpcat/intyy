@@ -143,3 +143,29 @@ describe("the role-group filter (section 7 §6.1)", () => {
     expect(v.facts.candidates).toBe(1);
   });
 });
+
+describe("replay reads a field's label by the discovery rule (section 6 §13.2)", () => {
+  test("a field recorded with its layout label is found when its markup label is shorter", () => {
+    // Why: discovery records the cell beside the field ("Member No. *"); markup ties only
+    // "Member No.". Reading markup alone made the label differ and dropped the score to 0.64.
+    const t = target("member_no_box", {
+      role: "textbox",
+      name: "Member No.",
+      label: "Member No. *",
+      region: { x: 0.3, y: 0.19, w: 0.07, h: 0.024 },
+      path: "form > input[0]",
+    });
+    const today = screen([
+      el("cell", { clues: { path: "form > td[0]", text: "Member No. *" }, box: { x: 250, y: 151, width: 120, height: 20 } }),
+      el("box", {
+        role: "textbox",
+        roleGroup: "text_entry",
+        clues: { path: "form > input[0]", name: "Member No.", label: "Member No." },
+        box: { x: 384, y: 151, width: 91, height: 20 },
+      }),
+    ]);
+    const v = vote(t, fromObservation(today), byId(t));
+    expect(v.kind).toBe("winner");
+    if (v.kind === "winner") expect(v.elementId).toBe("1");
+  });
+});
