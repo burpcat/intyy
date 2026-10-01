@@ -1,7 +1,9 @@
 // Loader checks for `recovery`, `runs_on` portability, the session link, display formats, and
 // the candidate-mode placeholders. Split out of `artifact-checks.ts`, which ran past 400 lines.
 // Follows design section 2 §19.4 to §19.9, and section 6 §14.15 (blocking review issues).
+import type { z } from "zod";
 import type { Artifact } from "./artifact.js";
+import type { ReconciliationCheck } from "./artifact/recovery.js";
 import {
   type ArtifactCheckContext,
   type Facts,
@@ -17,6 +19,9 @@ const COMMIT_MISMATCH = "commit_point_mismatch";
 const MISSING_RECON = "missing_reconciliation";
 const RECON_SHAPE = "reconciliation_shape";
 const RECON_NOT_READONLY = "reconciliation_not_readonly";
+const RECON_COUNT_SHAPE = "reconciliation_count_shape";
+
+type ReconCheck = z.infer<typeof ReconciliationCheck>;
 const COMPENSATED_NOT_COMMITS = "compensated_by_not_commits";
 const MISSING_REFUSAL = "missing_refusal";
 const LOCATION_NOT_IN_PATHS = "location_not_in_paths";
@@ -103,6 +108,7 @@ export function checkRecovery(
           "the reconciliation capability must be read_only",
         );
       }
+      checkCountShape(recon.check, report);
       Object.entries(recon.check.inputs).forEach(([k, v]) => {
         checkNamespace(v, new Set(["input", "system"]), `recovery.reconciliation.check.inputs.${k}`, facts, report);
       });
@@ -124,6 +130,24 @@ export function checkRecovery(
     Object.entries(recovery.compensated_by.inputs).forEach(([k, v]) => {
       checkNamespace(v, new Set(["output"]), `recovery.compensated_by.inputs.${k}`, facts, report);
     });
+  }
+}
+
+/**
+ * A `count_diff` check names one `count_output` and maps no `outputs` and no
+ * `not_found_outcomes`: plain code decides from the count alone. A `reference` check names no
+ * `count_output` (owner decisions, 2026-10-01).
+ */
+function checkCountShape(check: ReconCheck, report: Reporter): void {
+  const path = "recovery.reconciliation.check";
+  if (check.mode === "reference") {
+    if (check.count_output !== undefined) report(RECON_COUNT_SHAPE, `${path}.count_output`, "only a count_diff check names a count_output");
+    return;
+  }
+  if (check.count_output === undefined) report(RECON_COUNT_SHAPE, `${path}.count_output`, "a count_diff check needs a count_output");
+  if (Object.keys(check.outputs).length > 0) report(RECON_COUNT_SHAPE, `${path}.outputs`, "a count_diff check maps no outputs");
+  if (check.not_found_outcomes.length > 0) {
+    report(RECON_COUNT_SHAPE, `${path}.not_found_outcomes`, "a count_diff check lists no not_found_outcomes");
   }
 }
 

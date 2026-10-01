@@ -225,10 +225,10 @@ describe("applyRecoveryDecisions", () => {
   const recovery = { commit_point: "click_confirm", reconciliation: null };
 
   test("a waiver decision fills in the waiver", () => {
-    const decisions = [decision({ what: "waiver", subject: "recovery.reconciliation", value: JSON.stringify({ reason: "No check screen exists." }) })];
+    const decisions = [decision({ what: "waiver", subject: "recovery.reconciliation", value: JSON.stringify({ reason: "No check screen exists.", attempt_run: "run_2026-10-01_0123456789" }) })];
     const issues: RecorderIssue[] = [];
     const out = applyRecoveryDecisions(recovery, decisions, issues);
-    expect(out?.reconciliation).toEqual({ waiver: { reason: "No check screen exists." } });
+    expect(out?.reconciliation).toEqual({ waiver: { reason: "No check screen exists.", attempt_run: "run_2026-10-01_0123456789" } });
     expect(issues).toEqual([]);
   });
 
@@ -242,6 +242,41 @@ describe("applyRecoveryDecisions", () => {
     expect(out?.reconciliation).toMatchObject({
       check: { capability: "kvfcu/find_account_by_reference@1", not_found_outcomes: [], outputs: {} },
     });
+  });
+
+  test("a waiver without attempt_run is a blocking issue, and recovery is unchanged", () => {
+    const decisions = [decision({ what: "waiver", subject: "recovery.reconciliation", value: JSON.stringify({ reason: "No check screen exists." }) })];
+    const issues: RecorderIssue[] = [];
+    const out = applyRecoveryDecisions(recovery, decisions, issues);
+    expect(out).toBe(recovery);
+    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_recovery_decision" }]);
+  });
+
+  test("a recovery link without a mode is a reference check", () => {
+    const value = JSON.stringify({ capability: "kvfcu/find_account_by_reference@1", inputs: { member_id: "{input.member_id}" } });
+    const out = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value })], []);
+    expect(out?.reconciliation).toMatchObject({ check: { mode: "reference" } });
+  });
+
+  test("a count_diff link carries mode and count_output", () => {
+    const value = JSON.stringify({
+      capability: "kvfcu/count_member_subaccounts@1",
+      mode: "count_diff",
+      count_output: "sub_account_count",
+      inputs: { member_id: "{input.member_id}" },
+    });
+    const issues: RecorderIssue[] = [];
+    const out = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value })], issues);
+    expect(out?.reconciliation).toMatchObject({ check: { mode: "count_diff", count_output: "sub_account_count" } });
+    expect(issues).toEqual([]);
+  });
+
+  test("an unknown mode is a blocking issue, and recovery is unchanged", () => {
+    const value = JSON.stringify({ capability: "kvfcu/count_member_subaccounts@1", mode: "bogus", inputs: {} });
+    const issues: RecorderIssue[] = [];
+    const out = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value })], issues);
+    expect(out).toBe(recovery);
+    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_recovery_decision" }]);
   });
 
   test("a value that will not parse is a blocking issue, and recovery is unchanged", () => {

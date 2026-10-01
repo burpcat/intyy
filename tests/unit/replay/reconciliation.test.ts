@@ -278,7 +278,7 @@ describe("the M06 gate row: drop_after_confirm ends success, found_by_check, thr
 const OPEN_SUB_WAIVED = ArtifactSchema.parse({
   ...OPEN_SUB_CHECKED,
   identity: { ...OPEN_SUB_CHECKED.identity, capability: "open_sub_waived" },
-  recovery: { commit_point: "click_confirm", reconciliation: { waiver: { reason: "The app shows no screen to check." } } },
+  recovery: { commit_point: "click_confirm", reconciliation: { waiver: { reason: "The app shows no screen to check.", attempt_run: "run_2026-10-01_0123456789" } } },
 });
 
 /** Every `escalation` log line of run `runId`, as loose objects. */

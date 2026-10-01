@@ -1038,6 +1038,14 @@
                       "type": "string",
                       "pattern": "^[a-z][a-z0-9_-]*\\/[a-z][a-z0-9_]*@[1-9]\\d*$"
                     },
+                    "mode": {
+                      "default": "reference",
+                      "type": "string",
+                      "enum": [
+                        "reference",
+                        "count_diff"
+                      ]
+                    },
                     "inputs": {
                       "type": "object",
                       "propertyNames": {
@@ -1064,10 +1072,15 @@
                         "type": "string",
                         "minLength": 1
                       }
+                    },
+                    "count_output": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]*$"
                     }
                   },
                   "required": [
                     "capability",
+                    "mode",
                     "inputs",
                     "not_found_outcomes",
                     "outputs"
@@ -1080,10 +1093,15 @@
                     "reason": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "attempt_run": {
+                      "type": "string",
+                      "pattern": "^run_\\d{4}-\\d{2}-\\d{2}_[0-9a-hjkmnp-tv-z]{10}$"
                     }
                   },
                   "required": [
-                    "reason"
+                    "reason",
+                    "attempt_run"
                   ],
                   "additionalProperties": false
                 }

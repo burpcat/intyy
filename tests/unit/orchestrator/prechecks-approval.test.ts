@@ -121,7 +121,7 @@ const withSession = (doc: Record<string, unknown>): void => {
   (doc.runs_on as Record<string, unknown>).session = SESSION_LINK;
 };
 const withWaiver = (doc: Record<string, unknown>): void => {
-  (doc.recovery as Record<string, unknown>).reconciliation = { waiver: { reason: "Reviewed by hand each day." } };
+  (doc.recovery as Record<string, unknown>).reconciliation = { waiver: { reason: "Reviewed by hand each day.", attempt_run: "run_2026-10-01_0123456789" } };
 };
 
 /** What is sealed, by `app/capability@major` (newest first), and every score record. */

@@ -271,8 +271,8 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
 
 /**
  * `waiver` and `recovery` decisions both fill in `recovery.reconciliation` (section 6 §15):
- * `waiver`'s value is a JSON `{ reason }`; `recovery`'s is a JSON reconciliation link,
- * `{ capability, inputs, not_found_outcomes?, outputs? }`. Both share one subject,
+ * `waiver`'s value is a JSON `{ reason, attempt_run }`; `recovery`'s is a JSON reconciliation
+ * link, `{ capability, mode?, inputs, not_found_outcomes?, outputs?, count_output? }`. Both share one subject,
  * `recovery.reconciliation`, so the later decision (of either kind) wins. A value that will
  * not parse, or does not fit, is a blocking issue; `recovery` is returned unchanged.
  */
@@ -299,16 +299,25 @@ export function applyRecoveryDecisions(
     if (typeof parsed.reason !== "string" || parsed.reason === "") {
       return fail("a waiver needs a non-empty reason.");
     }
-    return { ...recovery, reconciliation: { waiver: { reason: parsed.reason } } };
+    // Why: a waiver cites the failed discovery attempt (owner decision, 2026-10-01).
+    if (typeof parsed.attempt_run !== "string" || parsed.attempt_run === "") {
+      return fail("a waiver needs attempt_run, the discovery run that found no screen to read the result.");
+    }
+    return { ...recovery, reconciliation: { waiver: { reason: parsed.reason, attempt_run: parsed.attempt_run } } };
   }
   if (typeof parsed.capability !== "string" || typeof parsed.inputs !== "object" || parsed.inputs === null) {
     return fail("a reconciliation link needs a capability and inputs.");
+  }
+  if (parsed.mode !== undefined && parsed.mode !== "reference" && parsed.mode !== "count_diff") {
+    return fail("a reconciliation link's mode is reference or count_diff.");
   }
   return {
     ...recovery,
     reconciliation: {
       check: {
         capability: parsed.capability,
+        mode: parsed.mode === "count_diff" ? "count_diff" : "reference",
+        ...(typeof parsed.count_output === "string" ? { count_output: parsed.count_output } : {}),
         inputs: parsed.inputs as Record<string, string>,
         not_found_outcomes: Array.isArray(parsed.not_found_outcomes)
           ? parsed.not_found_outcomes.filter((x): x is string => typeof x === "string")

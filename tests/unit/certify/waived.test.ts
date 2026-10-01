@@ -37,7 +37,7 @@ const OPEN_SUB_WAIVED = Artifact.parse({
       { name: "notes", type: "string", description: "Free text", required: false, sensitivity: "none" },
     ],
   },
-  recovery: { commit_point: "click_confirm", reconciliation: { waiver: { reason: "The app shows no screen to check." } } },
+  recovery: { commit_point: "click_confirm", reconciliation: { waiver: { reason: "The app shows no screen to check.", attempt_run: "run_2026-10-01_0123456789" } } },
 });
 
 const VALID_CLASS: SuiteClass = {
