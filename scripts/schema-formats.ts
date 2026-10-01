@@ -19,10 +19,12 @@ import { ClaimFile, ClosedFile, DecisionFile, Intervention, ReleaseFile } from "
 import { Pack } from "../src/core/model/pack.js";
 import { Patch } from "../src/core/model/patch.js";
 import { Policy } from "../src/core/model/policy.js";
+import { PublishManifest } from "../src/core/model/publish.js";
 import { Request } from "../src/core/model/request.js";
 import { Result } from "../src/core/model/result.js";
 import { RunJson } from "../src/core/model/run.js";
 import { RunSpec } from "../src/core/model/runspec.js";
+import { SafetyReport } from "../src/core/model/safety-report.js";
 import { Settings } from "../src/core/model/settings.js";
 import { StaffFile } from "../src/core/model/staff.js";
 import { IndexLine } from "../src/core/model/store-index.js";
@@ -53,7 +55,9 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.claim-1.0": ClaimFile,
   "intyy.release-1.0": ReleaseFile,
   "intyy.cassette-1.0": Cassette,
+  "intyy.publish-1.0": PublishManifest,
   "intyy.request-1.0": Request,
+  "intyy.safety_report-1.0": SafetyReport,
   "intyy.result-1.0": Result,
   "intyy.effect_update-1.0": EffectUpdate,
   "intyy.suite-1.0": Suite,

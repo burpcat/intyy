@@ -52,6 +52,8 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   // M07 task 2: `operator decide --outcome` names one of the request's declared outcome codes,
   // like `no_member_found`; the CLI checks it against the request. Never member data.
   "--outcome": "an outcome code the request declares, like no_member_found; not member data",
+  // M07 task 10: `evidence publish --with-runs`.
+  "--with-runs": "the one choice: all; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

@@ -21,6 +21,7 @@
     "check": "npm run typecheck && npm run lint && npm test && npm run schemas:check && npm run docs:verify",
     "test": "vitest run --project unit --project types",
     "test:live": "vitest run --project live",
+    "test:safety": "tsx scripts/test-safety.ts",
     "docs:renames": "tsx scripts/docs-renames.ts",
     "docs:verify": "tsx scripts/docs-verify.ts",
     "bankapp:smoke": "tsx scripts/bankapp-smoke.ts",

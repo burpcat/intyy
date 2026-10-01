@@ -6,6 +6,7 @@ import { registerCandidate } from "./candidate.js";
 import { registerCapability } from "./capability.js";
 import { registerCertify } from "./certify.js";
 import { registerDiscover } from "./discover.js";
+import { registerEvidence } from "./evidence.js";
 import { registerFaults } from "./faults.js";
 import { registerFixture } from "./fixture.js";
 import { registerOperator } from "./operator.js";
@@ -27,6 +28,7 @@ export const commands: readonly Register[] = [
   registerCapability,
   registerCertify,
   registerDiscover,
+  registerEvidence,
   registerFaults,
   registerFixture,
   registerOperator,

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { EnvSecrets } from "../adapters/env-secrets/secrets.js";
 import { FileDocumentStore } from "../adapters/files/document-store.js";
+import { FsFileTree } from "../adapters/files/file-tree.js";
 import { FileLockSlots, systemLockEnv } from "../adapters/files/locks.js";
 import { FileDraftStore, FileEvidenceStore, FileLogStore } from "../adapters/files/other-stores.js";
 import { ClaudePlanner } from "../adapters/claude/planner.js";
@@ -37,6 +38,7 @@ import type { Planner } from "../ports/models.js";
 import type { InterventionDesk, OperatorPort } from "../ports/operator.js";
 import type { SurfaceFactory } from "../ports/surface.js";
 import type { Secrets } from "../ports/secrets.js";
+import type { FileTree } from "../ports/tree.js";
 import type { CandidateStore, DocumentStore, DraftStore, EvidenceStore, LogStore } from "../ports/stores.js";
 
 /** Every port a command may use. Commands see ports only, never adapters. */
@@ -70,6 +72,9 @@ export type Wiring = {
   requestIndexStore: LogStore<RequestIndexLine, never>;
   /** The bank app's test-mode controls, for one app's settings (section 8 §6.5). Only certify uses it. */
   harness: (app: KvfcuHarnessConfig) => KvfcuHarness;
+  /** The three folders evidence publish reads and writes (section 9 §6.6): `state/evidence`,
+   * `library/artifacts`, and the repo's published `evidence/`. */
+  publish: { source: FileTree; library: FileTree; dest: FileTree };
   /** Staging for atomic writes and edit buffers: `<state>/var/tmp`. */
   tmpDir: string;
 };
@@ -122,6 +127,11 @@ export function wire(
       { dir: join(state, "request-index"), tmpDir },
     ),
     harness: (app) => new KvfcuHarness(app),
+    publish: {
+      source: new FsFileTree(join(state, "evidence"), tmpDir),
+      library: new FsFileTree(join(library, "artifacts"), tmpDir),
+      dest: new FsFileTree(join(root, config.publish), tmpDir),
+    },
     tmpDir,
   };
 }
