@@ -259,6 +259,10 @@ export class Redactor {
   readonly #known: KnownValue[] = [];
   readonly #tokens = new Map<string, number>();
   readonly #counts = new Map<string, number>();
+  /** Values the label rule found this run (§9.7), with their kind. Memory only, like `#known`. */
+  readonly #found: { value: string; kind: string }[] = [];
+  /** One pattern for every found value, longest first. Rebuilt after a new value. */
+  #foundRe: RegExp | null = null;
 
   /** Starts a run's redactor. Format patterns were checked by the policy loader. */
   constructor(rules: RedactionRules) {
@@ -358,6 +362,27 @@ export class Redactor {
     return mask(walk(v) as T);
   }
 
+  /**
+   * Remembers the text beside a sensitive label (§9.7), so the same value masks as the same token
+   * in every later text this run: a row's or a table's joined name, a log line, a prompt. Parts
+   * a known value already masks are left out. Why: a legacy page joins every cell into its
+   * table's name, where the label is no longer beside the value (docs/decisions.md, M05).
+   */
+  learn(text: string, label: string): void {
+    const kind = this.#labelKind(label);
+    if (kind === null) return;
+    for (const line of text.split("\n")) {
+      for (const s of this.#knownValues([{ text: line, masked: false }])) {
+        if (s.masked) continue;
+        const value = s.text.trim().replace(/\s+/g, " ");
+        if (!/[\p{L}\p{N}]/u.test(value)) continue;
+        if (this.#found.some((f) => f.value.toLowerCase() === value.toLowerCase())) continue;
+        this.#found.push({ value, kind });
+        this.#foundRe = null;
+      }
+    }
+  }
+
   /** True when `label` holds a sensitive label phrase (§9.7), so a text beside it masks whole. */
   sensitiveLabel(label: string): boolean {
     return this.#labelKind(label) !== null;
@@ -367,6 +392,7 @@ export class Redactor {
   #line(line: string, label: string | undefined): string {
     let segs: Segment[] = [{ text: line, masked: false }];
     segs = this.#knownValues(segs);
+    segs = this.#foundValues(segs);
     segs = this.#labelRule(segs, label);
     for (const d of DETECTORS) {
       if (!this.#rules.detectors.includes(d.kind)) continue;
@@ -418,6 +444,23 @@ export class Redactor {
       segs = this.#matchKnown(segs, first, out);
     }
     return segs;
+  }
+
+  /** Rule 3, first part: values the label rule found earlier this run (see {@link learn}). */
+  #foundValues(segs: Segment[]): Segment[] {
+    if (this.#found.length === 0) return segs;
+    if (this.#foundRe === null) {
+      // Why longest first: a longer value is never cut by a shorter one (§9.6).
+      this.#found.sort((a, b) => b.value.length - a.value.length);
+      const alts = this.#found.map((f) => `(${f.value.split(" ").map(escapeRegex).join("\\s+")})`);
+      this.#foundRe = new RegExp(`${START}(?:${alts.join("|")})${END}`, "giu");
+    }
+    return replaceIn(segs, this.#foundRe, (m) => {
+      // Why the wide type: a group that did not take part is undefined at run time.
+      const groups: (string | undefined)[] = m.slice(1);
+      const kind = this.#found[groups.findIndex((g) => g !== undefined)]?.kind ?? "name";
+      return this.#token(kind, m[0]);
+    });
   }
 
   /** The value a known value is compared by: its amount, its date, or its words. */

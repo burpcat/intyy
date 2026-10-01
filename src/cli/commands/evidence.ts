@@ -11,12 +11,14 @@ import {
   type PublishTarget,
 } from "../../core/evidence/publish.js";
 import type { Markers } from "../../core/evidence/markers.js";
+import { redactionRules } from "../../core/safety/redaction/redactor.js";
 import { keyPath } from "../../core/trust/keys.js";
 import { requireRole, type Ctx } from "../context.js";
 import { CliExit, EXIT, type ExitCode } from "../exit-codes.js";
 import { answer, progress } from "../output.js";
 import { act, type Register } from "../program.js";
 import { load } from "./documents.js";
+import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
 import { keyFromText } from "./trust-shared.js";
 
@@ -66,6 +68,8 @@ export const registerEvidence: Register = (program: Command, ctxOf) => {
         }
         if (targets.length === 0) return answer({ published: false }, "nothing to publish");
         const markers = await markersOf(ctx);
+        // Why global and tenant only: a publish spans apps, and lower layers only add labels.
+        const policy = await effectivePolicy(ctx, undefined);
         const got = await publishEvidence(
           {
             tenant: ctx.tenant,
@@ -73,6 +77,7 @@ export const registerEvidence: Register = (program: Command, ctxOf) => {
             ...(opts.withRuns === "all" ? { withRuns: "all" as const } : {}),
             by,
             markers: markers.values,
+            redaction: redactionRules(policy.effective),
           },
           { ...ctx.wiring.publish, clock: ctx.wiring.clock },
         );

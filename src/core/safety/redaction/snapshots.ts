@@ -1,6 +1,7 @@
 // Masked DOM and accessibility snapshots: every text passes the text rules; values, hidden
 // fields, scripts, and inline handlers are removed. Follows design section 4 §9.13 and
-// section 3 §7.6 (what is kept, removed, and redacted).
+// section 3 §7.6 (what is kept, removed, and redacted). Values beside a sensitive label (section 4
+// §9.7) are learned first, so a table's joined name masks them too.
 import type { Masked } from "../../../ports/masked.js";
 import type { Redactor } from "./redactor.js";
 
@@ -54,6 +55,14 @@ type TableState = {
  * ponytail: tables nest one level; nested tables share the outer header row.
  */
 export function maskDom(html: string, r: Redactor): Masked<string> {
+  // Why twice: the first walk learns each labelled cell (section 4 §9.7), so text before its
+  // table, like a title attribute, masks it too. Tokens keep the first walk's order.
+  domPass(html, r);
+  return domPass(html, r);
+}
+
+/** One walk over the DOM: masks every text, and learns each value beside a sensitive label. */
+function domPass(html: string, r: Redactor): Masked<string> {
   const out: string[] = [];
   let i = 0;
   let drop: string | null = null;
@@ -74,6 +83,7 @@ export function maskDom(html: string, r: Redactor): Masked<string> {
         ? (table.headers[table.col] ?? (table.left || undefined))
         : undefined;
     table.cell += raw;
+    if (label !== undefined) r.learn(raw, label);
     out.push(escapeText(r.text(raw, label === undefined ? {} : { label })));
   };
 
@@ -180,8 +190,100 @@ const A11Y_LINE = /^(\s*-\s+)([a-zA-Z/]+)(?:\s+"((?:[^"\\]|\\.)*)")?(.*)$/;
 /** Roles whose line may carry a field value after the name. The value is dropped (section 3 §7.6). */
 const VALUE_ROLES = new Set(["textbox", "searchbox", "combobox", "spinbutton", "slider"]);
 
-/** Masks an accessibility snapshot: names and text pass the text rules; field values are dropped. */
+/** One snapshot line as a tree node. `text` is its name, else its `- text:` child's words. */
+type A11yNode = { role: string; text: string | undefined; line: number; kids: A11yNode[] };
+
+/** Reads the snapshot's lines into a tree, by indent. Lines that are not `- role …` are skipped. */
+function a11yTree(text: string): A11yNode[] {
+  const root: A11yNode = { role: "", text: undefined, line: 0, kids: [] };
+  const stack: { indent: number; node: A11yNode }[] = [{ indent: -1, node: root }];
+  text.split("\n").forEach((line, i) => {
+    const m = A11Y_LINE.exec(line);
+    if (m === null) return;
+    const [, lead = "", role = "", name, rest = ""] = m;
+    const indent = lead.indexOf("-");
+    while (stack.length > 1 && (stack.at(-1)?.indent ?? -1) >= indent) stack.pop();
+    const parent = stack.at(-1)?.node ?? root;
+    const words = role === "text" ? rest.replace(/^:\s*/, "") : undefined;
+    if (role === "text" && parent.text === undefined) parent.text = words;
+    const node: A11yNode = { role, text: name ?? words, line: i + 1, kids: [] };
+    parent.kids.push(node);
+    stack.push({ indent, node });
+  });
+  return root.kids;
+}
+
+/** A mask the redactor writes: a token, a reference, or a placeholder (section 4 §9.2). */
+const MASK_TOKEN = /\[[a-z]+#\d+\]|\{[a-z]+\.[a-z0-9_.]+\}|\[(?:secret|pii|financial|human_text)\]/g;
+
+/** Roles that hold rows, and roles that are one cell of a row. */
+const TABLE_ROLES = new Set(["table", "grid", "treegrid"]);
+const CELL_ROLES = new Set(["cell", "gridcell", "columnheader", "rowheader"]);
+
+/** The rows of a table, not counting rows of a table nested inside it. */
+function rowsOf(table: A11yNode): A11yNode[] {
+  const out: A11yNode[] = [];
+  const visit = (n: A11yNode): void => {
+    for (const k of n.kids) {
+      if (k.role === "row") out.push(k);
+      else if (!TABLE_ROLES.has(k.role)) visit(k);
+    }
+  };
+  visit(table);
+  return out;
+}
+
+/**
+ * Calls `found` for every cell beside a sensitive label: its column header, else the cell to its
+ * left (section 4 §9.7, sources 2 and 3). Like the page script, the header row is the table's first.
+ */
+function labelledCells(
+  nodes: readonly A11yNode[],
+  r: Redactor,
+  found: (cell: A11yNode, value: string, label: string) => void,
+): void {
+  const visit = (n: A11yNode, headers: readonly (string | undefined)[]): void => {
+    let under = headers;
+    if (TABLE_ROLES.has(n.role)) {
+      under = (rowsOf(n)[0]?.kids ?? []).map((k) => (k.role === "columnheader" ? k.text : undefined));
+    }
+    if (n.role === "row") {
+      const cells = n.kids.filter((k) => CELL_ROLES.has(k.role));
+      cells.forEach((cell, i) => {
+        if (cell.role === "columnheader" || cell.text === undefined) return;
+        // Why strip masks: `[name#1]` or `{input.member_id}` beside a cell is a value, not a label.
+        const label = [under[i], cells[i - 1]?.text].find(
+          (l): l is string => l !== undefined && r.sensitiveLabel(l.replace(MASK_TOKEN, " ")),
+        );
+        if (label !== undefined) found(cell, cell.text, label);
+      });
+    }
+    for (const k of n.kids) visit(k, under);
+  };
+  for (const n of nodes) visit(n, []);
+}
+
+/**
+ * The line numbers of a masked accessibility snapshot where a cell beside a sensitive label still
+ * holds words that are not a mask. Publish refuses on any (section 9 §6.6, defence in depth).
+ */
+export function unmaskedLabelledLines(a11y: string, r: Redactor): number[] {
+  const lines: number[] = [];
+  labelledCells(a11yTree(a11y), r, (cell, value) => {
+    if (/[\p{L}\p{N}]/u.test(value.replace(MASK_TOKEN, ""))) lines.push(cell.line);
+  });
+  return lines;
+}
+
+/**
+ * Masks an accessibility snapshot: names and text pass the text rules; field values are dropped.
+ * Labelled cells are learned first, so the joined name of each row, cell, and table above them
+ * masks the same values (section 4 §9.7).
+ */
 export function maskA11y(text: string, r: Redactor): Masked<string> {
+  labelledCells(a11yTree(text), r, (_cell, value, label) => {
+    r.learn(value, label);
+  });
   const lines = text.split("\n").map((line) => {
     const m = A11Y_LINE.exec(line);
     if (m === null) return r.text(line);

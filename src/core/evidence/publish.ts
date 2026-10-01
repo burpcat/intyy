@@ -15,6 +15,8 @@ import type { Clock } from "../../ports/clock.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { FileTree } from "../../ports/tree.js";
 import { scanForCanaries, type CanaryHit } from "../safety/canary/scan.js";
+import { Redactor, type RedactionRules } from "../safety/redaction/redactor.js";
+import { unmaskedLabelledLines } from "../safety/redaction/snapshots.js";
 
 /** The size past which publish warns (build plan section 10 §11.3). It never refuses for size. */
 export const SIZE_WARN_BYTES = 60 * 1024 * 1024;
@@ -44,6 +46,11 @@ export type PublishInput = {
   by: string;
   /** Canary values: `canary_members` plus every bound secret value. Memory only, never printed. */
   markers: readonly string[];
+  /**
+   * The policy's redaction rules. When given, every accessibility snapshot is checked again by
+   * the label rule (section 4 §9.7); a labelled cell still raw refuses. The CLI always passes it.
+   */
+  redaction?: RedactionRules;
 };
 
 /** The ports `publishEvidence` and `verifyEvidence` use. */
@@ -70,6 +77,7 @@ export type PublishFailure =
   | "forbidden_file"
   | "artifact_mismatch"
   | "canary_hit"
+  | "unmasked_label"
   | "manifest_invalid"
   | "write_failed";
 
@@ -130,6 +138,23 @@ type SourceRun = { run: RunJson; files: Map<string, Uint8Array> };
 /** The refusal text for scan hits: file, form, and marker position only. */
 function hitText(hits: readonly CanaryHit[]): string {
   return hits.map((h) => `${h.path} (${h.form}, marker #${String(h.marker + 1)})`).join("; ");
+}
+
+/** An accessibility snapshot: a run's `a11y/<seq>_<name>.yaml`, or a fixture's `a11y.yaml`. */
+const A11Y_FILE = /(^|\/)a11y(\/[^/]+)?\.yaml$/;
+
+/**
+ * Re-runs the label rule over each accessibility snapshot to publish. Names the file and line of
+ * each labelled cell still raw, never the value. Why: defence in depth for the M05 leak
+ * (docs/decisions.md), like the canary scan.
+ */
+function labelLeaks(files: ReadonlyMap<string, Uint8Array>, r: Redactor): string[] {
+  const out: string[] = [];
+  for (const [path, bytes] of files) {
+    if (!A11Y_FILE.test(path)) continue;
+    for (const line of unmaskedLabelledLines(dec.decode(bytes), r)) out.push(`${path} (line ${String(line)})`);
+  }
+  return out;
 }
 
 /** Checks each file `run.json` lists against its bytes. Returns the problems found. */
@@ -364,6 +389,10 @@ export async function publishEvidence(
     input.markers,
   );
   if (hits.length > 0) return fail("canary_hit", hitText(hits));
+  if (input.redaction !== undefined) {
+    const leaks = labelLeaks(out, new Redactor(input.redaction));
+    if (leaks.length > 0) return fail("unmasked_label", leaks.join("; "));
+  }
 
   const manifest = await mergeManifest(deps, input.by, items, out);
   if (!manifest.ok) return manifest;

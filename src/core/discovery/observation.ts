@@ -35,7 +35,7 @@ function labelOf(el: SurfaceElement, all: readonly SurfaceElement[]): string | u
   return visibleLabel(el, all) ?? el.clues.label;
 }
 
-/** Masks one text by the label rule when a sensitive label sits beside it (section 4 §9.7). */
+/** Masks one text by the label rule when a sensitive label sits beside it, and learns it (section 4 §9.7). */
 export function maskBeside(
   r: Redactor,
   text: string,
@@ -45,7 +45,10 @@ export function maskBeside(
   const beside = [label, el.context?.column, el.context?.left].find(
     (l): l is string => l !== undefined && r.sensitiveLabel(l),
   );
-  return beside === undefined ? r.text(text) : r.text(text, { label: beside });
+  if (beside === undefined) return r.text(text);
+  // Why learn: the same value in a row's joined name, or a later prompt, masks too (section 4 §9.7).
+  r.learn(text, beside);
+  return r.text(text, { label: beside });
 }
 
 /** The `value:` part of a field line. Secrets and password boxes never show (section 4 §8.6). */
