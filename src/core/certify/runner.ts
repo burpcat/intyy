@@ -433,12 +433,44 @@ export async function prepareBatch(input: BatchInput, deps: CertifyDeps): Promis
   });
 }
 
+/** One commit attempt of a case: its run ID, the commit state it reported, and whether it is the last. */
+type Attempt = { runId: string; commit: CommitState | null; last: boolean };
+
+/**
+ * The commit attempts of one finished case run (section 8 §8.2, section 7 §11.3). Earlier attempts
+ * come from `effect.attempts`, each with its own run ID and state. The last attempt is the case run
+ * itself, or, after a retry, the retry child: a run whose `run_start` names this run as its parent
+ * with `purpose: commit_retry`. Why read the log: the result holds the earlier attempts only.
+ */
+async function attemptsOf(
+  deps: CertifyDeps,
+  tenant: string,
+  runId: string,
+  outcome: ReplayOutcome,
+  commit: CommitState | null,
+): Promise<Attempt[]> {
+  const earlier = outcome.result.effect?.attempts ?? [];
+  const out: Attempt[] = earlier.map((a) => ({ runId: a.run_id, commit: a.commit, last: false }));
+  let lastId = runId;
+  if (earlier.length > 0) {
+    for (const id of await deps.evidence.listRuns(tenant, deps.signal)) {
+      const events = await deps.evidence.events(tenant, id, deps.signal);
+      if (!events.ok) continue;
+      const start = (events.value as { event?: unknown; data?: { parent_run_id?: unknown; purpose?: unknown } }[]).find((l) => l.event === "run_start");
+      if (start?.data?.purpose === "commit_retry" && start.data.parent_run_id === runId) lastId = id;
+    }
+  }
+  out.push({ runId: lastId, commit, last: true });
+  return out;
+}
+
 /** The truth checks of one finished run (section 8 §8.2), and its reported commit state. Plain code;
  * only the match results leave this function, never the oracle's values. `baseline` is the batch's
  * clean first run: the reference for a `read_only` capability's outputs, when `sameInputs` says the
  * run used the baseline's inputs (other inputs give other data, so there is nothing to compare). */
 export async function collectTruth(
   deps: CertifyDeps,
+  tenant: string,
   artifact: Artifact,
   cls: SuiteClass,
   inputs: Readonly<Record<string, string>>,
@@ -452,12 +484,29 @@ export async function collectTruth(
   const truth: { commit?: TruthResult; output?: TruthResult; outcome?: TruthResult } = {};
   let oracleAccount: OracleAccount | undefined;
   if (artifact.contract.effect === "commits") {
-    const notes = notesQueryFor(inputs, runId);
-    if (notes !== null) {
-      const answer = await deps.harness.oracle(new Secret(notes), deps.signal);
-      if (answer.ok) {
-        oracleAccount = answer.value.accounts[0];
-        if (commit !== null) truth.commit = commitTruth(commit, answer.value.count);
+    if (notesQueryFor(inputs, runId) !== null) {
+      // Why per attempt: section 8 §8.2 and section 7 §11.4. A retry child has its own run ID, so the
+      // oracle sees each attempt apart. Each earlier attempt is judged by its own reported state, the
+      // last one by the final state, and all attempts together may hold one account at most.
+      const attempts = await attemptsOf(deps, tenant, runId, outcome, commit);
+      const counts: number[] = [];
+      let judged: TruthResult = { match: true };
+      let readAll = true;
+      for (const a of attempts) {
+        const notes = notesQueryFor(inputs, a.runId);
+        const answer = notes === null ? null : await deps.harness.oracle(new Secret(notes), deps.signal);
+        if (answer === null || !answer.ok) {
+          readAll = false;
+          break;
+        }
+        counts.push(answer.value.count);
+        if (a.last) oracleAccount = answer.value.accounts[0];
+        const one = a.commit === null ? { match: true } : commitTruth(a.commit, answer.value.count);
+        if (one.match !== true && judged.match === true) judged = one;
+      }
+      if (readAll && commit !== null) {
+        const total = counts.reduce((sum, n) => sum + n, 0);
+        truth.commit = judged.match === true && total >= 2 ? { match: false, note: "the oracle found more than one account across the attempts" } : judged;
       }
     } else {
       truth.commit = { match: null, note: "commit truth unavailable: the case names no notes input" };
@@ -579,7 +628,7 @@ export async function runFaultCase(
   await deps.harness.reset(deps.signal);
 
   const resultClass = await classify(deps.evidence, input.tenant, caseOutcome, caseOperator === "mailbox");
-  const { truth, commit } = await collectTruth(deps, artifact, cls, inputs, caseRunId, caseOutcome, baselineOutcome);
+  const { truth, commit } = await collectTruth(deps, input.tenant, artifact, cls, inputs, caseRunId, caseOutcome, baselineOutcome);
   const helped = await usedHelp(deps.evidence, input.tenant, caseRunId);
 
   // Why: docs/decisions.md, M06. A waiver has no check, so a commit-step fault ends at a human.

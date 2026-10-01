@@ -192,7 +192,7 @@ async function baselineRun(
   const runId = deps.ids.runId();
   const outcome = await runOne(runId, caseId, p.link, p.pin, { ...inputs }, input, deps, p.artifact.contract.effect, "scripted");
   const resultClass = await classify(deps.evidence, input.tenant, outcome);
-  const { truth, commit } = await collectTruth(deps, p.artifact, cls, inputs, runId, outcome, referenceInputs ? p.baselineOutcome : null);
+  const { truth, commit } = await collectTruth(deps, input.tenant, p.artifact, cls, inputs, runId, outcome, referenceInputs ? p.baselineOutcome : null);
   const helped = await usedHelp(deps.evidence, input.tenant, runId);
   const events = await deps.evidence.events(input.tenant, runId, deps.signal);
   const faultLog = await deps.harness.faultLog(deps.signal);
@@ -322,7 +322,7 @@ export async function runCertifyFull(
   const firstEvents = await deps.evidence.events(input.tenant, p.baselineRunId, deps.signal);
   const firstLines = firstEvents.ok ? firstEvents.value : [];
   const firstResult = await classify(deps.evidence, input.tenant, p.baselineOutcome);
-  const first = await collectTruth(deps, p.artifact, matrixClass, p.inputs, p.baselineRunId, p.baselineOutcome, p.baselineOutcome);
+  const first = await collectTruth(deps, input.tenant, p.artifact, matrixClass, p.inputs, p.baselineRunId, p.baselineOutcome, p.baselineOutcome);
   const firstHelped = await usedHelp(deps.evidence, input.tenant, p.baselineRunId);
   const firstCase = baselineResult(matrixClass, BASELINE_CASE_ID, "baseline", p.baselineRunId, p.baselineSeed, p.inputs, firstResult, first.commit, first.truth, firstHelped, firstLines, p.baselineLog);
   add(firstCase);

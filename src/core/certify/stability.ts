@@ -199,7 +199,7 @@ export async function runStabilityCase(
   const result = await classify(deps.evidence, input.tenant, outcome);
   // Why a reference only for the baseline's own inputs: other inputs give other data (section 8 §8.2).
   const sameAsBaseline = JSON.stringify(inputs) === JSON.stringify(p.inputs);
-  const { truth, commit } = await collectTruth(deps, p.artifact, cls, inputs, runId, outcome, sameAsBaseline ? p.baselineOutcome : null);
+  const { truth, commit } = await collectTruth(deps, input.tenant, p.artifact, cls, inputs, runId, outcome, sameAsBaseline ? p.baselineOutcome : null);
   const helped = await usedHelp(deps.evidence, input.tenant, runId);
   const fired = firedFaults(log);
   const verdict = judgeStability({

@@ -221,7 +221,8 @@ function siteCounting(counts: readonly number[]): FakeSite {
   } as FakeSite;
 }
 
-async function setup(site: FakeSite) {
+/** `unsent` names the n-th run ID minted (1-based) whose attempt the oracle must answer "no account" for. */
+async function setup(site: FakeSite, unsent: number | null = null) {
   const h = await buildHarness(site);
   for (const [name, art, n] of [["count_sub", COUNT_SUB, "1000000031"], ["open_sub_count", OPEN_SUB_COUNT, "1000000032"]] as const) {
     const sealed = await h.deps.artifacts.seal(`kvfcu/${name}/cand_2026-01-15_${n}`, "1.0.0", "op_017", art, {});
@@ -230,10 +231,13 @@ async function setup(site: FakeSite) {
   const harness = new RouteMappingHarness(new FakeHarness(), h.deps.evidence, TENANT, OPEN_SUB_ROUTE_FOR);
   const notifying = idsNotifying(h.deps.ids, harness);
   // Why: the oracle answers by the attempt's exact notes text, which holds the run ID.
+  let minted = 0;
   const ids: Ids = {
     ...notifying,
     runId: () => {
       const id = notifying.runId();
+      minted += 1;
+      if (minted === unsent) return id;
       harness.seedOracle(`attempt ${id}`, {
         exists: true,
         count: 1,
@@ -287,5 +291,78 @@ describe("runCertifyCase on a count_diff artifact (M05 gate row: count_diff foun
     expect(c?.truth.commit?.match).not.toBe(false);
     expect(c?.verdict).toBe("pass");
     expect(result.value.report.gate.passed).toBe(true);
+  });
+});
+
+/**
+ * Like `siteCounting`, but a retry can work: Confirm succeeds on the clean baseline run, is lost for
+ * the case run's first attempt, and works again once the check child has read (visit 3 of `/check`).
+ */
+function siteCountingRetryWorks(counts: readonly number[]): FakeSite {
+  const base = siteCounting(counts);
+  const good = fixtureSite();
+  const stuck = fixtureSite({ confirm: "stuck" });
+  let results = 0;
+  let checks = 0;
+  return {
+    ...base,
+    screens: {
+      ...base.screens,
+      get "/result"() {
+        results += 1;
+        return results === 1 || checks >= 3 ? good.screens["/result"] : stuck.screens["/result"];
+      },
+      get "/check"() {
+        const n = counts[Math.min(checks, counts.length - 1)] ?? 0;
+        checks += 1;
+        const shown: FakeElement = { id: "subaccount_count_display", role: "generic", roleGroup: "container", label: "Sub-account count", text: String(n) };
+        return { elements: [shown] };
+      },
+    },
+  } as FakeSite;
+}
+
+describe("runCertifyCase on a count_diff artifact: the count stays the same (absent), the scripted operator retries", () => {
+  // Why this case: the first attempt's authorization is certify's synthetic 30 minutes, and the
+  // fake clock's waits (the 15 s commit wait, the retry decision) move past it before the retry
+  // commits. The retry must reach its commit point and ask a person (the script approves), not be
+  // rejected for the expired authorization (design section 7 §11.3, section 3 §4.6).
+  /**
+   * Run IDs, in order: 1 clean run, 2 its baseline child, 3 the case run (its Confirm is lost and
+   * nothing was sent, so the oracle knows no account for it), 4 its baseline child, 5 its check
+   * child, 6 the retry (its own account exists), 7 the retry's baseline child.
+   */
+  async function lostThenRetried() {
+    const { deps, ids } = await setup(siteCountingRetryWorks([2, 2, 2, 2, 2]), 3);
+    const profile: FaultProfile = { ...COMMIT_PROFILE, id: "reply_lost_absent", expect_commit: "reconciles_absent" };
+    const result = await runCertifyCase({ ...inputFor(ids.batchId()), selection: { kind: "profile", profile } }, deps);
+    if (!result.ok) throw new Error(`expected ok, got ${result.failure}`);
+    return { deps, report: result.value.report, c: result.value.report.cases[0] };
+  }
+
+  test("the retry reaches its commit point and a person approves: success, not failed and not rejected", async () => {
+    const { deps, report, c } = await lostThenRetried();
+
+    expect(BatchReport.safeParse(report).success).toBe(true);
+    expect(c?.result).toEqual({ status: "success", detail: null });
+    // The retry's authorization had ended by its commit point, so the gate asked, and the script approved.
+    let retryGates: unknown[] = [];
+    for (const id of await deps.evidence.listRuns(TENANT)) {
+      const e = await deps.evidence.events(TENANT, id);
+      if (!e.ok) continue;
+      const lines = e.value as { event: string; data: Record<string, unknown> }[];
+      if (lines.find((l) => l.event === "run_start")?.data.purpose !== "commit_retry") continue;
+      retryGates = lines.filter((l) => l.event === "gate" && l.data.risk === "irreversible").map((l) => l.data.decision);
+    }
+    expect(retryGates).toEqual(["needs_approval", "allowed"]);
+  });
+
+  test("commit truth is per attempt (section 8 §8.2): first attempt absent, the retry's own account exists, so the case passes", async () => {
+    const { report, c } = await lostThenRetried();
+
+    // The retry's account (its own run ID) is the one that exists; the case run's ID has none.
+    expect(c?.truth.commit).toMatchObject({ match: true });
+    expect(c?.verdict).toBe("pass");
+    expect(report.gate.passed).toBe(true);
   });
 });
