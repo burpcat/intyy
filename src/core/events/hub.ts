@@ -35,11 +35,17 @@ export class EventHub<E> {
     // Why: register now, not on the first read, so no event between the call and the read is lost.
     const l: Listener<E> = { queue: [], wake: null };
     this.#listeners.add(l);
+    // Why: an abort must free the listener even if the generator is never read. A generator's
+    // `finally` runs only after a first `next()`, so an unread, aborted subscription would keep
+    // its listener and queue for the whole session. Deleting twice is harmless.
     const stop = (): void => {
+      this.#listeners.delete(l);
+      signal?.removeEventListener("abort", stop);
       l.wake?.();
       l.wake = null;
     };
-    signal?.addEventListener("abort", stop);
+    if (signal?.aborted === true) stop();
+    else signal?.addEventListener("abort", stop);
     const listeners = this.#listeners;
     const isEnded = (): boolean => this.#ended;
     async function* read(): AsyncGenerator<E> {
