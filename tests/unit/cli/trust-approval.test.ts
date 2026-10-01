@@ -7,7 +7,8 @@
 // exit 1; quick, regression, and drill batch lines never earn an approval; the first-approval hash;
 // approval retires only the same tenant, app version, capability, and major; and reject, restore,
 // reinstate, demote, retire, list, show, history; and a report with timeouts installs the values the
-// batch ran with and makes its proposals the record's candidates (section 8 §9.6; M10 task 11).
+// batch ran with and makes its proposals the record's candidates (section 8 §9.6; M10 task 11); and
+// the guided walk of `trust approve` on a terminal (section 9 §9.4, M10 task 12).
 // Temporary data roots only. M10 task 5.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -511,5 +512,188 @@ describe("trust list, show, history", () => {
     const hist = await trust(fx.env, "op_031", ["history", TEXT, "--json"]);
     expect((JSON.parse(hist.stdout) as { event: string }[]).map((l) => l.event)).toEqual(["batch", "approved"]);
     expect((await trust(fx.env, "op_031", ["history", TEXT])).stdout).toContain("approved");
+  });
+});
+
+/** The first 6 characters of the record hash the screen shows, without `sha256:`. */
+async function hash6(env: ReplayEnv): Promise<string> {
+  return (await reviewHash(env)).replace("sha256:", "").slice(0, 6);
+}
+
+/** One walk: `trust approve <key>` on a terminal, with `answers`. `asked` counts the questions put. */
+async function walk(
+  fx: Fx,
+  answers: (string | (() => string | Promise<string>))[],
+  o: { who?: string; extra?: string[] } = {},
+) {
+  const asked: string[] = [];
+  const counted = answers.map((a) => async () => {
+    asked.push("q");
+    return typeof a === "function" ? a() : a;
+  });
+  const r = await replayCall(fx.env, ["trust", "approve", TEXT, ...(o.extra ?? [])], {
+    env: { INTYY_STAFF: o.who ?? "op_022" },
+    stdinTty: true,
+    answers: counted,
+  });
+  return { ...r, asked: asked.length };
+}
+
+describe("trust approve: the guided walk on a terminal (section 9 §9.4)", () => {
+  test("asks the fragile step, the note, and 6 hash characters; approves; the screen goes to standard error", LONG, async () => {
+    const fx = await fixture();
+    const before = (await historyOf(fx.env, KEY)).length;
+    const r = await walk(fx, ["open_member", "looks fine", await hash6(fx.env)]);
+    expect(r.stderr).toContain(TEXT);
+    expect(r.stderr).toMatch(/RECORD sha256:/);
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.asked).toBe(3);
+    expect((await historyOf(fx.env, KEY)).slice(before).map((l) => l.event)).toEqual(["approved", "timeouts"]);
+    const rec = await recordOf(fx.env, KEY);
+    expect(rec.state).toBe("approved");
+    expect(rec.approval).toMatchObject({ by: "op_022", batch: "batch_a", acknowledged: ["open_member"], note: "looks fine" });
+  });
+
+  test("with --json standard output is exactly one JSON document and holds no screen", LONG, async () => {
+    const fx = await fixture();
+    const r = await walk(fx, ["open_member", "", await hash6(fx.env)], { extra: ["--json"] });
+    expect(r.code).toBe(EXIT.ok);
+    const doc = JSON.parse(r.stdout) as { key: string; state: string };
+    expect(doc).toMatchObject({ key: TEXT, state: "approved" });
+    expect(r.stdout).not.toMatch(/RECORD sha256:/);
+    expect(r.stderr).toMatch(/RECORD sha256:/);
+    expect((await recordOf(fx.env, KEY)).approval?.note).toBeNull();
+  });
+
+  test("the hash may be typed with its sha256: prefix", LONG, async () => {
+    const fx = await fixture();
+    const r = await walk(fx, ["open_member", "", `sha256:${await hash6(fx.env)}`]);
+    expect(r.code).toBe(EXIT.ok);
+    expect((await recordOf(fx.env, KEY)).state).toBe("approved");
+  });
+
+  test("a key with no fragile step asks only the note and the hash", LONG, async () => {
+    const fx = await fixture({ fragile: false });
+    const r = await walk(fx, ["", await hash6(fx.env)]);
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.asked).toBe(2);
+  });
+
+  test("a wrong step name leaves the step unacknowledged: needs_ack, exit 6, no approval", LONG, async () => {
+    const fx = await fixture();
+    const before = (await historyOf(fx.env, KEY)).length;
+    const r = await walk(fx, ["nope", "", await hash6(fx.env)]);
+    expect(r.code).toBe(EXIT.refused);
+    expect(codes(r.stderr)).toContain("needs_ack");
+    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
+  });
+
+  test.each([["000000"], ["abc"], [""]])("the hash answer %j refuses as hash_mismatch and writes nothing", LONG, async (typed) => {
+    const fx = await fixture();
+    const before = (await historyOf(fx.env, KEY)).length;
+    const r = await walk(fx, ["open_member", "", typed]);
+    expect(r.code).toBe(EXIT.refused);
+    expect(r.stderr).toContain("hash_mismatch");
+    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
+  });
+
+  test("a hash answer shorter than 6 characters is refused even when it is the start of the hash", LONG, async () => {
+    const fx = await fixture();
+    const r = await walk(fx, ["open_member", "", (await hash6(fx.env)).slice(0, 5)]);
+    expect(r.code).toBe(EXIT.refused);
+    expect(r.stderr).toContain("hash_mismatch");
+  });
+
+  test.each([
+    {
+      name: "a failed gate",
+      setup: { batches: [{ id: "batch_a", minute: 1, over: { gate: "failed" as const }, report: { gate: { passed: false, rules: { ...PASSED_RULES, matrix: false } } } }] },
+      codes: ["gate_failed"],
+    },
+    { name: "an unapproved session link", setup: { signIn: false }, codes: ["link_not_approved"] },
+  ])("$name: the screen prints, no question is asked, exit 6 names the block", LONG, async ({ setup, codes: expected }) => {
+    const fx = await fixture(setup);
+    const before = (await historyOf(fx.env, KEY)).length;
+    const r = await walk(fx, ["open_member", "x", await hash6(fx.env)]);
+    expect(r.code).toBe(EXIT.refused);
+    expect(r.asked).toBe(0);
+    expect(r.stderr).toMatch(/RECORD sha256:/);
+    expect(codes(r.stderr)).toEqual(expected);
+    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
+  });
+
+  test("a sealer is refused before any question: four_eyes", LONG, async () => {
+    const fx = await fixture();
+    makeSealerAnApprover(fx.env);
+    const r = await walk(fx, ["open_member", "x", await hash6(fx.env)], { who: "op_017" });
+    expect(r.code).toBe(EXIT.refused);
+    expect(r.asked).toBe(0);
+    expect(codes(r.stderr)).toEqual(["four_eyes"]);
+  });
+
+  test("a staff ID without the approver role is refused before any question", LONG, async () => {
+    const fx = await fixture();
+    const r = await walk(fx, ["open_member", "x", await hash6(fx.env)], { who: "op_017" });
+    expect(r.code).toBe(EXIT.refused);
+    expect(r.asked).toBe(0);
+    expect(r.stderr).toContain("op_017 lacks the approver role for tenant keystone");
+  });
+
+  test("a record that changes while the approver types refuses as record_changed, with no approval", LONG, async () => {
+    const fx = await fixture();
+    const typed = await hash6(fx.env);
+    const before = (await historyOf(fx.env, KEY)).length;
+    // Why a thresholds line, not a demotion: a draft key cannot be degraded, and a quick batch line
+    // leaves the record as it was. This line changes the record and breaks no other rule.
+    const tighten = async (): Promise<string> => {
+      const line: HistoryLine = { event: "thresholds", at: "2026-01-15T09:05:00.000Z", by: "op_022", reason: "Tighter.", batch: "batch_a", values: { handler_min: 0.9 } };
+      const r = await realWiringOf(fx.env).scores.append(keyPath(KEY), line);
+      if (!r.ok) throw new Error("test setup: append failed");
+      return typed;
+    };
+    const r = await walk(fx, ["open_member", "looks fine", tighten]);
+    expect(r.code).toBe(EXIT.refused);
+    expect(codes(r.stderr)).toEqual(["record_changed"]);
+    const events = (await historyOf(fx.env, KEY)).slice(before).map((l) => l.event);
+    expect(events).toEqual(["thresholds"]);
+  });
+
+  test("with no --batch the walk takes the record's latest full batch", LONG, async () => {
+    const fx = await fixture({ batches: [{ id: "batch_a", minute: 1 }, { id: "batch_b", minute: 2 }] });
+    const r = await walk(fx, ["open_member", "", await hash6(fx.env)]);
+    expect(r.code).toBe(EXIT.ok);
+    expect((await recordOf(fx.env, KEY)).approval?.batch).toBe("batch_b");
+  });
+
+  test("a key with no full batch is a usage error, exit 1, and nothing is asked", LONG, async () => {
+    for (const batches of [[], [{ id: "batch_q", minute: 1, over: { kind: "quick" as const }, report: { kind: "quick" } }]]) {
+      const fx = await fixture({ batches });
+      const r = await walk(fx, ["open_member", "", "000000"]);
+      expect(r.code).toBe(EXIT.usage);
+      expect(r.asked).toBe(0);
+    }
+  });
+
+  test("--expect-record, --batch, and --ack on a terminal ask nothing and behave as before", LONG, async () => {
+    const fx = await fixture();
+    const hash = await reviewHash(fx.env);
+    const asked: string[] = [];
+    const r = await replayCall(fx.env, ["trust", "approve", TEXT, "--batch", "batch_a", "--ack", "open_member", "--expect-record", hash], {
+      env: { INTYY_STAFF: "op_022" },
+      stdinTty: true,
+      answers: [() => { asked.push("q"); return ""; }],
+    });
+    expect(r.code).toBe(EXIT.ok);
+    expect(asked).toEqual([]);
+    expect(r.stdout).toContain(`approved ${TEXT} on batch_a by op_022`);
+    expect((await recordOf(fx.env, KEY)).state).toBe("approved");
+  });
+
+  test("with no terminal and no --expect-record, the flag is required (usage error)", LONG, async () => {
+    const fx = await fixture();
+    const r = await trust(fx.env, "op_022", ["approve", TEXT, "--batch", "batch_a", "--ack", "open_member"]);
+    expect(r.code).toBe(EXIT.usage);
+    expect(r.stderr).toContain("--expect-record");
+    expect((await recordOf(fx.env, KEY)).state).toBe("draft");
   });
 });

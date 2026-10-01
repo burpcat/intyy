@@ -241,7 +241,9 @@ export type CallOpts = {
   stdinTty?: boolean;
   stderrTty?: boolean;
   stdin?: string;
-  answers?: readonly string[];
+  /** Answers to `question()`, in order. A function runs when its question is asked, so a test can
+   * change the world mid-conversation. */
+  answers?: readonly (string | (() => string | Promise<string>))[];
   env?: Record<string, string | undefined>;
   signal?: AbortSignal;
   /** Replaces the program hook's own crash sweep (section 9 §7.8). A test that wants to prove
@@ -265,7 +267,10 @@ export function startCall(env: ReplayEnv, argv: readonly string[], opts: CallOpt
     stdin: {
       isTTY: opts.stdinTty ?? false,
       readAll: () => Promise.resolve(opts.stdin ?? ""),
-      question: () => Promise.resolve(answers.shift() ?? ""),
+      question: async () => {
+        const next = answers.shift();
+        return typeof next === "function" ? next() : (next ?? "");
+      },
     },
     // Why a default staff: `operator decide` needs the operator role (section 9 §7.7); op_017
     // holds it for every tenant, per tests/unit/cli/helpers.ts's STAFF fixture.

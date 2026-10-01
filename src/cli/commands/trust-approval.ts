@@ -35,7 +35,7 @@ import type { Outcome } from "../../ports/outcome.js";
 import { readArtifact } from "../../core/catalog/artifacts.js";
 import { requireRole, type Ctx } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
-import { answer } from "../output.js";
+import { answer, progress, type Answer } from "../output.js";
 import { act, readVersion } from "../program.js";
 import { loadFrozenSetFor } from "./pack.js";
 import { currentRecord, exitFor, keyFromText, scoreDeps, tenantRecords, whoIs } from "./trust-shared.js";
@@ -140,6 +140,79 @@ function listLine(r: ScoreRecord): string {
   return `${r.state.padEnd(9)} ${keyText(r.key)}   app ${r.key.app_version}${since}`;
 }
 
+/** The approve path both the flags and the guided walk end in: `approveKey` (which runs the state machine), then the answer. */
+async function approveWith(
+  ctx: Ctx,
+  staff: string,
+  facts: ReviewFacts,
+  batch: string,
+  acks: readonly string[],
+  note: string,
+): Promise<Answer> {
+  const result = done(
+    "approve",
+    await approveKey(scoreDeps(ctx), facts.record, decider(ctx, "approve", staff, facts.who?.roles ?? []), {
+      batch,
+      acknowledged: [...new Set(acks)],
+      note: note === "" ? null : note,
+      // Why: section 8 §9.6. Approval installs the timeouts the batch ran with (tested), and the
+      // batch's own proposals become the next candidates.
+      timeouts: { ...(facts.report?.timeouts?.ran_with ?? {}) },
+      candidate: { ...(facts.report?.timeouts?.proposed ?? {}) },
+      prior: priorApproved(await tenantRecords(ctx, scoreDeps(ctx)), facts.key),
+    }),
+  );
+  const text = [
+    `approved ${keyText(facts.key)} on ${batch} by ${staff}`,
+    ...result.retired.map((k) => `retired ${k}`),
+    `RECORD ${recordHash(result.record)}`,
+  ];
+  return answer({ key: keyText(facts.key), state: result.record.state, retired: result.retired, record: recordHash(result.record) }, text.join("\n"));
+}
+
+/**
+ * The guided walk for `trust approve` (section 9 §9.4, end). It shows the review screen, then asks
+ * for each fragile step's name (the `--ack`), the note, and the first 6 characters of the record
+ * hash. It then gathers the facts again and runs the same refusals as the flags: the hash the
+ * approver confirmed must still be the record's (`--expect-record`), nothing may block, every
+ * fragile step must be acknowledged. A typed answer never skips a rule; it only supplies the flags.
+ */
+async function guidedApprove(ctx: Ctx, staff: string, keyArg: string | undefined, batchArg: string | undefined): Promise<Answer> {
+  const key = await keyFromText(ctx, keyArg);
+  const seen = await gather(ctx, key, batchArg);
+  if (seen.batchId === null) throw new CliExit(EXIT.usage, "trust approve: the key has no full batch yet; run intyy certify first");
+  const batch = seen.batchId;
+  const shownHash = recordHash(seen.record);
+  const fragile = fragileSteps(seen.record);
+  // Why standard error: standard output stays the one answer, also with `--json` (section 9 §7.4).
+  progress(ctx.io, `${renderReview(buildReview(seen), false)}\n`);
+
+  // Why before any question: a block cannot be fixed by an answer. Passing every fragile step as
+  // acknowledged leaves only the blocks (and a changed record, which cannot be here yet).
+  const blocked = refusals(seen, "approve", shownHash, fragile);
+  if (blocked.length > 0) {
+    throw new CliExit(EXIT.refused, `trust approve refused:\n${blocked.map((r) => `  ${r.code}: ${r.detail}`).join("\n")}`);
+  }
+
+  const acks: string[] = [];
+  for (const step of fragile) {
+    const said = (await ctx.io.stdin.question(`Fragile step ${step}. Type its name to say you read it: `)).trim();
+    if (said === step) acks.push(step);
+  }
+  const note = (await ctx.io.stdin.question("Note (blank for none): ")).trim();
+  const typed = (await ctx.io.stdin.question("Record hash, first 6 characters: ")).trim().toLowerCase().replace(/^sha256:/, "");
+  const plain = shownHash.replace(/^sha256:/, "");
+  if (typed.length < 6 || !plain.startsWith(typed)) {
+    throw new CliExit(EXIT.refused, "trust approve refused:\n  hash_mismatch: the characters you typed are not the start of the record hash on the screen");
+  }
+
+  // Why gather again: time passed while the approver typed. The hash they confirmed is the one
+  // the screen showed, so a demotion or a new batch since then refuses as `record_changed`.
+  const fresh = await gather(ctx, key, batch);
+  refuseIf("approve", fresh, "approve", shownHash, acks);
+  return approveWith(ctx, staff, fresh, batch, acks, note);
+}
+
 /** Registers the approval family under `trust`. */
 export function registerApproval(trust: Command, ctxOf: () => Ctx): void {
   trust
@@ -212,10 +285,15 @@ export function registerApproval(trust: Command, ctxOf: () => Ctx): void {
     .option("--batch <id>", "the full batch that earned the approval")
     .option("--ack <step...>", "a fragile step you have read; repeat for each")
     .option("--expect-record <hash>", "the record hash the review screen ended with")
-    .description("approve a key (approver, not the sealer); a piped standard input becomes the note")
+    .description("approve a key (approver, not the sealer); piped standard input is the note; on a terminal with no --expect-record, a guided walk asks")
     .action(
       act(ctxOf, async (ctx, args, opts) => {
         const staff = requireRole(ctx, ctx.tenant, "approver");
+        // Why: section 9 §9.4, "on a terminal, the guided walk asks for each --ack, the note, and the
+        // first 6 characters of the hash". A terminal with `--expect-record` already knows what it quotes.
+        if (ctx.io.stdin.isTTY === true && opts.expectRecord === undefined) {
+          return guidedApprove(ctx, staff, args[0], typeof opts.batch === "string" ? opts.batch : undefined);
+        }
         const batch = needed(opts, "batch", "--batch");
         const quoted = needed(opts, "expectRecord", "--expect-record");
         const acks = Array.isArray(opts.ack) ? opts.ack.filter((a): a is string => typeof a === "string") : [];
@@ -223,26 +301,7 @@ export function registerApproval(trust: Command, ctxOf: () => Ctx): void {
         const unknown = acks.filter((a) => !fragileSteps(facts.record).includes(a));
         if (unknown.length > 0) throw new CliExit(EXIT.usage, `--ack ${unknown.join(", ")}: not a fragile step of this key`);
         refuseIf("approve", facts, "approve", quoted, acks);
-        const note = await stdinText(ctx, null);
-        const result = done(
-          "approve",
-          await approveKey(scoreDeps(ctx), facts.record, decider(ctx, "approve", staff, facts.who?.roles ?? []), {
-            batch,
-            acknowledged: [...new Set(acks)],
-            note: note === "" ? null : note,
-            // Why: section 8 §9.6. Approval installs the timeouts the batch ran with (tested), and the
-            // batch's own proposals become the next candidates.
-            timeouts: { ...(facts.report?.timeouts?.ran_with ?? {}) },
-            candidate: { ...(facts.report?.timeouts?.proposed ?? {}) },
-            prior: priorApproved(await tenantRecords(ctx, scoreDeps(ctx)), facts.key),
-          }),
-        );
-        const text = [
-          `approved ${keyText(facts.key)} on ${batch} by ${staff}`,
-          ...result.retired.map((k) => `retired ${k}`),
-          `RECORD ${recordHash(result.record)}`,
-        ];
-        return answer({ key: keyText(facts.key), state: result.record.state, retired: result.retired, record: recordHash(result.record) }, text.join("\n"));
+        return approveWith(ctx, staff, facts, batch, acks, await stdinText(ctx, null));
       }),
     );
 

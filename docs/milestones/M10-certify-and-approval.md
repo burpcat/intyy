@@ -68,7 +68,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 - [ ] 9. Stop. Ask the owner to run the batches and approvals below. This is the minimum for B3 and B4.
 - [x] 10. Write stability, twins, and the fault-aware judge.
 - [x] 11. Write tuned timeouts.
-- [ ] 12. Write the guided walk for `trust approve`.
+- [x] 12. Write the guided walk for `trust approve`.
 
 **Batches and approvals, for the owner.** Order matters: sign-in and the check come first, because the commit capability links to them.
 
@@ -86,7 +86,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 - [x] Verdicts, gate, approval rules, resolver.
 - [x] `--expect-record` refuses after the record changed. Approval screen golden test.
 - [x] Check 7: unattended open-share is rejected until sign-in, the check, and open-share are all approved.
-- [ ] If built: fault-aware judge and tuned timeouts.
+- [x] If built: fault-aware judge and tuned timeouts.
 
 ### Live (`npm run test:live`)
 
