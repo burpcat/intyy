@@ -162,12 +162,23 @@
       "properties": {
         "passed": {
           "type": "boolean"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "required": [
         "passed"
       ],
       "additionalProperties": false
+    },
+    "drill": {
+      "type": "boolean",
+      "const": true
     }
   },
   "required": [

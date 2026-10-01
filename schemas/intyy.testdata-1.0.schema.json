@@ -45,13 +45,17 @@
           "type": "boolean"
         },
         "drop_labels": {
-          "type": "integer",
+          "type": "number",
           "minimum": 0,
-          "maximum": 9007199254740991
+          "maximum": 1
         },
         "label_seed": {
           "type": "string",
           "minLength": 1
+        },
+        "delay_scale": {
+          "type": "number",
+          "exclusiveMinimum": 0
         }
       },
       "required": [

@@ -64,7 +64,17 @@ export const BatchReport = z
     cases: z.array(BatchReportCase).min(1),
     /** Thin gate (docs/decisions.md, M06): passed when no case's verdict blocks it. The real
      * approval gate (section 8 §9.5) needs the score store, which thin certify does not have. */
-    gate: z.object({ passed: z.boolean() }).strict(),
+    gate: z
+      .object({
+        passed: z.boolean(),
+        /** Why a whole batch failed the gate beyond its cases, like a matrix that could not be
+         * placed (section 8 §7.1: a harness gap is listed, not hidden). */
+        notes: z.array(z.string().min(1)).optional(),
+      })
+      .strict(),
+    /** `true` for a drill batch (section 8 §7.1): the plan's instance facts differ from the test
+     * data set's. */
+    drill: z.literal(true).optional(),
   })
   .strict();
 

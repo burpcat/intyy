@@ -11,6 +11,8 @@ import type { Faults } from "../../core/model/faults.js";
 import { issueText } from "../../core/model/sealing.js";
 import type { Suite } from "../../core/model/suite.js";
 import type { Testdata } from "../../core/model/testdata.js";
+import { declareInstance } from "../../core/certify/instance.js";
+import { isDrill, matrixProfiles, runCertifyQuick } from "../../core/certify/quick.js";
 import { runCertifyCase, type CertifySelection } from "../../core/certify/runner.js";
 import type { FrozenSet } from "../../core/packs/merge.js";
 import type { LockHold } from "../../ports/locks.js";
@@ -168,9 +170,125 @@ function refuseNeedsAt(detail: string | undefined): never {
   );
 }
 
+/** The instance facts as one line, like `variant=keystone strip_semantics=false …`. */
+function instanceLine(i: Testdata["instance"]): string {
+  return [
+    `variant=${i.variant}`,
+    `strip_semantics=${String(i.strip_semantics)}`,
+    `drop_labels=${String(i.drop_labels)}`,
+    `label_seed=${i.label_seed}`,
+    `delay_scale=${String(i.delay_scale ?? 1)}`,
+  ].join(" ");
+}
+
+/** `certify <key> --kind quick`: a baseline, then the commit-step matrix (section 8 §7.1;
+ * section 9 §9.1, §9.2). `--plan-only` contacts nothing and writes nothing. */
+async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<string, unknown>): Promise<Answer> {
+  const kind = typeof opts.kind === "string" ? opts.kind : "full";
+  if (kind !== "quick") {
+    throw new CliExit(EXIT.usage, `--kind ${kind} is not built yet; use --kind quick (full and regression arrive in M10)`);
+  }
+  const staff = requireRole(ctx, ctx.tenant, "operator");
+  const { app, capability, major, version } = parseKey(key);
+  const { suite, testdata, faults } = await loadCertifyInputs(ctx, app, capability, major);
+  let instance = testdata.instance;
+  let declaration: { by: string; differs: string[] } | undefined;
+  if (typeof opts.instance === "string") {
+    const declared = declareInstance(opts.instance, testdata.instance);
+    if (!declared.ok) throw new CliExit(EXIT.usage, `--instance: ${declared.detail ?? declared.failure}`);
+    instance = declared.value.instance;
+    declaration = { by: staff, differs: declared.value.differs };
+  }
+  const drill = isDrill(declaration);
+  const { deps, origin, appVersion, frozenSet } = await buildDeps(ctx, app);
+  if (deps.settings.doc.apps[app]?.environment !== "test") {
+    throw new CliExit(EXIT.invalid, "certify: environment_not_test");
+  }
+  const className = suite.matrix.class;
+
+  if (opts.planOnly === true) {
+    // Why: section 9 §9.1, "stops here with --plan-only". The route map needs a baseline run, so
+    // the plan here holds no routes and no run IDs, and no file is written.
+    const runs = matrixProfiles(faults.profiles, null).length;
+    const lines = [
+      `plan for ${app}/${capability}@${String(major)} (quick, plan only)`,
+      `class: ${className}`,
+      `cases: 1 baseline + ${String(runs)} commit-step cases = ${String(runs + 1)} runs`,
+      `instance: ${instanceLine(instance)}`,
+      declaration === undefined
+        ? "declared: no, the test data set's instance is used"
+        : `declared by ${declaration.by}; differs: ${declaration.differs.join(", ") || "nothing"}`,
+      `drill: ${drill ? "yes, never approval-grade" : "no"}`,
+    ];
+    return answer(
+      { plan_only: true, class: className, cases: runs + 1, instance, declaration: declaration ?? null, drill },
+      lines.join("\n"),
+    );
+  }
+
+  const batchId = ctx.wiring.ids.batchId();
+  const holds: LockHold[] = [
+    await takeLock(ctx, "instance", instanceKey(origin), {
+      owner: batchId,
+      command: "certify",
+      staff: ctx.staff,
+      waitMs: 0,
+    }),
+  ];
+  try {
+    const result = await runCertifyQuick(
+      {
+        batchId,
+        tenant: ctx.tenant,
+        app,
+        capability,
+        major,
+        ...(version === undefined ? {} : { version }),
+        appVersion,
+        staff,
+        className,
+        classes: suite.classes,
+        pools: testdata.pools,
+        instance,
+        frozenSet,
+        profiles: faults.profiles,
+        ...(declaration === undefined ? {} : { declaration }),
+        progress: (line) => {
+          progress(ctx.io, `batch ${batchId}: ${line}`);
+        },
+      },
+      deps,
+    );
+    if (!result.ok) {
+      throw new CliExit(EXIT.invalid, `certify: ${result.failure}${result.detail ? `: ${result.detail}` : ""}`);
+    }
+    const { plan, report } = result.value;
+    const dir = batchDir(ctx, plan.batch_id);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+    writeFileSync(join(dir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+    const lines = [
+      `batch ${plan.batch_id} (quick${report.drill === true ? ", drill" : ""})`,
+      ...report.cases.map((c) => `${c.case_id}: ${c.result.status}${c.result.detail === null ? "" : ` ${c.result.detail}`}, ${c.verdict}`),
+      ...(report.gate.notes ?? []).map((n) => `note: ${n}`),
+      `gate: ${report.gate.passed ? "passed" : "failed"}`,
+    ];
+    return answer({ batch_id: plan.batch_id, plan, report }, lines.join("\n"), report.gate.passed ? EXIT.ok : EXIT.failed);
+  } finally {
+    for (const h of holds) await ctx.wiring.locks.release(h);
+  }
+}
+
 /** Registers the certify commands. */
 export const registerCertify: Register = (program: Command, ctxOf) => {
-  const certify = program.command("certify").description("thin certify: show a fault path on demand");
+  const certify = program
+    .command("certify")
+    .description("certify a capability: a quick batch, or one fault case on demand")
+    .argument("[key]", "app/capability@major, for a batch")
+    .option("--kind <kind>", "full, quick, or regression; only quick is built")
+    .option("--instance <facts>", "declared instance facts, like strip_semantics=1,drop_labels=0.3")
+    .option("--plan-only", "print the plan and stop; contact nothing")
+    .action(act(ctxOf, (ctx, args, opts) => certifyQuick(ctx, args[0], opts)));
 
   certify
     .command("case")

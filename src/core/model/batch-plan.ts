@@ -44,8 +44,8 @@ export const BatchPlanCase = z
 /** One plan case. */
 export type BatchPlanCase = z.infer<typeof BatchPlanCase>;
 
-/** The plan for one `quick` certify batch (`certify case` or `certify rerun`; section 8 §7.1,
- * §7.8). Never approval-grade (section 9 §9.1). */
+/** The plan for one `quick` certify batch (`certify case`, `certify rerun`, or `certify --kind
+ * quick`; section 8 §7.1, §7.8). Never approval-grade (section 9 §9.1). */
 export const BatchPlan = z
   .object({
     schema: z.literal("intyy.batch_plan/1.0"),
@@ -66,6 +66,15 @@ export const BatchPlan = z
     instance: TestInstance,
     route_map: z.record(z.string(), RouteMapEntry),
     cases: z.array(BatchPlanCase).min(1),
+    /** `true` when the declared instance facts differ from the test data set's (section 8 §7.1,
+     * section 9 §9.2). A drill is never approval-grade. */
+    drill: z.literal(true).optional(),
+    /** Set when `--instance` declared facts (section 9 §9.2): who declared them, and which
+     * facts differ from the test data set's `instance`. */
+    declaration: z
+      .object({ by: z.string().min(1), differs: z.array(z.string().min(1)) })
+      .strict()
+      .optional(),
     rerun_of: z.object({ batch_id: z.string().min(1), case_id: z.string().min(1) }).optional(),
   })
   .strict();

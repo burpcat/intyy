@@ -14,8 +14,11 @@ export const TestInstance = z
   .object({
     variant: z.string().min(1),
     strip_semantics: z.boolean(),
-    drop_labels: z.number().int().nonnegative(),
+    // Why: CONTRACT §4, `KVFCU_DROP_LABELS` is a fraction from 0 to 1, not a whole number.
+    drop_labels: z.number().min(0).max(1),
     label_seed: z.string().min(1),
+    // Why: CONTRACT §4, `KVFCU_DELAY_SCALE` multiplies real waits. Absent means 1, the default.
+    delay_scale: z.number().positive().optional(),
   })
   .strict();
 

@@ -54,6 +54,9 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--outcome": "an outcome code the request declares, like no_member_found; not member data",
   // M07 task 10: `evidence publish --with-runs`.
   "--with-runs": "the one choice: all; not member data",
+  // M08 task 1: `certify --instance` declares bank-app options at start-up, like strip_semantics=1
+  // (design section 9 §9.2). They are test-instance settings, never member data.
+  "--instance": "declared bank-app options, like strip_semantics=1; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

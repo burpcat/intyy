@@ -81,6 +81,9 @@ export type CertifyCaseInput = {
   frozenSet?: FrozenSet;
 };
 
+/** The part of the case input a whole batch shares: everything but the one case's selection. */
+export type BatchInput = Omit<CertifyCaseInput, "selection" | "at">;
+
 /** Every port this module needs. Only certify holds the harness (section 8 §6.5). */
 export type CertifyDeps = {
   evidence: EvidenceStore;
@@ -176,7 +179,7 @@ async function runOne(
   link: string,
   pin: string,
   inputs: Record<string, string>,
-  input: CertifyCaseInput,
+  input: BatchInput,
   deps: CertifyDeps,
   effect: Artifact["contract"]["effect"],
   operator: CertifyOperator,
@@ -324,12 +327,24 @@ function placeFault(
   return fail(resolved.failure);
 }
 
-/** Runs one certify case: a clean baseline, then the chosen profile or `extra` case, judged
- * against the oracle. Never approval-grade (section 8 §7.1). */
-export async function runCertifyCase(
-  input: CertifyCaseInput,
-  deps: CertifyDeps,
-): Promise<Outcome<{ plan: BatchPlan; report: BatchReport }, CertifyFailure>> {
+/** What a batch learns from its one clean baseline run, and every case after it shares
+ * (section 8 §6.4, §7.4): the resolved artifact, the class, the inputs, and the route map. */
+export type Prepared = {
+  artifact: Artifact;
+  pin: string;
+  link: string;
+  cls: SuiteClass;
+  inputs: Record<string, string>;
+  baselineRunId: string;
+  baselineSeed: string;
+  baselineOutcome: ReplayOutcome;
+  routeMap: RouteMap;
+  commitStepId: string | null;
+};
+
+/** Checks the batch can start, then runs the one clean baseline and builds the route map
+ * (section 8 §7.4 steps 1 to 6 for the baseline; §6.4). */
+export async function prepareBatch(input: BatchInput, deps: CertifyDeps): Promise<Outcome<Prepared, CertifyFailure>> {
   const app = deps.settings.doc.apps[input.app];
   if (app === undefined || app.environment !== "test") return fail("environment_not_test");
 
@@ -374,31 +389,60 @@ export async function runCertifyCase(
 
   const routeMap = await routeMapFor(deps.evidence, deps.harness, input.tenant, baselineRunId, deps.signal);
   const commitStepId = artifact.recovery?.commit_point ?? null;
+  return ok({
+    artifact,
+    pin,
+    link,
+    cls,
+    inputs,
+    baselineRunId,
+    baselineSeed,
+    baselineOutcome,
+    routeMap,
+    commitStepId,
+  });
+}
 
+/** One fault case, run and judged: its plan entry and its report entry. */
+export type FaultCaseRun = { planCase: BatchPlanCase; reportCase: BatchReportCase };
+
+/**
+ * Runs one fault case after the baseline (section 8 §7.4 steps 1 to 9): place the faults through
+ * the route map, reset, arm, run, copy the fault log, ask the oracle, judge. Many cases of one
+ * quick batch share one `Prepared` (section 8 §6.4: "the first baseline run of a batch").
+ */
+export async function runFaultCase(
+  input: BatchInput,
+  deps: CertifyDeps,
+  p: Prepared,
+  selection: CertifySelection,
+  at: string | undefined,
+  caseId: string,
+  caseSeed: string,
+): Promise<Outcome<FaultCaseRun, CertifyFailure>> {
+  const { artifact, cls, link, pin, inputs, routeMap, commitStepId, baselineOutcome } = p;
   const placements: readonly FaultPlacement[] =
-    input.selection.kind === "profile"
-      ? [{ kind: input.selection.profile.kind, at: input.selection.profile.at }]
-      : input.selection.extra.faults;
+    selection.kind === "profile" ? [{ kind: selection.profile.kind, at: selection.profile.at }] : selection.extra.faults;
 
   const placed: Placed[] = [];
   for (const placement of placements) {
-    const got = placeFault(placement, routeMap, commitStepId, input.at);
+    const got = placeFault(placement, routeMap, commitStepId, at);
     if (!got.ok) return got;
     placed.push(got.value);
   }
 
-  const profileId = input.selection.kind === "profile" ? input.selection.profile.id : input.selection.extra.id;
-  const resolvedFaults: ResolvedFault[] = placed.map((p) => ({
-    kind: p.placement.kind,
-    route: p.resolved.route,
-    nth: p.resolved.nth,
+  const profileId = selection.kind === "profile" ? selection.profile.id : selection.extra.id;
+  const resolvedFaults: ResolvedFault[] = placed.map((f) => ({
+    kind: f.placement.kind,
+    route: f.resolved.route,
+    nth: f.resolved.nth,
     repeat: "once",
   }));
-  const namedFaults: NamedFault[] = placed.map((p, i) => ({
+  const namedFaults: NamedFault[] = placed.map((f, i) => ({
     id: `${input.batchId}_${profileId}_${String(i)}`,
-    kind: p.placement.kind,
-    route: p.resolved.route,
-    nth: p.resolved.nth,
+    kind: f.placement.kind,
+    route: f.resolved.route,
+    nth: f.resolved.nth,
     repeat: "once",
   }));
 
@@ -408,7 +452,6 @@ export async function runCertifyCase(
   const resetCase = await deps.harness.reset(deps.signal);
   if (!resetCase.ok) return fail("harness_unreachable", resetCase.detail);
 
-  const caseSeed = input.rerun?.seed ?? `${input.batchId}:${CASE_ID}`;
   const chaosCase = await deps.harness.setChaos({ entropy: 0, seed: caseSeed }, deps.signal);
   if (!chaosCase.ok) return fail("harness_unreachable", chaosCase.detail);
   const armed = await deps.harness.addFaults(namedFaults, deps.signal);
@@ -416,7 +459,7 @@ export async function runCertifyCase(
 
   const caseRunId = deps.ids.runId();
   const caseOperator: CertifyOperator = input.operator ?? "scripted";
-  const caseOutcome = await runOne(caseRunId, CASE_ID, link, pin, { ...inputs }, input, deps, artifact.contract.effect, caseOperator);
+  const caseOutcome = await runOne(caseRunId, caseId, link, pin, { ...inputs }, input, deps, artifact.contract.effect, caseOperator);
 
   // Section 8 §7.4 step 7: "Read the fault log. Copy this case's entries into the run's
   // faults.jsonl." Read before the final `clearFaults`/`reset` wipe it. The reset just above
@@ -462,20 +505,15 @@ export async function runCertifyCase(
 
   // Why: docs/decisions.md, M06. A waiver has no check, so a commit-step fault ends at a human.
   const waived =
-    input.selection.kind === "profile" &&
+    selection.kind === "profile" &&
     artifact.recovery?.reconciliation?.waiver !== undefined &&
-    isCommitStepFault(input.selection.profile, input.at, commitStepId);
+    isCommitStepFault(selection.profile, at, commitStepId);
 
   const classMatches = waived
     ? matchesWaivedEnding(resultClass, commit, commitStepId)
-    : input.selection.kind === "profile"
-      ? matchesExpectRule(
-          expectRuleFor(input.selection.profile, input.at, commitStepId),
-          resultClass,
-          cls.expect,
-          commit,
-        )
-      : matchesExtraExpect(resultClass, input.selection.extra.expect);
+    : selection.kind === "profile"
+      ? matchesExpectRule(expectRuleFor(selection.profile, at, commitStepId), resultClass, cls.expect, commit)
+      : matchesExtraExpect(resultClass, selection.extra.expect);
 
   const verdict = judgeCase({
     classMatches,
@@ -486,71 +524,112 @@ export async function runCertifyCase(
     },
   });
 
-  const routeMapPlain: Record<string, { route: string; nth: number }> = {};
-  for (const [step, entry] of routeMap) routeMapPlain[step] = entry;
-
-  const startedAt = deps.clock.now().toISOString();
-  const planCases: BatchPlanCase[] = [
-    {
-      case_id: BASELINE_CASE_ID,
-      run_id: baselineRunId,
-      class: input.className,
-      profile: null,
-      inputs,
-      faults: [],
-      seed: baselineSeed,
-      expect: cls.expect,
-    },
-    {
-      case_id: CASE_ID,
+  return ok({
+    planCase: {
+      case_id: caseId,
       run_id: caseRunId,
       class: input.className,
       profile: profileId,
       inputs,
       faults: resolvedFaults,
       seed: caseSeed,
-      expect: input.selection.kind === "extra" ? input.selection.extra.expect : null,
+      expect: selection.kind === "extra" ? selection.extra.expect : null,
     },
-  ];
+    reportCase: {
+      case_id: caseId,
+      run_id: caseRunId,
+      class: input.className,
+      result: resultClass,
+      truth: {
+        ...(truth.commit === undefined ? {} : { commit: truth.commit }),
+        ...(truth.output === undefined ? {} : { output: truth.output }),
+        ...(truth.outcome === undefined ? {} : { outcome: truth.outcome }),
+      },
+      verdict,
+      ...(waived ? { waived: true as const } : {}),
+    },
+  });
+}
+
+/** The route map as the plain object the plan file holds (section 8 §6.4). */
+export function routeMapPlain(routeMap: RouteMap): Record<string, { route: string; nth: number }> {
+  const out: Record<string, { route: string; nth: number }> = {};
+  for (const [step, entry] of routeMap) out[step] = entry;
+  return out;
+}
+
+/** The baseline's plan entry (section 8 §7.8). */
+export function baselinePlanCase(input: BatchInput, p: Prepared): BatchPlanCase {
+  return {
+    case_id: BASELINE_CASE_ID,
+    run_id: p.baselineRunId,
+    class: input.className,
+    profile: null,
+    inputs: p.inputs,
+    faults: [],
+    seed: p.baselineSeed,
+    expect: p.cls.expect,
+  };
+}
+
+/** The baseline's report entry, judged as the class's own plain expectation (the `recovers`
+ * rule, section 8 §6.3). Quick batches list it as a case, so a baseline that fails shows. */
+export async function baselineReportCase(input: BatchInput, deps: CertifyDeps, p: Prepared): Promise<BatchReportCase> {
+  const resultClass = await classify(deps.evidence, input.tenant, p.baselineOutcome);
+  const commit: CommitState | null = p.baselineOutcome.result.effect?.commit ?? null;
+  return {
+    case_id: BASELINE_CASE_ID,
+    run_id: p.baselineRunId,
+    class: input.className,
+    result: resultClass,
+    truth: {},
+    verdict: judgeCase({
+      classMatches: matchesExpectRule("recovers", resultClass, p.cls.expect, commit),
+      truth: {},
+    }),
+  };
+}
+
+/** Runs one certify case: a clean baseline, then the chosen profile or `extra` case, judged
+ * against the oracle. Never approval-grade (section 8 §7.1). */
+export async function runCertifyCase(
+  input: CertifyCaseInput,
+  deps: CertifyDeps,
+): Promise<Outcome<{ plan: BatchPlan; report: BatchReport }, CertifyFailure>> {
+  const prepared = await prepareBatch(input, deps);
+  if (!prepared.ok) return prepared;
+  const p = prepared.value;
+  const caseSeed = input.rerun?.seed ?? `${input.batchId}:${CASE_ID}`;
+  const ran = await runFaultCase(input, deps, p, input.selection, input.at, CASE_ID, caseSeed);
+  if (!ran.ok) return ran;
+  const { planCase, reportCase } = ran.value;
+  const caseOperator: CertifyOperator = input.operator ?? "scripted";
+
   const plan: BatchPlan = {
     schema: "intyy.batch_plan/1.0",
     batch_id: input.batchId,
     tenant: input.tenant,
     app: input.app,
-    capability: link,
+    capability: p.link,
     kind: "quick",
-    pin,
+    pin: p.pin,
     started_by: input.staff,
     operator: caseOperator,
-    started_at: startedAt,
+    started_at: deps.clock.now().toISOString(),
     instance: input.instance,
-    route_map: routeMapPlain,
-    cases: planCases,
+    route_map: routeMapPlain(p.routeMap),
+    cases: [baselinePlanCase(input, p), planCase],
     ...(input.rerun === undefined ? {} : { rerun_of: { batch_id: input.rerun.batchId, case_id: input.rerun.caseId } }),
-  };
-
-  const reportCase: BatchReportCase = {
-    case_id: CASE_ID,
-    run_id: caseRunId,
-    class: input.className,
-    result: resultClass,
-    truth: {
-      ...(truth.commit === undefined ? {} : { commit: truth.commit }),
-      ...(truth.output === undefined ? {} : { output: truth.output }),
-      ...(truth.outcome === undefined ? {} : { outcome: truth.outcome }),
-    },
-    verdict,
-    ...(waived ? { waived: true as const } : {}),
   };
   const report: BatchReport = {
     schema: "intyy.batch_report/1.0",
     batch_id: input.batchId,
     tenant: input.tenant,
     app: input.app,
-    capability: link,
+    capability: p.link,
     ended_at: deps.clock.now().toISOString(),
     cases: [reportCase],
-    gate: { passed: verdict === "pass" || verdict === "explained" },
+    gate: { passed: reportCase.verdict === "pass" || reportCase.verdict === "explained" },
   };
   return ok({ plan, report });
 }
