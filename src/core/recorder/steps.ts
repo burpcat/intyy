@@ -5,6 +5,9 @@ import type { RiskKind, Step, StepAction } from "../model/artifact/steps.js";
 import type { Target } from "../model/artifact/targets.js";
 import { fromA11ySnapshot } from "../targets/a11y-snapshot.js";
 import { evaluate, type EvalCtx } from "../targets/evaluate.js";
+import type { ScreenView } from "../targets/screen.js";
+import { sameClue } from "../targets/text.js";
+import { filterByRole } from "../targets/vote.js";
 import {
   allOf,
   ConditionRegistry,
@@ -231,6 +234,17 @@ function checkFalseBefore(
   }
 }
 
+/** False only when no element of the field's role shows its name or label: the field left the
+ * screen. Why not a full vote: a snapshot has no path, region, or separate label, so a field still
+ * shown can score under 0.70, and dropping its fill would weaken a later commit's precondition. */
+function fieldShown(target: Target | undefined, screen: ScreenView): boolean {
+  const words = [target?.clues.name, target?.clues.label].filter((w): w is string => w !== undefined);
+  if (target === undefined || words.length === 0) return true;
+  return filterByRole(target.clues.role, screen.elements).some((e) =>
+    words.some((w) => (e.name !== undefined && sameClue(e.name, w)) || (e.label !== undefined && sameClue(e.label, w))),
+  );
+}
+
 /** The last step's checkpoint, from `done.proof` (section 6 §14.5). `null` when there is no
  * `done` call to build from, or every id's text was unusable (not found, an ellipsis cut with
  * no word boundary left, a swapped-safe character, or nothing once stabilized), so the caller
@@ -312,7 +326,7 @@ export function buildSteps(
   const became = new Map<TaggedAction, string>();
   const gateRiskByStepId = new Map<string, RiskKind>();
   const riskHintByStepId = new Map<string, string | null>();
-  let fillsSincePageChange: string[] = [];
+  let fillsSincePageChange: { ref: string; target: string }[] = [];
   let lastLocation: string | null = null;
 
   finalActions.forEach((a, i) => {
@@ -329,6 +343,14 @@ export function buildSteps(
     if (a.beforeLocation !== lastLocation) {
       fillsSincePageChange = [];
       lastLocation = a.beforeLocation;
+    }
+    // Why: a frame can swap its page while the URL stays put (a frameset app), so a same-URL
+    // fill may be gone. Keep a fill only while its field is still on the screen before this
+    // action; with no snapshot, or an `unknown` answer, keep it.
+    const before = snapshots.a11yByTurn.get(a.turn);
+    if (before !== undefined) {
+      const beforeScreen = fromA11ySnapshot(before, a.beforeLocation);
+      fillsSincePageChange = fillsSincePageChange.filter((f) => fieldShown(evalCtx.targets.get(f.target), beforeScreen));
     }
 
     const screenName = screenNameOf(a.beforeLocation);
@@ -351,7 +373,7 @@ export function buildSteps(
       : allOf([
           locationCheck(toPathPattern(a.beforeLocation)),
           ...(targetId === null ? [] : [elementVisibleCheck(targetId)]),
-          ...fillsSincePageChange.map((ref): NestedLeaf => ({ ref })),
+          ...fillsSincePageChange.map((f): NestedLeaf => ({ ref: f.ref })),
         ]);
     const preconditionId = registry.intern(
       precondition,
@@ -394,7 +416,7 @@ export function buildSteps(
       `After ${stepId.replace(/_/g, " ")}.`,
     );
     if (!isRead) checkFalseBefore(a, checkpoint, checkpointId, stepId, evalCtx, snapshots, issues);
-    if (isFill) fillsSincePageChange.push(checkpointId);
+    if (isFill) fillsSincePageChange.push({ ref: checkpointId, target: must(targetId) });
 
     const timeoutMs = draftTimeoutMs(isFill || isRead ? "fill" : "request", observedMs(a));
     // Section 6 §14.9: the draft is the operator's approval hint when present, else the rules'

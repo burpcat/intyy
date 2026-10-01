@@ -75,6 +75,20 @@ describe("buildSteps", () => {
     expect(issues.filter((i) => i.code === "no_risk_class")).toHaveLength(2);
   });
 
+  test("a same-URL fill is carried only while its field is still on the screen before the step", () => {
+    // Why: a frameset app swaps a frame's page under one URL, so the fill's field can be gone.
+    const kept = keptActions(applyTags(collectActions("run_2026-09-24_0000000002", loadLog("repeated_type.jsonl")), []));
+    const refsOfSearch = (turn3: string): unknown[] => {
+      const snapshots: Snapshots = { a11yByTurn: new Map([[3, turn3]]), proof: null, proofElementListText: null };
+      const { steps, conditions } = buildSteps(kept, snapshots);
+      const pre = conditions.find((c) => c.id === steps.find((s) => s.id === "click_search")?.precondition);
+      if (pre?.check !== "all_of") throw new Error("expected an all_of precondition");
+      return pre.checks.filter((c) => "ref" in c);
+    };
+    expect(refsOfSearch('- textbox "Member ID"\n- button "Search"')).toHaveLength(1);
+    expect(refsOfSearch('- columnheader "Member ID"\n- button "Search"')).toEqual([]);
+  });
+
   test("a click checkpoint adds one new landmark from the saved snapshots", () => {
     const actions = collectActions(
       "run_2026-09-24_0000000004",
