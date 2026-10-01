@@ -1,0 +1,39 @@
+{
+  "schema": "intyy.runspec/1.0",
+  "kind": "discovery",
+  "caller": {
+    "tenant": "keystone",
+    "agent_id": "op_017"
+  },
+  "app": "kvfcu",
+  "capability": "count_member_subaccounts",
+  "goal": "Find member {input.member_id} and read how many sub-accounts the member has. Return that count. Change nothing.",
+  "inputs": [
+    {
+      "name": "member_id",
+      "type": "string",
+      "description": "The member number of the account holder",
+      "sensitivity": "pii",
+      "example": "100114",
+      "constraints": {
+        "length": {
+          "min": 6,
+          "max": 6
+        },
+        "format": "digits"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "name": "subaccount_count",
+      "type": "integer",
+      "description": "How many sub-accounts the member has now"
+    }
+  ],
+  "expected_effect": "read_only",
+  "session": "kvfcu/sign_in@1",
+  "entry": "/main.do",
+  "model": "claude-sonnet-5",
+  "prompt": "discovery@1.1"
+}
