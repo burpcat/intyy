@@ -101,6 +101,47 @@ export const ActionLine = BaseLine.extend({ event: z.literal("action"), data: Ac
 /** One `action` line. */
 export type ActionLine = z.infer<typeof ActionLine>;
 
+/**
+ * One `action` line's `data` when a person acted during a takeover (`handoff/capture.ts`,
+ * section 7 §14.2). It has no tag, reason, or expectation: human actions get no LLM tag (section 6
+ * §10.5). Its fingerprint is the light one (section 7 §14.1): no crop, container, or count.
+ */
+const HumanActionData = z
+  .object({
+    type: ActionTool,
+    staff_id: z.string().nullable(),
+    value: z.string().nullable(),
+    option: z.string().nullable(),
+    checked: z.boolean().nullable(),
+    key: z.string().nullable(),
+    result: z.enum(["ok", "failed"]),
+    dispatched: z.union([z.boolean(), z.literal("unknown")]),
+    transport: z.string().nullable(),
+    fingerprint: z
+      .object({
+        role: z.string(),
+        name: z.string().nullable(),
+        label: z.string().nullable(),
+        text: z.string().nullable(),
+        region: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).strict().nullable(),
+        path: z.string(),
+        field_kind: z.enum(["text", "password", "choice", "check"]).nullable(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+/** One human `action` line (`by: human`). */
+export const HumanActionLine = BaseLine.extend({
+  event: z.literal("action"),
+  by: z.literal("human"),
+  data: HumanActionData,
+});
+
+/** One human `action` line. */
+export type HumanActionLine = z.infer<typeof HumanActionLine>;
+
 /** One `observation` line's `data` (loop.ts `observe`). */
 const ObservationData = z
   .object({
@@ -212,6 +253,7 @@ export type LeaseLine = z.infer<typeof LeaseLine>;
 /** Every line kind the recorder reads. An event this module does not list is `other`. */
 export type ParsedLine =
   | ({ kind: "action" } & ActionLine)
+  | ({ kind: "human_action" } & HumanActionLine)
   | ({ kind: "observation" } & ObservationLine)
   | ({ kind: "extract" } & ExtractLine)
   | ({ kind: "escalation" } & EscalationLine)
@@ -226,6 +268,8 @@ export function parseLine(raw: unknown): ParsedLine {
   if (typeof raw !== "object" || raw === null || !("event" in raw)) return { kind: "other" };
   switch (raw.event) {
     case "action":
+      // Why split on `by`: a person's action carries no tag or reason (section 6 §10.5).
+      if ("by" in raw && raw.by === "human") return { kind: "human_action", ...HumanActionLine.parse(raw) };
       return { kind: "action", ...ActionLine.parse(raw) };
     case "observation":
       return { kind: "observation", ...ObservationLine.parse(raw) };

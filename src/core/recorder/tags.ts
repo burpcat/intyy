@@ -4,6 +4,7 @@
 import type { CandidateDecisionWhat } from "../model/candidate-decision.js";
 import type { CollectedAction } from "./collect.js";
 import type { ActionTag } from "./log-lines.js";
+import type { RecorderIssue } from "./issues.js";
 
 /** The parts of a candidate decision this module reads. */
 export type TagDecision = { what: CandidateDecisionWhat; subject: string; value: string };
@@ -48,4 +49,20 @@ export function keptActions(tagged: readonly TaggedAction[]): TaggedAction[] {
       .filter((n): n is number => n !== null),
   );
   return tagged.filter((a) => a.effectiveTag === "flow_step" && !correctedTurns.has(a.turn));
+}
+
+/**
+ * A blocking issue for each human action no reviewer has tagged yet (section 6 §10.5: "The
+ * reviewer tags them"). Until then the action reads `exploration`, so it makes no step or draft.
+ * The issue keeps the candidate from sealing on a silent drop.
+ */
+export function untaggedHumanIssues(tagged: readonly TaggedAction[]): RecorderIssue[] {
+  return tagged
+    .filter((a) => a.byHuman === true && a.humanTag === null)
+    .map((a) => ({
+      level: "blocking",
+      code: "human_action_untagged",
+      subject: actionSubject(a.runId, a.seq),
+      message: `A person did ${a.tool} at t${String(a.turn)} during a takeover. Tag it flow_step, incidental, correction, or exploration.`,
+    }));
 }

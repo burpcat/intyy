@@ -30,7 +30,7 @@ import { buildRecovery, pickCommitPoint } from "./risk.js";
 import { buildContractInputs } from "./sensitivity.js";
 import { buildContractOutputs } from "./outputs.js";
 import { buildSteps, EMPTY_SNAPSHOTS, type Snapshots } from "./steps.js";
-import { applyTags, keptActions } from "./tags.js";
+import { applyTags, keptActions, untaggedHumanIssues } from "./tags.js";
 import { RECORDER_VERSION } from "./version.js";
 
 /** One linked run's masked log, and the saved snapshots §14.5's rules need. */
@@ -102,6 +102,7 @@ export function record(input: RecorderInput): RecorderOutput {
 
   const positiveRaw = collectActions(positive.runId, positive.lines);
   const positiveTagged = applyTags(positiveRaw, decisions);
+  issues.push(...untaggedHumanIssues(positiveTagged));
   const positiveKept = keptActions(positiveTagged);
   const effect = positive.spec.expected_effect;
   const stepsResult = buildSteps(positiveKept, snapshots);
@@ -123,6 +124,7 @@ export function record(input: RecorderInput): RecorderOutput {
     const negSnapshots = neg.snapshots ?? EMPTY_SNAPSHOTS;
     const negRaw = collectActions(neg.runId, neg.lines);
     const negTagged = applyTags(negRaw, decisions);
+    issues.push(...untaggedHumanIssues(negTagged));
     const negKept = keptActions(negTagged);
     const aligned = alignNegativeRun(negKept, steps, stepsResult.targets);
     const built = buildOutcome(neg.spec, aligned, negSnapshots, registry, issues, stepsResult.targets);

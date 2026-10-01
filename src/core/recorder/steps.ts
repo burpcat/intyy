@@ -123,6 +123,10 @@ const FILL_TOOLS = new Set(["type", "select", "set_checked"]);
  * A `false` here becomes a blocking issue, never a guess (CLAUDE.md: never invent a gap's data). */
 function hasRequiredValue(a: TaggedAction): boolean {
   switch (a.tool) {
+    // Why: a human's typed text reads as no value (section 4 §8.10), so it must block here. An
+    // LLM `type` always logs a reference like `{input.x}`, so it passes.
+    case "type":
+      return typeof a.value === "string" && a.value !== "";
     case "select":
       return typeof a.option === "string";
     case "set_checked":

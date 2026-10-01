@@ -10,8 +10,10 @@ import type { Secrets } from "../../ports/secrets.js";
 import type { EvidenceStore, RunFolder } from "../../ports/stores.js";
 import type { LeaseToken, SurfaceFactory, Viewport } from "../../ports/surface.js";
 import type { ArtifactStore } from "../catalog/artifacts.js";
-import { runLoop, type LoopEnd } from "../discovery/loop.js";
+import { runLoop, type Handoff, type LoopEnd } from "../discovery/loop.js";
 import { OperatorSupervisor } from "../discovery/supervisor.js";
+import { BotWindows, HumanCapture } from "../handoff/capture.js";
+import { watchHumanInput } from "../handoff/human-input.js";
 import { Lease, leaseWhy } from "../handoff/lease.js";
 import { PROMPTS } from "../discovery/prompts/index.js";
 import { checkSpec } from "../discovery/spec-checks.js";
@@ -354,19 +356,23 @@ export async function runDiscovery(
     timeZone: app.time_zone,
     visible: input.visible,
   };
-  // Why a real lease: the gate refuses bot actions unless the bot holds it (section 7 §12).
-  // Discovery's takeover and human capture come with task 7; here the bot holds it all run.
+  // Why a real lease: the gate refuses bot actions unless the bot holds it (section 7 §12). A
+  // takeover moves it to the operator and back (section 6 §10.5).
   const leaseState = new Lease(deps.ids, (c, by) => {
     void log.append({ event: "lease", step: null, by, why: leaseWhy(c, by), data: c });
   });
   leaseState.start();
   const lease: LeaseToken = leaseState.botToken();
+  // Why: section 7 §14.3, the gate marks each bot action's window so capture can tell the bot's
+  // own input events from a person's.
+  const botWindows = new BotWindows(() => deps.clock.now().getTime());
   const opened = await openGate(
     deps.surface,
     cfg,
     {
       policy: policy.effective,
       redactor: r,
+      botAction: botWindows,
       run: {
         kind: "discovery",
         readOnly: spec.expected_effect === "read_only",
@@ -404,6 +410,38 @@ export async function runDiscovery(
   const inputs = new Map<string, HeldInput>(
     spec.inputs.map((i) => [i.name, { value: i.example, type: i.type, label: i.sensitivity }]),
   );
+  // Human capture and the input watcher (section 6 §10.5, section 7 §12.4, §14). The operator who
+  // started the run claims implicitly when a person acts while nobody holds the lease.
+  const handoff: Handoff = {
+    lease: leaseState,
+    step: { current: null },
+    interrupt: { current: null },
+    capture: new HumanCapture({
+      gate,
+      eyes,
+      lease: leaseState,
+      redactor: r,
+      windows: botWindows,
+      clock: deps.clock,
+      viewport: DISCOVERY_VIEWPORT,
+      refs: undefined,
+      commit: null,
+      step: () => handoff.step.current,
+      log: (line) => void log.append(line),
+      ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+    }),
+  };
+  const watching = new AbortController();
+  void watchHumanInput(eyes.events(watching.signal), leaseState, input.staff, (humanEffect) => {
+    if (humanEffect.kind !== "takeover") return;
+    void log.append({
+      event: "warning",
+      step: handoff.step.current,
+      by: "engine",
+      data: { code: "human_input_while_bot", detail: "a person touched the browser while the bot held control" },
+    });
+    if (humanEffect.wasWaiting) handoff.interrupt.current?.();
+  }, handoff.capture);
   let loop: LoopEnd | null = null;
   let preludeCode: string | null = null;
   try {
@@ -461,6 +499,13 @@ export async function runDiscovery(
             capability,
             // Why a fallback of 5: a missing bound counts as its strictest value (M01 decision).
             deadlineMinutes: policy.effective.escalation.approval_minutes ?? 5,
+            // Section 7 §13.3: a takeover has its own time to claim.
+            ...(policy.effective.escalation.takeover_minutes === undefined
+              ? {}
+              : { takeoverMinutes: policy.effective.escalation.takeover_minutes }),
+            ...(policy.effective.escalation.takeover_claimed_minutes === undefined
+              ? {}
+              : { claimedMinutes: policy.effective.escalation.takeover_claimed_minutes }),
           },
         ),
         redactor: r,
@@ -475,6 +520,7 @@ export async function runDiscovery(
       runId,
       formats: policy.effective.formats,
       lease,
+      handoff,
       sendScreenshots: policy.effective.llm.send_screenshots,
       status: async (s) => {
         await deps.evidence.appendIndex(
@@ -494,6 +540,7 @@ export async function runDiscovery(
       });
     }
   } finally {
+    watching.abort();
     await gate.close();
   }
   await log.append({ event: "session", step: null, by: "engine", data: { state: "closed" } });

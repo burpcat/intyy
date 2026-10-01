@@ -15,6 +15,8 @@ import type { RunLog } from "../orchestrator/run-log.js";
 import type { Gate, GateResult, Proposal } from "../safety/gate/gate.js";
 import { masked, maskedTurn, wireBytes } from "../safety/redaction/compose.js";
 import { fact, type Redactor } from "../safety/redaction/redactor.js";
+import type { HumanCapture } from "../handoff/capture.js";
+import type { Lease } from "../handoff/lease.js";
 import { captureFingerprint } from "./fingerprint.js";
 import {
   buildScreen,
@@ -25,6 +27,7 @@ import {
 } from "./observation.js";
 import type { LastResult, PromptModule } from "./prompts/types.js";
 import { readOutput } from "./read.js";
+import type { DiscoveryTakeoverAnswer, SupervisorHooks } from "./supervisor.js";
 import { turnPicture } from "./screenshot.js";
 import { SETTLE_CAP_MS, settle } from "./settle.js";
 import {
@@ -72,7 +75,35 @@ export interface Supervisor {
     ask: { turn: number; reason: Masked<string>; screenshot: string | null },
     signal?: AbortSignal,
   ): Promise<Answer>;
+  /**
+   * Opens a claimable takeover: the operator acts in the browser and hands back, or ends the run
+   * (section 6 §10.5). A supervisor without it keeps M03's `stuck`, which only ends the run.
+   */
+  discoveryTakeover?(
+    ask: {
+      turn: number;
+      reason: "stuck" | "unexpected_human_input";
+      detail: Masked<string>;
+      screenshot: string | null;
+    },
+    hooks: SupervisorHooks,
+    signal?: AbortSignal,
+  ): Promise<DiscoveryTakeoverAnswer>;
 }
+
+/**
+ * What discovery needs to hand the browser to a person and take it back (section 6 §10.5,
+ * section 7 §12 to §14): the lease, human-action capture, the turn the log lines name, and the
+ * way human input cuts an approval wait short. Omitted: the bot holds `LoopDeps.lease` all run.
+ */
+export type Handoff = {
+  lease: Lease;
+  capture: HumanCapture;
+  /** The turn's step tag (`t12`). The loop sets it, and capture names its lines with it. */
+  step: { current: string | null };
+  /** Set while an approval waits. Human input calls it, so the request closes and a takeover opens. */
+  interrupt: { current: (() => void) | null };
+};
 
 /** How the loop ended (section 6 §10.4). */
 export type LoopEnd = {
@@ -107,6 +138,8 @@ export type LoopDeps = {
   runId: string;
   formats: { date: readonly string[]; money: readonly string[] };
   lease: LeaseToken;
+  /** Takeover support. When set, the gate's token comes from `handoff.lease`, and `lease` is unused. */
+  handoff?: Handoff;
   /** Policy `llm.send_screenshots` (section 4 §10.5). */
   sendScreenshots: boolean;
   /** Marks the run `escalated` or `running` in the tenant index while a human is asked. */
@@ -143,6 +176,9 @@ class State {
   readAfterCommit = new Set<string>();
   repeatKey = "";
   repeats = 0;
+  /** Blocked actions since the run began or the last handback. A takeover clears the count that
+   * ends the run as stuck; `blocked` stays the run's total. */
+  blockedSince = 0;
 }
 
 /** One ended run. */
@@ -179,6 +215,7 @@ async function turns(
     if (worked >= d.limits.max_minutes * 60_000)
       return { status: "failed", code: "discovery_limit" };
     s.turn += 1;
+    if (d.handoff !== undefined) d.handoff.step.current = `t${String(s.turn)}`;
     const ended = await oneTurn(d, s, tools);
     if (ended !== null) return ended;
     if (d.log.failed) return { status: "failed", code: "evidence_write_failed" };
@@ -329,6 +366,10 @@ async function oneTurn(
   const seen = await observe(d, s);
   if ("status" in seen) return seen;
   const { o, view, image, shot, withheld } = seen;
+  // Why before the model call: a person touched the browser, so the bot must not act on a screen
+  // it did not leave (section 7 §12.4, section 6 §10.5).
+  if (d.handoff?.lease.takeoverPending() === true)
+    return takeover(d, s, "unexpected_human_input", masked`A person touched the browser.`, shot);
   // Why: section 4 §6.8, a page or frame load the guard blocked is told to the discovery LLM, and
   // the run goes on. Without it, a frame page just looks empty. The rule's details stay out (§10.2).
   const blocked = d.gate.blockedLoads().length;
@@ -425,7 +466,10 @@ async function stuck(
   s: State,
   reason: Masked<string>,
   shot: string | null,
-): Promise<End> {
+): Promise<End | null> {
+  // Why: section 6 §10.5, with a lease and capture the stuck run offers the operator a handback.
+  if (d.handoff !== undefined && d.supervisor.discoveryTakeover !== undefined)
+    return await takeover(d, s, "stuck", reason, shot);
   const step = `t${String(s.turn)}`;
   await d.log.append({
     event: "escalation",
@@ -554,6 +598,8 @@ async function act(
   c: ScreenCall,
   shot: string | null,
 ): Promise<End | null> {
+  if (d.handoff?.lease.takeoverPending() === true)
+    return takeover(d, s, "unexpected_human_input", masked`A person touched the browser.`, shot);
   const key = repeatKey(c, view);
   s.repeats = key === s.repeatKey ? s.repeats + 1 : 1;
   s.repeatKey = key;
@@ -583,7 +629,7 @@ async function act(
         );
   if (fp === "write_failed") return { status: "failed", code: "evidence_write_failed" };
 
-  const proposal: Proposal = { actor: "llm", lease: d.lease, action: c.action, step };
+  const proposal: Proposal = { actor: "llm", lease: d.handoff?.lease.botToken() ?? d.lease, action: c.action, step };
   // Why: section 7 §5.1, subscribe before the call that can dispatch, so no early event is lost.
   // The first call may only ask for approval, so that listener closes before the human is asked.
   let tap = listen(d);
@@ -593,6 +639,8 @@ async function act(
     if (result.ok && result.value.decision === "needs_approval") {
       tap.stop();
       const answered = await approval(d, s, c, name, result.value, c.action.type, shot);
+      if (answered === "interrupted")
+        return await takeover(d, s, "unexpected_human_input", masked`A person touched the browser.`, shot);
       if ("status" in answered) return answered;
       if (answered.hint === null) {
         s.last = "declined";
@@ -602,7 +650,10 @@ async function act(
       }
       hint = answered.hint;
       tap = listen(d);
-      result = await d.gate.act({ ...proposal, approval: { by: answered.staff } }, d.signal);
+      result = await d.gate.act(
+        { ...proposal, lease: d.handoff?.lease.botToken() ?? d.lease, approval: { by: answered.staff } },
+        d.signal,
+      );
     }
     if (!result.ok) {
       if (result.failure === "secret_unavailable")
@@ -646,13 +697,16 @@ async function afterGate(
     step: string;
   },
 ): Promise<End | null> {
+  if (g.decision === "blocked" && g.rule === "lease.not_holder" && d.handoff?.lease.takeoverPending() === true)
+    return takeover(d, s, "unexpected_human_input", masked`A person touched the browser.`, null);
   if (g.decision === "blocked") {
     s.blocked += 1;
+    s.blockedSince += 1;
     s.last = "blocked";
     s.feedback = blockedText(g.rule);
     s.history.push(historyLine(d, s, c.tool, c.element, x.shown, masked`blocked`, x.tag));
-    if (s.blocked >= d.limits.max_blocked)
-      return stuck(d, s, masked`${s.blocked} actions were blocked.`, null);
+    if (s.blockedSince >= d.limits.max_blocked)
+      return stuck(d, s, masked`${s.blockedSince} actions were blocked.`, null);
     return null;
   }
   s.actions += 1;
@@ -701,7 +755,7 @@ async function approval(
   seen: GateResult,
   action: string,
   shot: string | null,
-): Promise<{ staff: string; hint: RiskHint | null } | End> {
+): Promise<{ staff: string; hint: RiskHint | null } | End | "interrupted"> {
   const step = `t${String(s.turn)}`;
   // Why: section 4 §7.7, the human approves what the gate classified. The model's own element
   // name can come from an older screen, so it is never the label (a real run showed "Search"
@@ -725,19 +779,34 @@ async function approval(
   });
   await d.status("escalated");
   const t0 = d.clock.now().getTime();
-  const a = await d.supervisor.approve(
-    {
-      turn: s.turn,
-      element: c.element,
-      label: name,
-      action,
-      rule: seen.rule,
-      path: seen.path ?? null,
-      detail,
-      screenshot: shot,
-    },
-    d.signal,
-  );
+  // Why: section 7 §12.4, human input during an approval wait closes the request unanswered and
+  // opens a takeover. The lease shows `awaiting_decision` while the bot waits (section 7 §12.1).
+  const h = d.handoff;
+  const stopWait = new AbortController();
+  const waiting = h?.lease.awaitDecision().ok === true;
+  if (h !== undefined && waiting) h.interrupt.current = () => { stopWait.abort(); };
+  const a: Answer = await (async (): Promise<Answer> => {
+    try {
+      return await d.supervisor.approve(
+      {
+        turn: s.turn,
+        element: c.element,
+        label: name,
+        action,
+        rule: seen.rule,
+        path: seen.path ?? null,
+        detail,
+        screenshot: shot,
+      },
+      d.signal === undefined ? stopWait.signal : AbortSignal.any([d.signal, stopWait.signal]),
+    );
+    } finally {
+      if (h !== undefined) {
+        h.interrupt.current = null;
+        if (waiting && h.lease.holder === "bot") h.lease.decided();
+      }
+    }
+  })();
   s.humanMs += d.clock.now().getTime() - t0;
   const decided = a.kind === "decided";
   await d.log.append({
@@ -755,7 +824,94 @@ async function approval(
     },
   });
   if (a.kind === "timed_out") return { status: "failed", code: "escalation_timeout" };
+  if (a.kind === "run_ended" && h?.lease.takeoverPending() === true) {
+    await d.status("running");
+    return "interrupted";
+  }
   if (a.kind !== "decided") return { status: "failed", code: "ended_by_operator" };
   await d.status("running");
   return { staff: a.staff, hint: a.hint };
+}
+
+/**
+ * Opens a takeover and waits for the operator (section 6 §10.5, section 7 §12, §13). The lease
+ * goes to `nobody`. The operator claims it, acts in the browser, and releases. Capture logs each
+ * human action with no tag. On release the bot gets the lease back with a new token and the
+ * model sees the new screen, plus one history line. Returns `null` to go on, or how the run ended.
+ */
+async function takeover(
+  d: LoopDeps,
+  s: State,
+  reason: "stuck" | "unexpected_human_input",
+  detail: Masked<string>,
+  shot: string | null,
+): Promise<End | null> {
+  const h = d.handoff;
+  if (h === undefined || d.supervisor.discoveryTakeover === undefined) throw new Error("takeover: discovery has no handoff support");
+  const step = `t${String(s.turn)}`;
+  // Why: a takeover moves the lease to nobody. Human input already did (section 7 §12.2).
+  h.lease.requestTakeover();
+  h.lease.takePending();
+  await d.log.append({
+    event: "escalation",
+    step,
+    by: "engine",
+    data: { kind: "takeover", reason, state: "open", detail },
+  });
+  await d.status("escalated");
+  const before = h.capture.actions;
+  const t0 = d.clock.now().getTime();
+  const a = await d.supervisor.discoveryTakeover(
+    { turn: s.turn, reason, detail, screenshot: shot },
+    {
+      onClaim: (staff, implicit, deadline) => {
+        h.lease.claim(staff, implicit);
+        void d.log.append({
+          event: "escalation",
+          step,
+          by: "human",
+          data: { kind: "takeover", reason, state: "claimed", staff_id: staff, deadline: fact(deadline), implicit },
+        });
+      },
+      onDialog: async (staff, answer) => {
+        void d.log.append({
+          event: "escalation",
+          step,
+          by: "human",
+          data: { kind: "takeover", reason, state: "dialog_answered", staff_id: staff, decision: answer },
+        });
+        await h.capture.answerDialog(staff, answer);
+      },
+    },
+    d.signal,
+  );
+  s.humanMs += d.clock.now().getTime() - t0;
+  await d.log.append({
+    event: "escalation",
+    step,
+    by: "staff" in a ? "human" : "engine",
+    data: {
+      kind: "takeover",
+      reason,
+      state: a.kind === "timed_out" ? "timed_out" : a.kind === "run_ended" ? "run_ended" : "resolved",
+      decision: a.kind === "released" ? "handed_back" : a.kind === "end_run" ? "end_run" : null,
+      ...("staff" in a ? { staff_id: a.staff } : {}),
+    },
+  });
+  if (a.kind === "timed_out") return { status: "failed", code: "escalation_timeout" };
+  if (a.kind !== "released") return { status: "failed", code: "ended_by_operator" };
+  // Why no reverify: discovery has no plan to check. The model looks at the screen next turn
+  // (section 6 §10.5). The new token is the only way back to the bot (section 7 §12.3).
+  h.lease.handBack();
+  if (!h.lease.reverified().ok) return { status: "failed", code: "ended_by_operator" };
+  const n = h.capture.actions - before;
+  s.history.push(masked`t${s.turn} operator took over: ${n} ${d.redactor.text(n === 1 ? "action" : "actions")}`);
+  s.last = "none";
+  s.feedback = null;
+  s.repeats = 0;
+  s.repeatKey = "";
+  s.blockedSince = 0;
+  s.invalidInRow = 0;
+  await d.status("running");
+  return null;
 }

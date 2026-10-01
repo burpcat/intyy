@@ -127,10 +127,16 @@ describe("the subscription is closed on every path out of act (section 7 §5.1)"
     { name: "done", input: { summary: "Posted.", proof: ["e1"] } },
   ];
 
-  /** Every call opened with nothing else open, and none stays open when the run ends. */
+  /**
+   * Discovery holds one run-long human-input watcher subscription, opened first (section 7 §12.4).
+   * So the first call is the watcher and finds nothing open. Every later call finds only the
+   * watcher open: no act() subscription leaked. None stays open when the run ends.
+   * `minCalls` counts the act() subscriptions only.
+   */
   function expectTidy(spy: ReturnType<typeof spying>["spy"], minCalls: number): void {
-    expect(spy.signals.length).toBeGreaterThanOrEqual(minCalls);
-    expect(spy.openBefore.every((n) => n === 0)).toBe(true);
+    expect(spy.signals.length).toBeGreaterThanOrEqual(minCalls + 1);
+    expect(spy.openBefore[0]).toBe(0);
+    expect(spy.openBefore.slice(1).every((n) => n === 1)).toBe(true);
     expect(spy.open()).toBe(0);
   }
 
@@ -150,12 +156,13 @@ describe("the subscription is closed on every path out of act (section 7 §5.1)"
     });
     expect(r.result.status).toBe("success");
     expect(r.operator.requests).toHaveLength(1);
-    // Five dispatches (type, type, Sign In, Transfers, Submit). The approval turn used two
-    // subscriptions: the first closed before the ask, the second open for the dispatch. Each
-    // new subscription found none open (`expectTidy`), so none was open during the ask.
+    // Five dispatches (type, type, Sign In, Transfers, Submit). The approval turn used two act()
+    // subscriptions: the first closed before the ask, the second open for the dispatch. Each new
+    // one found only the watcher open (`expectTidy`), so none was open during the ask. A dispatch
+    // sees two open: the watcher and its own.
     expect(spy.openAtAct).toHaveLength(5);
-    expect(spy.openAtAct.every((n) => n === 1)).toBe(true);
-    expect(spy.signals).toHaveLength(6);
+    expect(spy.openAtAct.every((n) => n === 2)).toBe(true);
+    expect(spy.signals).toHaveLength(7);
     expectTidy(spy, 6);
   });
 
@@ -170,7 +177,7 @@ describe("the subscription is closed on every path out of act (section 7 §5.1)"
     expect(r.operator.requests[0]).toMatchObject({ kind: "approval" });
     // Four dispatches; the declined click never dispatched, and its subscription closed before the ask.
     expect(spy.openAtAct).toHaveLength(4);
-    expect(spy.signals).toHaveLength(5);
+    expect(spy.signals).toHaveLength(6);
     expectTidy(spy, 5);
   });
 
@@ -182,7 +189,7 @@ describe("the subscription is closed on every path out of act (section 7 §5.1)"
     });
     expect(r.result.status).toBe("success");
     expect(spy.openAtAct).toHaveLength(3);
-    expect(spy.signals).toHaveLength(4);
+    expect(spy.signals).toHaveLength(5);
     expectTidy(spy, 4);
   });
 
@@ -191,7 +198,7 @@ describe("the subscription is closed on every path out of act (section 7 §5.1)"
     const spec = RunSpec.parse({ ...SIGN_IN, capability: "transfer" });
     await go({ spec, steps: transferSteps, surface: factory });
     expect(spy.openAtAct).toHaveLength(4);
-    expect(spy.signals).toHaveLength(5);
+    expect(spy.signals).toHaveLength(6);
     expectTidy(spy, 5);
   });
 

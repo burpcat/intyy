@@ -22,6 +22,9 @@ export type SupervisorFacts = {
   capability: string;
   /** Policy `escalation.approval_minutes` (section 4 §4.4). Stuck requests use it too in M03. */
   deadlineMinutes: number;
+  /** Minutes to claim a takeover (section 7 §13.3: policy `escalation.takeover_minutes`). Omitted:
+   * `deadlineMinutes`, as in M03 and M06. */
+  takeoverMinutes?: number;
   /** Minutes a claimed takeover has, from the claim (section 7 §13.3: default 60, range 15 to
    * 240). Out-of-range values are clamped. Omitted means the default. */
   claimedMinutes?: number;
@@ -41,6 +44,13 @@ export type TakeoverAnswer =
   | { kind: "ended_run"; staff: string }
   | { kind: "set_outcome"; staff: string; code: string }
   | { kind: "released"; staff: string; note: string | null }
+  | { kind: "timed_out" }
+  | { kind: "run_ended" };
+
+/** What a discovery takeover ends with (section 6 §10.5). */
+export type DiscoveryTakeoverAnswer =
+  | { kind: "released"; staff: string; note: string | null }
+  | { kind: "end_run"; staff: string }
   | { kind: "timed_out" }
   | { kind: "run_ended" };
 
@@ -208,6 +218,7 @@ export class OperatorSupervisor implements Supervisor {
       outcomes?: readonly string[];
     },
     signal?: AbortSignal,
+    hooks?: SupervisorHooks,
   ): Promise<TakeoverAnswer> {
     const outcomes = ask.outcomes ?? [];
     const req = this.#request({
@@ -226,7 +237,7 @@ export class OperatorSupervisor implements Supervisor {
       // Why "nobody": the lease is free for an operator to claim (section 7 §12.2).
       lease: "nobody",
     });
-    const got = await this.#ask(req, signal, true);
+    const got = await this.#ask(req, signal, true, hooks);
     if (got.kind === "released") return got;
     if (got.kind !== "decided") return got;
     if (got.decision === "set_outcome") {
@@ -235,6 +246,39 @@ export class OperatorSupervisor implements Supervisor {
         return { kind: "set_outcome", staff: got.staff, code: got.outcome };
     }
     return { kind: "ended_run", staff: got.staff };
+  }
+
+  /**
+   * Opens a takeover in discovery (section 6 §10.5): the stuck LLM, or a person who touched the
+   * browser. The operator claims it, acts, and releases (the handback), or ends the run. There is
+   * no `set_outcome` here: discovery's outcomes come from the model (section 6 §10.4).
+   */
+  async discoveryTakeover(
+    ask: {
+      turn: number;
+      reason: "stuck" | "unexpected_human_input";
+      detail: Masked<string>;
+      screenshot: string | null;
+    },
+    hooks: SupervisorHooks,
+    signal?: AbortSignal,
+  ): Promise<DiscoveryTakeoverAnswer> {
+    const got = await this.takeover(
+      {
+        reason: ask.reason,
+        step: { id: `t${String(ask.turn)}`, intent: null },
+        trouble: { phase: "discovery", detail: ask.detail },
+        ladder: [],
+        commit: { state: "none", notice: null },
+        operatorNote: null,
+        screenshot: ask.screenshot,
+      },
+      signal,
+      hooks,
+    );
+    return got.kind === "ended_run" || got.kind === "set_outcome"
+      ? { kind: "end_run", staff: got.staff }
+      : got;
   }
 
   /**
@@ -329,7 +373,7 @@ export class OperatorSupervisor implements Supervisor {
     lease?: string;
   }): Masked<Request> {
     const now = this.clock.now();
-    const deadline = this.#deadline();
+    const deadline = this.#deadline(p.kind);
     const req: Intervention = Intervention.parse({
       schema: "intyy.intervention/1.0",
       run_id: this.facts.runId,
@@ -362,9 +406,9 @@ export class OperatorSupervisor implements Supervisor {
   }
 
   /** The deadline, as an ISO time (section 7 §13.3). Why `setTime`: core never makes a Date. */
-  #deadline(): string {
+  #deadline(kind: RequestKind): string {
     const at = this.clock.now();
-    at.setTime(at.getTime() + this.facts.deadlineMinutes * 60_000);
+    at.setTime(at.getTime() + this.#openMinutes(kind) * 60_000);
     return at.toISOString();
   }
 
@@ -374,12 +418,21 @@ export class OperatorSupervisor implements Supervisor {
    * `handback`, a release ends the wait; otherwise a release is ignored.
    */
   async #ask(req: Masked<Request>, signal?: AbortSignal, handback?: false): Promise<Waited>;
-  async #ask(req: Masked<Request>, signal: AbortSignal | undefined, handback: true): Promise<Waited | Released>;
+  async #ask(
+    req: Masked<Request>,
+    signal: AbortSignal | undefined,
+    handback: true,
+    hooks?: SupervisorHooks,
+  ): Promise<Waited | Released>;
   async #ask(
     req: Masked<Request>,
     signal?: AbortSignal,
     handback = false,
+    hooksOverride?: SupervisorHooks,
   ): Promise<Waited | Released> {
+    // Why a per-call override: discovery builds one supervisor for the whole run, but each
+    // takeover's claim and dialog hooks name that takeover's turn (section 6 §10.5).
+    const hooks = hooksOverride ?? this.hooks;
     // Why the timer starts before open(): open() writes a file a test or an operator can observe
     // on disk before this async function resumes. Starting the deadline first means the clock
     // always has a waiter registered by the time anyone can see the request (no wall-clock race).
@@ -401,7 +454,7 @@ export class OperatorSupervisor implements Supervisor {
         () => "stopped" as const,
       );
     };
-    let timer = startTimer(this.facts.deadlineMinutes);
+    let timer = startTimer(this.#openMinutes(req.kind));
     const finish = (): void => {
       stop.abort();
       timerStop.abort();
@@ -431,12 +484,12 @@ export class OperatorSupervisor implements Supervisor {
         if (req.kind === "takeover") {
           const minutes = this.#claimedMinutes();
           timer = startTimer(minutes);
-          this.hooks.onClaim?.(ev.staff, ev.implicit, this.#deadlineIn(minutes));
+          hooks.onClaim?.(ev.staff, ev.implicit, this.#deadlineIn(minutes));
         }
         continue;
       }
       if (ev.kind === "dialog") {
-        await this.hooks.onDialog?.(ev.staff, ev.answer);
+        await hooks.onDialog?.(ev.staff, ev.answer);
         continue;
       }
       if (ev.kind === "released" && !handback) continue;
@@ -450,6 +503,11 @@ export class OperatorSupervisor implements Supervisor {
         ...(ev.outcome === undefined ? {} : { outcome: ev.outcome }),
       };
     }
+  }
+
+  /** Minutes a request has to be answered or claimed: a takeover's own, else the common one. */
+  #openMinutes(kind: string): number {
+    return kind === "takeover" ? (this.facts.takeoverMinutes ?? this.facts.deadlineMinutes) : this.facts.deadlineMinutes;
   }
 
   /** Minutes a claimed takeover has, clamped to the policy range (section 7 §13.3). */

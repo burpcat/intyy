@@ -37,8 +37,12 @@ export type CollectedAction = {
   pattern?: string | null | undefined;
   result: "ok" | "failed";
   dispatched: boolean | "unknown";
-  /** The tag the LLM gave at action time (section 6 §12.1). */
+  /** The tag the LLM gave at action time (section 6 §12.1). A person's action has none, so it
+   * reads `exploration` (dropped) until a reviewer tags it (section 6 §10.5). */
   tag: ActionTag;
+  /** True for an action a person did during a takeover (`by: human`, section 6 §10.5). Its
+   * fingerprint is the light one, and it has no reason or expectation. */
+  byHuman?: true;
   reason: string;
   expected: string;
   /** The turn this action's `correction` undoes, or `null`. */
@@ -76,6 +80,10 @@ export function collectActions(runId: string, rawLines: readonly unknown[]): Col
   const riskHintByTurn = new Map<number, RiskClass>();
   const riskHintByByTurn = new Map<number, string>();
   const gateRiskByTurn = new Map<number, RiskClass>();
+  // Why per action, not per turn: one takeover holds many human actions under one turn tag, and
+  // each has its own `gate` line just before it (`HumanCapture.#after`).
+  const humanGateRisk = new Map<number, RiskClass>();
+  let lastHumanRisk: RiskClass | null = null;
   const parsedActions: Omit<
     CollectedAction,
     "runId" | "beforeLocation" | "afterLocation" | "afterAt" | "riskHint" | "riskHintBy" | "gateRisk"
@@ -98,6 +106,42 @@ export function collectActions(runId: string, rawLines: readonly unknown[]): Col
         riskHintByTurn.set(turn, hint);
         if (line.data.staff_id !== undefined) riskHintByByTurn.set(turn, line.data.staff_id);
       }
+    } else if (line.kind === "gate" && line.data.actor === "human") {
+      lastHumanRisk = line.data.risk ?? null;
+    } else if (line.kind === "human_action") {
+      if (line.step === null) continue;
+      const fp = line.data.fingerprint;
+      // Why null for these two: section 4 §8.10, typed text is never automated. A kept `type`
+      // with no value then blocks as `unsupported_step_action`.
+      const typed = line.data.value === "[human_text]" || line.data.value === "[secret]" ? null : line.data.value;
+      if (lastHumanRisk !== null) humanGateRisk.set(line.seq, lastHumanRisk);
+      lastHumanRisk = null;
+      parsedActions.push({
+        seq: line.seq,
+        turn: turnOf(line.step),
+        tool: line.data.type,
+        target: null,
+        value: typed,
+        format: null,
+        option: line.data.option,
+        checked: line.data.checked,
+        key: line.data.key,
+        output: null,
+        source: null,
+        pattern: null,
+        result: line.data.result,
+        dispatched: line.data.dispatched,
+        tag: "exploration",
+        byHuman: true,
+        reason: "",
+        expected: "",
+        corrects: null,
+        fingerprint:
+          fp === null
+            ? null
+            : { ...fp, crop: null, crop_dropped: "human_action", within: null, max_length: null, uniqueness: 1 },
+        at: line.at,
+      });
     } else if (line.kind === "gate" && line.data.decision === "allowed" && line.data.risk !== undefined) {
       // Why last wins: an action needing approval logs "needs_approval" first, then "allowed"
       // once approved, both under the same step. The final "allowed" line is the one that ran.
@@ -139,7 +183,7 @@ export function collectActions(runId: string, rawLines: readonly unknown[]): Col
       afterAt: atByTurn.get(a.turn + 1) ?? null,
       riskHint: riskHintByTurn.get(a.turn) ?? null,
       riskHintBy: riskHintByByTurn.get(a.turn) ?? null,
-      gateRisk: gateRiskByTurn.get(a.turn) ?? null,
+      gateRisk: a.byHuman === true ? (humanGateRisk.get(a.seq) ?? null) : (gateRiskByTurn.get(a.turn) ?? null),
     };
   });
 }
