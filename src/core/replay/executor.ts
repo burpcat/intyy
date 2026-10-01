@@ -29,7 +29,12 @@ import { openGate, type GateRun } from "../safety/gate/gate.js";
 import { fact, Redactor, redactionRules, type Fact, type KnownValue } from "../safety/redaction/redactor.js";
 import type { SecretSources } from "../safety/secrets/injector.js";
 import type { RequestIndexDeps } from "../orchestrator/request-index.js";
-import { catalogRequestIndex, catalogResolve, runPrechecks } from "../orchestrator/prechecks.js";
+import { catalogRequestIndex, catalogResolve, catalogTrust, runPrechecks } from "../orchestrator/prechecks.js";
+import type { ScoreStore } from "../../ports/scores.js";
+import type { HistoryLine } from "../model/score-history.js";
+import type { ScoreRecord } from "../model/score.js";
+import { recordHash } from "../trust/rebuild.js";
+import { loadRecords } from "../trust/resolve.js";
 import { RunLog, type LogLine } from "../orchestrator/run-log.js";
 import { loadRecordedPictures } from "../targets/picture.js";
 import type { TargetVoteFacts } from "./find-target.js";
@@ -147,6 +152,9 @@ export type ReplayDeps = {
   surface: SurfaceFactory;
   artifacts: ArtifactStore;
   requestIndex: RequestIndexDeps;
+  /** The score store, for pre-run check 7 and the key choice (section 8 §11). Omitted: no records,
+   * so every key is a draft and an unattended request is rejected (docs/decisions.md, M05). */
+  scores?: ScoreStore<HistoryLine, ScoreRecord>;
   operator: (run: { runId: string; tenant: string }) => OperatorPort;
   /** Overrides the real reconciliation check (section 7 §11.1) with a scripted answer: mostly
    * for tests, so a case need not seal a whole second, read-only check capability. Omitted, the
@@ -221,6 +229,7 @@ function frozenFacts(
   artifact: Artifact | null,
   session: Artifact | null,
   models: ReplayDeps["models"],
+  record: ScoreRecord | null,
 ): unknown {
   const flags = rungFlags(input.policy, models);
   const cutoffs = models?.cutoffs ?? DEFAULT_CUTOFFS;
@@ -257,11 +266,15 @@ function frozenFacts(
       policy: { layers: input.policy.layers, hash: fact(input.policy.hash) },
       settings: { revision: Number(input.settings.rev), hash: fact(input.settings.hash) },
       evidence_level: input.policy.effective.evidence.level,
-      // Why empty: M05 has no tuning batch yet (section 8, M10).
-      timeouts: {},
-      timeouts_from: null,
-      // Why draft: check 7 is thin until the score store exists (M10; section 3 §4.8 check 7).
-      approval: { state: "draft", batch: null, record: null },
+      // Why from the record: section 8 §11.8. Every unattended run can prove it ran under approval,
+      // and an auditor can prove what the resolver saw. No record means a draft with the defaults.
+      timeouts: record?.timeouts.approved ?? {},
+      timeouts_from: protectId(record?.timeouts.approved_from ?? null),
+      approval: {
+        state: record?.state ?? "draft",
+        batch: protectId(record?.approval?.batch ?? null),
+        record: record === null ? null : fact(recordHash(record)),
+      },
       // Why: section 5 §10.8, a flag is true only when the policy allows the rung AND its port
       // is wired AND `--models off` is not set (docs/decisions.md, M06, M09). The cutoffs are
       // frozen with jev, because they decide what a run does with its answers.
@@ -339,6 +352,7 @@ async function finish(
   files: readonly string[],
   artifact: Artifact | null = null,
   session: Artifact | null = null,
+  record: ScoreRecord | null = null,
 ): Promise<void> {
   const at = deps.clock.now().toISOString();
   const nowMs = deps.clock.now().getTime();
@@ -357,7 +371,7 @@ async function finish(
     result: { ...(result as unknown as Record<string, unknown>), run_id: fact(result.run_id), request_id: protectId(result.request_id) },
     // Why not masked here: `r.value(raw)` below masks it once, and keeps each `fact(...)` whole. A
     // second pass over the unwrapped text read `kvfcu/open_sub@1.0.0` as an email.
-    frozen: frozenFacts(input, artifact, session, deps.models) as Record<string, unknown>,
+    frozen: frozenFacts(input, artifact, session, deps.models, record) as Record<string, unknown>,
     files: fileEntries.map((f) => ({
       path: isCapturePath(f.path) ? fact(f.path) : f.path,
       sha256: fact(f.sha256),
@@ -459,6 +473,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     port: deps.secrets,
   };
 
+  const records = deps.scores === undefined ? undefined : await loadRecords(deps.scores, input.tenant, deps.signal);
   const pre = await runPrechecks(
     {
       raw: input.request,
@@ -469,6 +484,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       appVersion: input.appVersion,
       policy: input.policy.effective,
       resolve: catalogResolve(deps.artifacts, input.pin ?? undefined),
+      ...(records === undefined ? {} : { trust: catalogTrust(deps.artifacts, records) }),
+      // Why: a pin (an operator's, or certify's) names the exact key, so no key is chosen and check 7 is skipped.
+      ...(input.pin === undefined || input.pin === null ? {} : { pinned: true }),
       ...catalogRequestIndex(deps.requestIndex),
       secretSources: sources,
     },
@@ -488,6 +506,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
   const runId = input.runId;
   const artifactForFacts = pre.outcome.status === "ok" ? pre.outcome.artifact : null;
   const sessionForFacts = pre.outcome.status === "ok" ? pre.outcome.sessionArtifact : null;
+  const recordForFacts = pre.outcome.status === "ok" ? pre.outcome.record : null;
   // Why an effect this early: section 3 §5.8, present on every non-rejected result of a
   // `commits` capability. `null` when the artifact never resolved (a precheck-stage failure).
   const earlyEffect = artifactForFacts?.contract.effect === "commits" ? notSentEffect() : null;
@@ -539,7 +558,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     deps.signal,
   );
   await log.append(
-    { event: "run_start", step: null, by: "engine", data: frozenFacts(input, artifactForFacts, sessionForFacts, deps.models) },
+    { event: "run_start", step: null, by: "engine", data: frozenFacts(input, artifactForFacts, sessionForFacts, deps.models, recordForFacts) },
     true,
   );
   await log.append({ event: "precheck", step: null, by: "engine", data: { checks: pre.results } });
@@ -619,7 +638,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     const final: Result = interventions.length === 0 ? result : Result.parse({ ...result, interventions: [...interventions] });
     // Why the artifact and session: section 3 §7.3, `run.json.frozen` is a copy of `run_start`'s
     // frozen facts, so it names the artifacts the run used (evidence publish copies them).
-    await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles, artifactForFacts, sessionForFacts);
+    await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles, artifactForFacts, sessionForFacts, recordForFacts);
     return { runId, result: final };
   };
 

@@ -144,9 +144,11 @@ export async function runReconciliationCheck(
   const resolved = await resolveMajor(deps.artifacts, link.app, link.capability, link.major, parent.appVersion);
   if (!resolved.ok) return { verdict: { kind: "unclear" }, childRunId: null };
   const checkArtifact = resolved.value;
-  // Why `supervised`: check 7 (section 3 §4.8) always rejects `unattended` in this build (no
-  // score store yet, M10); the parent's own mode still governs its own escalations. No start
-  // confirmation still applies (docs/decisions.md, M06: "child runs ask no start confirmation").
+  // Why `supervised`: the parent's own check 7 already proved the check capability approved
+  // (section 3 §4.8, section 8 §10.10), so the child has nothing left to prove, and it must not
+  // reject itself. In supervised mode the resolver still prefers the approved check key (section 8 §11.4).
+  // The parent's mode still governs its own escalations. No start confirmation applies
+  // (docs/decisions.md, M06: "child runs ask no start confirmation").
   const request = buildCheckRequest(check, checkArtifact, refs, "supervised");
   const childRunId = deps.ids.runId();
   // Named field by field, not `...parent`: the check's own frozen set (if any) is a different

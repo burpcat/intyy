@@ -16,7 +16,8 @@
             "enum": [
               "run",
               "batch",
-              "artifact"
+              "artifact",
+              "key"
             ]
           },
           "id": {

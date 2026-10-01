@@ -52,7 +52,7 @@ export function renderReview(r: Review, full = false): string {
   out.push(`AS    ${r.asWho ?? "no staff ID; role and sealer rules are not checked"}`);
   out.push(`STATE ${r.state}   ${r.move === "restore" ? "RESTORE" : "NEW"} ${r.change}`);
   out.push(
-    `BATCH ${r.batch.id ?? "none"}   ${r.batch.kind}   ${r.batch.runs === null ? "? runs" : `${String(r.batch.runs)} runs`}   ` +
+    `BATCH ${r.batch.id ?? "none"}   ${r.batch.kind}   ${r.batch.runs === null ? "? runs" : `${String(r.batch.runs)} ${r.batch.runs === 1 ? "run" : "runs"}`}   ` +
       (r.batch.fresh === null ? "no batch" : r.batch.fresh ? "fresh" : "STALE"),
   );
   out.push(`GATE  ${gateLine(r)}`);

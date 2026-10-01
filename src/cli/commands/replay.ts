@@ -246,6 +246,24 @@ export function replayModels(ctx: Ctx, reviewerSwitch: boolean): NonNullable<Rep
   return { reviewer: ctx.wiring.reviewer(key) };
 }
 
+/**
+ * Checks `--pin` (section 8 §11.5): an operator may pin an exact key, supervised only. The pin must
+ * name the request's own capability and major. A patch pin (`+p3`) waits for patch keys. Callers
+ * never reach this: a request file has no pin field, and an agent's request names a major only.
+ */
+function pinOf(pin: unknown, request: Request): string | null {
+  if (pin === undefined) return null;
+  if (typeof pin !== "string") throw new CliExit(EXIT.usage, "--pin takes a key, like kvfcu/open_share_subaccount@1.0.0");
+  if (request.mode !== "supervised") throw new CliExit(EXIT.usage, "--pin works only with --mode supervised");
+  if (!/^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+\.\d+\.\d+$/.test(pin)) {
+    throw new CliExit(EXIT.usage, "--pin: write an exact key, like kvfcu/open_share_subaccount@1.0.0 (patch pins are not built yet)");
+  }
+  if (!pin.startsWith(`${request.capability}.`)) {
+    throw new CliExit(EXIT.usage, `--pin ${pin}: not a version of ${request.capability}`);
+  }
+  return pin;
+}
+
 /** Registers `replay`. */
 export const registerReplay: Register = (program: Command, ctxOf) => {
   program
@@ -257,13 +275,10 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
     .option("--request-id <id>", "the caller's own idempotency key (default: cli-<staff>-<time>)")
     .option("--agent <id>", "the calling agent's ID (default: INTYY_AGENT, or cli:<staff>)")
     .option("--request <file>", "a whole intyy.request/1.0 file, instead of a capability and flags")
-    .option("--pin <key>", "refused until M10")
+    .option("--pin <key>", "supervised only: run this exact key, like kvfcu/open_share_subaccount@1.0.0")
     .description("replay one sealed artifact: sign in, do the task, and return a typed result")
     .action(
       act(ctxOf, async (ctx, args, opts) => {
-        if (opts.pin !== undefined) {
-          throw new CliExit(EXIT.usage, "--pin is refused until M10");
-        }
         // Why generated first: the default request ID (below) reuses this exact value.
         const runId = ctx.wiring.ids.runId();
         const rawRequest = await buildRawRequest(ctx, args, opts, runId);
@@ -273,6 +288,7 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
         }
         const request = parsedRequest.data;
         const { app: appName } = splitCapabilityLink(request.capability);
+        const pin = pinOf(opts.pin, request);
 
         const t = settingsTarget(ctx);
         const settings = await load(t, ["approved"]);
@@ -356,6 +372,7 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           surface: ctx.wiring.discovery.surface(),
           artifacts: ctx.wiring.candidates,
           requestIndex: { store: ctx.wiring.requestIndexStore, clock: ctx.wiring.clock, secrets: ctx.wiring.secrets, keys },
+          scores: ctx.wiring.scores,
           operator: ctx.wiring.discovery.operator,
           models: replayModels(ctx, policy.effective.llm.replay_reviewer),
           signal: stop.signal,
@@ -376,6 +393,7 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           engineVersion: readVersion(),
           outputsRevealed: ctx.io.stdout.isTTY === true || ctx.flags.revealOutputs,
           visible: false,
+          ...(pin === null ? {} : { pin }),
           ...(frozenSet === undefined ? {} : { frozenSet }),
         };
 

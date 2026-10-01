@@ -96,9 +96,9 @@ export type Wiring = {
   scores: ScoreStore<HistoryLine, ScoreRecord>;
   /** The bank app's test-mode controls, for one app's settings (section 8 §6.5). Only certify uses it. */
   harness: (app: KvfcuHarnessConfig) => KvfcuHarness;
-  /** The three folders evidence publish reads and writes (section 9 §6.6): `state/evidence`,
+  /** The folders evidence publish reads and writes (section 9 §6.6): `state/evidence`, `state/trust/scores`,
    * `library/artifacts`, and the repo's published `evidence/`. */
-  publish: { source: FileTree; library: FileTree; dest: FileTree };
+  publish: { source: FileTree; library: FileTree; dest: FileTree; trust: FileTree };
   /** Staging for atomic writes and edit buffers: `<state>/var/tmp`. */
   tmpDir: string;
 };
@@ -165,6 +165,7 @@ export function wire(
       source: new FsFileTree(join(state, "evidence"), tmpDir),
       library: new FsFileTree(join(library, "artifacts"), tmpDir),
       dest: new FsFileTree(join(root, config.publish), tmpDir),
+      trust: new FsFileTree(join(state, "trust", "scores"), tmpDir),
     },
     tmpDir,
   };

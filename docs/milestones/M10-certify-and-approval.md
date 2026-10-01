@@ -62,7 +62,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 - [x] 3. Write the scorer and the `full` batch runner.
 - [x] 4. Write the gate. Test each rule failing alone.
 - [x] 5. Write the approval family, the approval screen, and `--expect-record`.
-- [ ] 6. Write the resolver and check 7, with linked capabilities.
+- [x] 6. Write the resolver and check 7, with linked capabilities.
 - [ ] 7. Draft the two new suites. Stop. Ask the owner to seal and approve them.
 - [ ] 8. Add a `quick` batch to the CI `live` job, with jev and the reviewer faked.
 - [ ] 9. Stop. Ask the owner to run the batches and approvals below. This is the minimum for B3 and B4.
@@ -83,9 +83,9 @@ A key earns trust from a full certify batch and a human approval, and only then 
 ### Automated (CI `check` job)
 
 - [x] Record rebuild golden test; state machine; lock and atomic write (section 8 §18).
-- [ ] Verdicts, gate, approval rules, resolver.
-- [ ] `--expect-record` refuses after the record changed. Approval screen golden test.
-- [ ] Check 7: unattended open-share is rejected until sign-in, the check, and open-share are all approved.
+- [x] Verdicts, gate, approval rules, resolver.
+- [x] `--expect-record` refuses after the record changed. Approval screen golden test.
+- [x] Check 7: unattended open-share is rejected until sign-in, the check, and open-share are all approved.
 - [ ] If built: fault-aware judge and tuned timeouts.
 
 ### Live (`npm run test:live`)

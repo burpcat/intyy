@@ -11,15 +11,17 @@ import {
   type PublishTarget,
 } from "../../core/evidence/publish.js";
 import type { Markers } from "../../core/evidence/markers.js";
+import { keyPath } from "../../core/trust/keys.js";
 import { requireRole, type Ctx } from "../context.js";
 import { CliExit, EXIT, type ExitCode } from "../exit-codes.js";
 import { answer, progress } from "../output.js";
 import { act, type Register } from "../program.js";
 import { load } from "./documents.js";
 import { settingsTarget } from "./settings.js";
+import { keyFromText } from "./trust-shared.js";
 
-/** A trust key, like `kvfcu/open_share_subaccount@1.0.0`. Its snapshot publishes from M10. */
-const KEY = /^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+(\.\d+\.\d+)?$/;
+/** An exact trust key, like `kvfcu/open_share_subaccount@1.0.0`, with `+p3` for a patch. Its snapshot publishes (section 9 §6.6). */
+const KEY = /^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+\.\d+\.\d+(\+p[1-9]\d*)?$/;
 
 /** The exit code for each refusal: a broken file is `invalid`, a missing target is a usage error. */
 function exitFor(failure: PublishFailure): ExitCode {
@@ -59,7 +61,7 @@ export const registerEvidence: Register = (program: Command, ctxOf) => {
         for (const t of args) {
           if (RunId.safeParse(t).success) targets.push({ kind: "run", id: t });
           else if (BatchId.safeParse(t).success) targets.push({ kind: "batch", id: t });
-          else if (KEY.test(t)) progress(ctx.io, `${t}: trust snapshots publish from M10; skipped`);
+          else if (KEY.test(t)) targets.push({ kind: "key", id: keyPath(await keyFromText(ctx, t)) });
           else throw new CliExit(EXIT.usage, `${t}: not a run ID, a batch ID, or a key`);
         }
         if (targets.length === 0) return answer({ published: false }, "nothing to publish");

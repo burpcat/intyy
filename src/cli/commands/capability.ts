@@ -5,10 +5,13 @@ import type { Command } from "commander";
 import { AppId } from "../../core/model/common.js";
 import { CapabilityName } from "../../core/model/runspec.js";
 import { listCapabilities, resolveMajor, toolDefinition } from "../../core/catalog/capabilities.js";
+import { contextState, loadRecords } from "../../core/trust/resolve.js";
+import type { Ctx } from "../context.js";
 import { CliExit, EXIT } from "../exit-codes.js";
 import { answer } from "../output.js";
 import { act, type Register } from "../program.js";
-import { orExit } from "./documents.js";
+import { load, orExit } from "./documents.js";
+import { settingsTarget } from "./settings.js";
 
 /** One `<app>/<capability>@<major>` key, parsed (section 9 §7.2: "a caller's name: the major only"). */
 type CapabilityKey = { app: string; capability: string; major: number };
@@ -31,6 +34,16 @@ function parseCapabilityKey(arg: string | undefined): CapabilityKey {
   return { app, capability, major: Number(majorText) };
 }
 
+/**
+ * A capability's trust state in this tenant's context, read from the score records (section 8 §4).
+ * The app version comes from the tenant's approved settings; without settings it is any version.
+ */
+async function stateLookup(ctx: Ctx): Promise<(name: string, major: number) => ReturnType<typeof contextState>> {
+  const records = await loadRecords(ctx.wiring.scores, ctx.tenant);
+  const settings = await load(settingsTarget(ctx), ["approved"]);
+  return (name, major) => contextState(records, ctx.tenant, settings?.doc.apps[name.split("/")[0] ?? ""]?.app_version, name, major);
+}
+
 /** Registers the capability commands. */
 export const registerCapability: Register = (program: Command, ctxOf) => {
   const capability = program.command("capability").description("capabilities a tenant can call");
@@ -40,7 +53,7 @@ export const registerCapability: Register = (program: Command, ctxOf) => {
     .description("every sealed capability, at its major version")
     .action(
       act(ctxOf, async (ctx) => {
-        const rows = orExit(await listCapabilities(ctx.wiring.candidates), "capability list");
+        const rows = orExit(await listCapabilities(ctx.wiring.candidates, await stateLookup(ctx)), "capability list");
         const lines = rows.map(
           (r) => `${r.app}/${r.capability}@${String(r.major)}  ${r.effect}  ${r.state}`,
         );
@@ -70,14 +83,15 @@ export const registerCapability: Register = (program: Command, ctxOf) => {
           const tool = toolDefinition(artifact, key.major);
           return answer(tool, JSON.stringify(tool, null, 2));
         }
+        const state = (await stateLookup(ctx))(`${key.app}/${key.capability}`, key.major);
         const lines = [
-          `${key.app}/${key.capability}@${String(key.major)}  ${artifact.contract.effect}  draft`,
+          `${key.app}/${key.capability}@${String(key.major)}  ${artifact.contract.effect}  ${state}`,
           artifact.about.summary,
           `inputs: ${artifact.contract.inputs.map((i) => i.name).join(", ") || "none"}`,
           `outputs: ${artifact.contract.outputs.map((o) => o.name).join(", ") || "none"}`,
           `outcomes: ${artifact.contract.outcomes.map((o) => o.code).join(", ") || "none"}`,
         ];
-        return answer({ capability: key, artifact }, lines.join("\n"));
+        return answer({ capability: key, state, artifact }, lines.join("\n"));
       }),
     );
 };

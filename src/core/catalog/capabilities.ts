@@ -1,10 +1,11 @@
 // The capability catalog: which capabilities a tenant can call, and how (section 9 §11).
-// `--format tool` prints a tool definition an agent can load (section 2 §12.9). Every state
-// shows `draft` until M10 builds trust and approval (section 8). Only
-// `src/cli/commands/capability.ts` calls this; every failure is a value.
+// `--format tool` prints a tool definition an agent can load (section 2 §12.9). The state of a
+// capability comes from the score records (section 8 §4, M10): the caller passes a lookup, and
+// with none every state is `draft`. Every failure is a value.
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { Artifact } from "../model/artifact.js";
 import { matchesAnyPattern } from "../model/artifact-checks-shared.js";
+import type { TrustState } from "../model/score.js";
 import type { ContractInput } from "../model/artifact/contract.js";
 import { compareSemver, listArtifacts, newestVersion, readArtifact, type ArtifactStore } from "./artifacts.js";
 
@@ -19,12 +20,16 @@ export type CapabilitySummary = {
   capability: string;
   major: number;
   effect: Artifact["contract"]["effect"];
-  /** Always `draft`: no context has approved a capability yet (section 8, M10). */
-  state: "draft";
+  /** The capability's trust state in the tenant's context (section 8 §4); `draft` with no records. */
+  state: TrustState;
 };
 
 /** Every sealed capability, one row per distinct major version, at its newest sealed version. */
-export async function listCapabilities(store: ArtifactStore): Promise<Outcome<CapabilitySummary[], "invalid">> {
+export async function listCapabilities(
+  store: ArtifactStore,
+  /** The state of `<app>/<capability>` at `major` in the tenant's context. Omitted: `draft`. */
+  stateOf: (name: string, major: number) => TrustState = () => "draft",
+): Promise<Outcome<CapabilitySummary[], "invalid">> {
   const artifacts = await listArtifacts(store);
   const groups = new Map<string, { app: string; capability: string; major: number; versions: string[] }>();
   for (const a of artifacts) {
@@ -40,7 +45,7 @@ export async function listCapabilities(store: ArtifactStore): Promise<Outcome<Ca
     // Why `invalid`, not `not_found`: the index just named this version as sealed, so a
     // missing file here is a store inconsistency, not an absent capability.
     if (!read.ok) return fail("invalid", read.detail ?? read.failure);
-    out.push({ app: g.app, capability: g.capability, major: g.major, effect: read.value.contract.effect, state: "draft" });
+    out.push({ app: g.app, capability: g.capability, major: g.major, effect: read.value.contract.effect, state: stateOf(`${g.app}/${g.capability}`, g.major) });
   }
   out.sort(
     (a, b) => a.app.localeCompare(b.app) || a.capability.localeCompare(b.capability) || a.major - b.major,
@@ -76,6 +81,28 @@ export async function resolveMajor(
     "not_found",
     `${app}/${capability}@${String(major)} has no sealed version for app version ${appVersion}`,
   );
+}
+
+/**
+ * Every sealed version of a major that fits the bank's app version, newest first (section 8 §11.2).
+ * A version that cannot be read is left out: the resolver then never picks it.
+ */
+export async function fittingVersions(
+  store: ArtifactStore,
+  app: string,
+  capability: string,
+  major: number,
+  appVersion: string,
+): Promise<Artifact[]> {
+  const versions = (await store.listSealedVersions(`${app}/${capability}`))
+    .filter((v) => majorOf(v) === major)
+    .sort((a, b) => compareSemver(b, a));
+  const out: Artifact[] = [];
+  for (const v of versions) {
+    const read = await readArtifact(store, app, capability, v);
+    if (read.ok && matchesAnyPattern(read.value.runs_on.app_versions, appVersion)) out.push(read.value);
+  }
+  return out;
 }
 
 /** `input_schema`'s JSON Schema type for one value type (section 2 §12.3, §12.9). `money` and

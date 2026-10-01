@@ -4,23 +4,24 @@
 // problem at once"). `patternNames` is shared with discovery's own checks (section 6 §7.2), so
 // one capability-pattern rule serves both request kinds.
 //
-// Check 7 is thin (M05 spec): no score store exists yet (M10). Every context counts as
-// `draft`, so an unattended request is always rejected; a supervised request always passes
-// this check (the start confirmation, and the commit approval, come later).
+// Check 7 reads the score records (section 3 §4.8, section 8 §10.10, §11): an unattended request
+// needs an approved key for the task, its session, and (for a `commits` task with a check link) its
+// reconciliation check. A supervised request always passes. With no records injected, every key is a draft.
 //
 // Check 3 (a repeat request ID) uses the real request index (section 3 §4.4); the entry is
 // written only once checks 1 to 9 pass, just before check 10 (docs/decisions.md, M05). Checks
 // 4 and 5 use the real, app-version-aware resolver (`resolveMajor` in `catalog/capabilities.ts`),
 // injected as a plain function so this module never imports a store port directly.
 import type { ArtifactStore } from "../catalog/artifacts.js";
-import { resolveExact, resolveMajor } from "../catalog/capabilities.js";
+import { fittingVersions, resolveExact, resolveMajor } from "../catalog/capabilities.js";
 import type { Artifact } from "../model/artifact.js";
 import { scanRefs } from "../model/artifact-checks-shared.js";
 import type { Contract, ContractInput } from "../model/artifact/contract.js";
 import { ContractValue } from "../model/common.js";
 import { Request } from "../model/request.js";
-import type { Mode } from "../model/request.js";
 import type { FailureCode, RejectionCode } from "../model/result.js";
+import type { ScoreRecord } from "../model/score.js";
+import { pickKey, recordFor, type PickResult } from "../trust/resolve.js";
 import type { EffectivePolicy } from "../safety/policy/merge.js";
 import { requestIndexOps, type RequestIdLookup, type RequestIndexDeps } from "./request-index.js";
 import { startCheck, type SecretSources } from "../safety/secrets/injector.js";
@@ -82,6 +83,14 @@ export function catalogResolve(store: ArtifactStore, pin?: string): PrecheckInpu
 }
 
 /**
+ * Builds the injected `trust` view from the score records (section 8 §11.2): the records, and a
+ * lookup of the sealed versions of a major that fit the bank's app version.
+ */
+export function catalogTrust(store: ArtifactStore, records: readonly ScoreRecord[]): NonNullable<PrecheckInput["trust"]> {
+  return { records, fitting: (app, capability, major, appVersion) => fittingVersions(store, app, capability, major, appVersion) };
+}
+
+/**
  * Builds the injected `lookupRequest`/`recordRequest` functions from the real request index
  * (section 3 §4.4). A thin wrapper over {@link requestIndexOps}, so `runPrechecks` reports
  * either straight through as a `"failed"` outcome.
@@ -128,13 +137,25 @@ export type PrecheckInput = {
     runId: string,
     signal?: AbortSignal,
   ) => Promise<Outcome<void, FailureCode>>;
+  /**
+   * The approval view for check 7 and the key choice (section 8 §11): the tenant's score records,
+   * and the sealed versions of a major that fit the app version. Omitted: no records, so every key is
+   * a draft, an unattended request is rejected, and a supervised one gets the newest fitting version.
+   */
+  trust?: {
+    records: readonly ScoreRecord[];
+    fitting: (app: string, capability: string, major: number, appVersion: string) => Promise<Artifact[]>;
+  };
+  /** True when the run names its exact key: an operator pin, or certify (section 8 §11.5, §11.6).
+   * The key is not chosen and check 7 does not apply (section 3 §4.8). */
+  pinned?: boolean;
   /** Check 10's secret sources: the app's declared secrets and settings' bindings. */
   secretSources: SecretSources;
 };
 
 /** The pipeline's final answer, once every check that ran has passed or the first failure. */
 export type PrecheckOutcome =
-  | { status: "ok"; artifact: Artifact; sessionArtifact: Artifact | null }
+  | { status: "ok"; artifact: Artifact; sessionArtifact: Artifact | null; record: ScoreRecord | null }
   | { status: "duplicate"; runId: string }
   | { status: "rejected"; code: RejectionCode; errors: PrecheckError[] }
   | { status: "failed"; code: FailureCode; detail: string };
@@ -236,17 +257,40 @@ function rangeProblems(input: ContractInput, at: string, value: string | number)
   return errors;
 }
 
-/** Check 7, thin (M05 spec): no score store exists, so every context is `draft`. An unattended
- * request is always rejected; a supervised request always passes here (section 3 §4.5). */
-function checkApproval(mode: Mode): PrecheckError[] {
-  if (mode !== "unattended") return [];
-  return [
-    {
-      code: "context_not_approved",
-      reason: "not_approved",
-      message: "no context has an approved key yet; run this request supervised",
-    },
-  ];
+/**
+ * Check 7 for an unattended request (section 3 §4.8, section 8 §11.3, §11.7). It stops at the first
+ * rule that fails, in this order: the task, its session, then (a `commits` task) its reconciliation check.
+ * Why one error and not all: the caller cannot fix any of them; a person approves the keys.
+ * A waiver needs no check key (section 2 §16.3).
+ */
+async function checkApproval(
+  capability: string,
+  task: Artifact,
+  taskPick: PickResult,
+  sessionPick: PickResult | null,
+  sessionLink: string | null,
+  choose: (app: string, capability: string, major: number, mode: "unattended") => Promise<PickResult>,
+): Promise<PrecheckError[]> {
+  if (taskPick.kind === "none") {
+    const why =
+      taskPick.reason === "degraded"
+        ? "the approved key is degraded; run this request supervised"
+        : "no key is approved in this context; run this request supervised";
+    return [{ code: "context_not_approved", reason: taskPick.reason, message: `${capability}: ${why}` }];
+  }
+  if (sessionLink !== null && sessionPick?.kind !== "key") {
+    return [{ code: "context_not_approved", reason: "session_not_approved", message: `the session capability ${sessionLink} has no approved key in this context` }];
+  }
+  const link = task.contract.effect === "commits" ? task.recovery?.reconciliation?.check?.capability : undefined;
+  if (link !== undefined) {
+    const c = splitCapabilityLink(link);
+    const pick = await choose(c.app, c.capability, c.major, "unattended");
+    if (pick.kind !== "key") {
+      const reason = pick.kind === "none" ? pick.reason : "not_approved";
+      return [{ code: "reconciliation_not_approved", reason, message: `the reconciliation check ${link} has no approved key in this context${reason === "degraded" ? " (its key is degraded)" : ""}` }];
+    }
+  }
+  return [];
 }
 
 /** Check 8: authorization is well formed and valid (section 3 §4.6). Missing authorization
@@ -383,23 +427,46 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
     const errors: PrecheckError[] = [{ code: "no_version_for_context", message: `${app} is not configured for this tenant` }];
     return { results, outcome: stop("version", "no_version_for_context", errors) };
   }
-  const versioned = await input.resolve(app, capability, major, input.appVersion);
-  if (versioned === undefined) {
+  const newestFitting = await input.resolve(app, capability, major, input.appVersion);
+  if (newestFitting === undefined) {
     const errors: PrecheckError[] = [{ code: "no_version_for_context", message: `${request.capability} has no sealed version for this app version` }];
     return { results, outcome: stop("version", "no_version_for_context", errors) };
   }
+  const { appVersion } = input;
+  const records = input.trust?.records ?? [];
+  const pinned = input.pinned === true;
+  // Why: section 8 §11.6. Links of a pinned (certify) run resolve by the supervised rules.
+  const linkMode = pinned ? "supervised" : request.mode;
+  /** Chooses the key of one capability in this context (section 8 §11.3, §11.4). With no trust view, nothing is approved. */
+  const choose = async (a: string, c: string, m: number, mode: typeof request.mode): Promise<PickResult> => {
+    if (input.trust === undefined) return { kind: "none", reason: "not_approved" };
+    const scope = { tenant: input.tenant, appVersion, name: `${a}/${c}`, major: m, records };
+    return pickKey(mode, scope, await input.trust.fitting(a, c, m, appVersion));
+  };
+  const blockedStop = (what: string): PrecheckOutcome => {
+    const errors: PrecheckError[] = [{ code: "no_version_for_context", message: `every sealed version of ${what} had a wrong verdict in its latest batch` }];
+    return stop("version", "no_version_for_context", errors);
+  };
+  const taskPick: PickResult = pinned
+    ? { kind: "key", artifact: newestFitting, record: recordFor(records, input.tenant, appVersion, newestFitting) }
+    : await choose(app, capability, major, request.mode);
+  if (taskPick.kind === "blocked") return { results, outcome: blockedStop(request.capability) };
+  const versioned = taskPick.kind === "key" ? taskPick.artifact : newestFitting;
   let sessionArtifact: Artifact | null = null;
+  let sessionPick: PickResult | null = null;
   const sessionLink = versioned.runs_on.session;
   if (sessionLink !== null) {
     const s = splitCapabilityLink(sessionLink);
-    const sessionFound = await input.resolve(s.app, s.capability, s.major, input.appVersion);
+    const sessionFound = await input.resolve(s.app, s.capability, s.major, appVersion);
     if (sessionFound === undefined) {
       // Why: owner decision, 2026-09-29 — a session link that cannot resolve gives
       // `no_version_for_context`, with the message naming the link.
       const errors: PrecheckError[] = [{ code: "no_version_for_context", message: `the session capability ${sessionLink} has no sealed version for this app version` }];
       return { results, outcome: stop("version", "no_version_for_context", errors) };
     }
-    sessionArtifact = sessionFound;
+    sessionPick = await choose(s.app, s.capability, s.major, linkMode);
+    if (sessionPick.kind === "blocked") return { results, outcome: blockedStop(sessionLink) };
+    sessionArtifact = sessionPick.kind === "key" ? sessionPick.artifact : sessionFound;
   }
   results.push({ check: "version", passed: true, errors: [] });
 
@@ -408,9 +475,16 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
   if (inputErrors.length > 0) return { results, outcome: stop("inputs", "invalid_input", inputErrors) };
   results.push({ check: "inputs", passed: true, errors: [] });
 
-  // Check 7, thin: every context is draft.
-  const approvalErrors = checkApproval(request.mode);
-  if (approvalErrors.length > 0) return { results, outcome: stop("approval", "context_not_approved", approvalErrors) };
+  // Check 7: the mode fits the approval state (section 3 §4.8, section 8 §10.10, §11.3, §11.7).
+  // Why refuse here: section 8 §11.5. A pin is supervised only, so a human confirms the start. Letting
+  // an unattended pin skip check 7 would run a retired or draft key with no human. The design names
+  // no code for it; this build uses `context_not_approved`, reason `pin_needs_supervised`.
+  if (pinned && request.mode === "unattended") {
+    const errors: PrecheckError[] = [{ code: "context_not_approved", reason: "pin_needs_supervised", message: "a pinned key runs only supervised" }];
+    return { results, outcome: stop("approval", "context_not_approved", errors) };
+  }
+  const approvalErrors = pinned || request.mode !== "unattended" ? [] : await checkApproval(request.capability, versioned, taskPick, sessionPick, sessionLink, choose);
+  if (approvalErrors.length > 0) return { results, outcome: stop("approval", approvalErrors[0]?.code ?? "context_not_approved", approvalErrors) };
   results.push({ check: "approval", passed: true, errors: [] });
 
   // Check 8: authorization is well formed and valid.
@@ -442,5 +516,5 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
     return { results, outcome: { status: "failed", code: "secret_unavailable", detail: secretResult.detail ?? "a secret has no value" } };
   }
 
-  return { results, outcome: { status: "ok", artifact: versioned, sessionArtifact } };
+  return { results, outcome: { status: "ok", artifact: versioned, sessionArtifact, record: taskPick.kind === "key" ? taskPick.record : null } };
 }

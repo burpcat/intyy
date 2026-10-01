@@ -7,6 +7,7 @@ import { sha256Hex } from "../model/canonical.js";
 import { BatchPlan } from "../model/batch-plan.js";
 import { BatchReport } from "../model/batch-report.js";
 import { PublishManifest, type PublishItem } from "../model/publish.js";
+import { HistoryLine } from "../model/score-history.js";
 import { RunJson } from "../model/run.js";
 import { sealHash } from "../model/sealing.js";
 import { IndexLine } from "../model/store-index.js";
@@ -30,8 +31,8 @@ const UNLISTED_OK = (path: string): boolean =>
 const FORBIDDEN =
   /(^|\/)(traces?|videos?|har)\/|(^|\/)([^/]*\.(har|webm|mp4|mkv)|trace\.zip|(cookies?|storage[_-]?state)(\.[a-z]+)?)$/i;
 
-/** What to publish: one run, or one batch. Keys (trust snapshots) wait for M10. */
-export type PublishTarget = { kind: "run" | "batch"; id: string };
+/** What to publish: one run, one batch, or a key's trust snapshot (`id` is its key path, section 9 §6.6). */
+export type PublishTarget = { kind: "run" | "batch" | "key"; id: string };
 
 /** What `publishEvidence` needs. */
 export type PublishInput = {
@@ -53,6 +54,8 @@ export type PublishDeps = {
   library: FileTree;
   /** The repo's `evidence/`. */
   dest: FileTree;
+  /** `state/trust/scores/`: the score files a key target copies. Omitted: key targets are `not_found`. */
+  trust?: FileTree;
   clock: Clock;
 };
 
@@ -228,6 +231,29 @@ function batchRunIds(plan: BatchPlan, report: BatchReport, all: boolean): string
   return [...ids];
 }
 
+/** Where trust snapshots land under `evidence/` (updates file §12): it mirrors `state/trust/scores/`. */
+const TRUST_DIR = "trust/scores";
+
+/** A key's history and record bytes, and the batch IDs its history names (section 9 §6.6: "the plan and report of each batch its history names"). */
+async function readKey(
+  trust: FileTree | undefined,
+  tenant: string,
+  path: string,
+): Promise<Outcome<{ files: { history: Uint8Array; record: Uint8Array }; batches: string[] }, "not_found" | "run_invalid">> {
+  if (!path.startsWith(`${tenant}/`) || trust === undefined) return fail("not_found", `key ${path} is not in the ${tenant} trust store`);
+  const history = await trust.read(`${path}/history.jsonl`);
+  const record = await trust.read(`${path}/record.json`);
+  if (!history.ok || !record.ok) return fail("not_found", `key ${path} has no history.jsonl and record.json`);
+  const batches = new Set<string>();
+  for (const [i, line] of dec.decode(history.value).split("\n").entries()) {
+    if (line.trim() === "") continue;
+    const parsed = HistoryLine.safeParse(parseJson(enc.encode(line)));
+    if (!parsed.success) return fail("run_invalid", `key ${path}: history line ${String(i + 1)} does not parse`);
+    if ("batch" in parsed.data && parsed.data.batch !== null) batches.add(parsed.data.batch);
+  }
+  return ok({ files: { history: history.value, record: record.value }, batches: [...batches] });
+}
+
 /**
  * Copies the targets into `evidence/`. Order: resolve the set (a run pulls its parent, its
  * children, and its batch's plan and report), then check every run (file hashes, index line,
@@ -256,9 +282,20 @@ export async function publishEvidence(
     return ok({ runs: batchRunIds(p.data, r.data, input.withRuns === "all") });
   };
 
+  const keys = new Map<string, { history: Uint8Array; record: Uint8Array }>();
   for (const t of input.targets) {
     if (t.kind === "run") queue.push(t.id);
-    else {
+    else if (t.kind === "key") {
+      const got = await readKey(deps.trust, tenant, t.id);
+      if (!got.ok) return got;
+      keys.set(t.id, got.value.files);
+      for (const id of got.value.batches) {
+        if (batches.has(id)) continue;
+        const b = await addBatch(id);
+        if (!b.ok) return b.failure === "not_found" ? fail("link_missing", b.detail) : b;
+        queue.push(...b.value.runs);
+      }
+    } else {
       const got = await addBatch(t.id);
       if (!got.ok) return got;
       queue.push(...got.value.runs);
@@ -302,6 +339,11 @@ export async function publishEvidence(
     out.set(`${tenant}/batches/${id}/plan.json`, b.plan);
     out.set(`${tenant}/batches/${id}/report.json`, b.report);
     items.push({ kind: "batch", id, tenant });
+  }
+  for (const [path, f] of keys) {
+    out.set(`${TRUST_DIR}/${path}/history.jsonl`, f.history);
+    out.set(`${TRUST_DIR}/${path}/record.json`, f.record);
+    items.push({ kind: "key", id: path, tenant });
   }
   const artifactIds = new Set<string>();
   for (const { run } of runs.values()) for (const a of artifactsNamed(run)) artifactIds.add(a);
@@ -440,6 +482,12 @@ export async function verifyEvidence(
     }
     if (item.tenant === undefined) {
       problems.push(`${item.kind} ${item.id} names no tenant`);
+      continue;
+    }
+    if (item.kind === "key") {
+      for (const f of ["history.jsonl", "record.json"]) {
+        if (!bytesOf.has(`${TRUST_DIR}/${item.id}/${f}`)) problems.push(`key ${item.id}: ${f} is missing`);
+      }
       continue;
     }
     if (item.kind === "batch") {

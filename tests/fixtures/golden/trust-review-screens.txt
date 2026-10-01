@@ -2,7 +2,7 @@
 KEY   kvfcu/open_share_subaccount@1.0.0   tenant keystone   app 9.2
 AS    op_022
 STATE draft   NEW first approval in this context
-BATCH batch_a   full   1 runs   fresh
+BATCH batch_a   full   1 run   fresh
 GATE  passed
 FRESH engine 0.4.0 same   handlers 791f0976 same
 LINKS session kvfcu/sign_in@1   approved as kvfcu/sign_in@1.0.0
@@ -28,7 +28,7 @@ RECORD sha256:98e62a26a96b139c83cb0923196157ce9b4fcb159de4646aa1aaa3382c6e6f24
 KEY   kvfcu/open_share_subaccount@1.0.0   tenant keystone   app 9.2
 AS    op_022
 STATE draft   NEW first approval in this context
-BATCH batch_a   full   1 runs   fresh
+BATCH batch_a   full   1 run   fresh
 GATE  passed
         complete   passed
         no_wrong   passed
@@ -122,7 +122,7 @@ RECORD sha256:c565905acbbfbd832373596019e71e4c409e1a1547f787ab315736aea6e41a82
 KEY   kvfcu/open_share_subaccount@1.0.0   tenant keystone   app 9.2
 AS    op_022
 STATE draft   NEW first approval in this context
-BATCH batch_a   full   1 runs   fresh
+BATCH batch_a   full   1 run   fresh
 GATE  passed
 FRESH engine 0.4.0 same   handlers 791f0976 same
 LINKS session kvfcu/sign_in@1   approved as kvfcu/sign_in@1.0.0
@@ -148,7 +148,7 @@ RECORD sha256:48dc6cd6e0f159ad047cd7796e7e841732c61ed48cb6018b07961dcae34946f2
 KEY   kvfcu/open_share_subaccount@1.0.0   tenant keystone   app 9.2
 AS    op_022
 STATE draft   NEW first approval in this context
-BATCH batch_a   full   1 runs   fresh
+BATCH batch_a   full   1 run   fresh
 GATE  passed
         complete   passed
         no_wrong   passed
