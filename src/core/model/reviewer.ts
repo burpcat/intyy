@@ -51,8 +51,16 @@ export const ReviewerAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("navigate"), location: z.string().min(1) }).strict(),
 ]);
 
+/** The body of the `take_action` tool: one action, why, and what should follow (section 5 §11.2). */
+export const ReviewerActionBody = z
+  .object({ action: ReviewerAction, reason: z.string().min(1), expected: z.string().min(1) })
+  .strict();
+
+/** The body of the `give_up` tool, as the model fills it: only the reason (section 5 §11.2). */
+export const ReviewerGiveUpBody = z.object({ reason: z.string().min(1) }).strict();
+
 /** The reviewer's output: one action with a reason and an expectation, or a refusal (section 5 §11.2). */
 export const ReviewerOutput = z.union([
-  z.object({ action: ReviewerAction, reason: z.string().min(1), expected: z.string().min(1) }).strict(),
-  z.object({ give_up: z.literal(true), reason: z.string().min(1) }).strict(),
+  ReviewerActionBody,
+  ReviewerGiveUpBody.extend({ give_up: z.literal(true) }).strict(),
 ]) satisfies z.ZodType<ReviewerOutputType>;

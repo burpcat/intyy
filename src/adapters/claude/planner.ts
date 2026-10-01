@@ -11,18 +11,12 @@ import type {
   PlannerTurn,
 } from "../../ports/models.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
+import { sendRecorded, type ClaudeOptions } from "./send.js";
 
 /** How long one call may take before it counts as `timeout`. */
 const CALL_TIMEOUT_MS = 120_000;
 /** Room for one tool call's arguments. */
 const MAX_TOKENS = 4096;
-
-/** What the planner needs. `fetch` is swapped in tests; the real one is Node's. */
-export type ClaudeOptions = {
-  apiKey: string;
-  fetch?: typeof fetch;
-  baseURL?: string;
-};
 
 /** The request body, built from the masked turn only (section 4 §10.1). */
 export function requestBody(turn: PlannerTurn): Anthropic.MessageCreateParamsNonStreaming {
@@ -58,23 +52,6 @@ export function requestBody(turn: PlannerTurn): Anthropic.MessageCreateParamsNon
   };
 }
 
-/** Maps an SDK error to a model failure (section 9 §5.3). Only expected trouble is mapped. */
-function failureOf(e: unknown): ModelFailure | null {
-  if (e instanceof Anthropic.APIConnectionTimeoutError) return "timeout";
-  if (e instanceof Anthropic.APIConnectionError) return "unavailable";
-  if (e instanceof Anthropic.RateLimitError) return "unavailable";
-  if (e instanceof Anthropic.InternalServerError) return "unavailable";
-  if (e instanceof Anthropic.APIError) return "unavailable";
-  return null;
-}
-
-/** The body bytes a fetch call sends. The SDK sends JSON as a string. */
-function bodyBytes(body: unknown): Uint8Array<ArrayBuffer> {
-  if (typeof body === "string") return new TextEncoder().encode(body);
-  if (body instanceof Uint8Array) return new Uint8Array(body);
-  throw new Error("the SDK sent a body intyy cannot store");
-}
-
 /** The planner reply in an API message: its one tool call, or `refused` (section 9 §5.3). */
 export function replyOf(msg: Anthropic.Message): PlannerReply | "refused" {
   if (msg.stop_reason === "refusal") return "refused";
@@ -86,7 +63,7 @@ export function replyOf(msg: Anthropic.Message): PlannerReply | "refused" {
   };
 }
 
-/** The Claude planner. One client per run; retries are the loop's, not the SDK's. */
+/** The Claude planner. One client per call; retries are the loop's, not the SDK's. */
 export class ClaudePlanner implements Planner {
   readonly #opts: ClaudeOptions;
 
@@ -99,46 +76,15 @@ export class ClaudePlanner implements Planner {
     record: CallRecorder,
     signal?: AbortSignal,
   ): Promise<Outcome<PlannerReply, ModelFailure | "write_failed">> {
-    const inner = this.#opts.fetch ?? fetch;
-    // Why an object: the flag is set inside the fetch closure.
-    const state = { recordFailed: false };
-    // Why a wrapped fetch: the stored copy must be the sent copy, byte for byte (section 9
-    // §5.3). The bytes are written first; a failed write sends nothing.
-    const wired: typeof fetch = async (url, init) => {
-      const bytes = bodyBytes(init?.body);
-      if (!(await record("request", bytes))) {
-        state.recordFailed = true;
-        throw new Error("the llm/ write failed; nothing was sent");
-      }
-      const res = await inner(url, { ...init, body: bytes });
-      const reply = new Uint8Array(await res.arrayBuffer());
-      if (!(await record("reply", reply))) {
-        state.recordFailed = true;
-        throw new Error("the llm/ reply write failed");
-      }
-      return new Response(reply, {
-        status: res.status,
-        statusText: res.statusText,
-        headers: res.headers,
-      });
-    };
-    const client = new Anthropic({
-      apiKey: this.#opts.apiKey,
-      fetch: wired,
-      maxRetries: 0,
-      timeout: CALL_TIMEOUT_MS,
-      ...(this.#opts.baseURL === undefined ? {} : { baseURL: this.#opts.baseURL }),
-    });
-    let msg: Anthropic.Message;
-    try {
-      msg = await client.messages.create(requestBody(turn), signal === undefined ? {} : { signal });
-    } catch (e) {
-      if (state.recordFailed) return fail("write_failed");
-      const f = failureOf(e);
-      if (f === null) throw e;
-      return fail(f);
-    }
-    const reply = replyOf(msg);
+    const sent = await sendRecorded(
+      this.#opts,
+      requestBody(turn),
+      record,
+      this.#opts.timeoutMs ?? CALL_TIMEOUT_MS,
+      signal,
+    );
+    if (!sent.ok) return sent;
+    const reply = replyOf(sent.value);
     return reply === "refused" ? fail("refused") : ok(reply);
   }
 }

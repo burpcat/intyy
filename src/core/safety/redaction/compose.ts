@@ -33,15 +33,22 @@ export const MAX_NAME = 80;
  * prompt's `<screen>` block and pose as intyy's own words (section 6 §11.1, section 4 §10.7).
  */
 export function quoteScreen(text: Masked<string>): Masked<string> {
+  // Why a cast: cutting or swapping characters in masked text reveals nothing new.
+  return quoteScreenText(text) as Masked<string>;
+}
+
+/**
+ * The same cleaning for text a caller already holds as a plain string (a model prompt built from
+ * a `Masked` input): one line, `"` as `'`, `<` `>` as `‹` `›`, cut at `max` characters.
+ */
+export function quoteScreenText(text: string, max: number = MAX_NAME): string {
   const safe = text
     .replace(/\s+/g, " ")
     .trim()
     .replaceAll('"', "'")
     .replaceAll("<", "‹")
     .replaceAll(">", "›");
-  const clipped = safe.length > MAX_NAME ? `${safe.slice(0, MAX_NAME - 1)}…` : safe;
-  // Why a cast: cutting or swapping characters in masked text reveals nothing new.
-  return clipped as Masked<string>;
+  return safe.length > max ? `${safe.slice(0, max - 1)}…` : safe;
 }
 
 /** Indents one masked line by `depth` levels of two spaces. */
