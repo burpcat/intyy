@@ -12,6 +12,7 @@ import type { Artifact } from "../model/artifact.js";
 import type { CandidateDecision, CandidateDecisionWhat } from "../model/candidate-decision.js";
 import type { CandidateIssues } from "../model/candidate-issues.js";
 import { CandidateRuns, type CandidateRunRef } from "../model/candidate-runs.js";
+import { RunId } from "../model/ids.js";
 import { RunJson } from "../model/run.js";
 import type { RunSpec } from "../model/runspec.js";
 import type { Settings } from "../model/settings.js";
@@ -203,6 +204,33 @@ export async function checkAttachTarget(
   if (!id.startsWith(`${specCapability}/`)) {
     return fail("not_found", `--candidate ${id}: this spec records ${specCapability}, not that capability`);
   }
+  return ok(undefined);
+}
+
+/**
+ * Checks a `waiver` decision's value before it is recorded (owner decision, 2026-10-01: "a
+ * review-time waiver is allowed only when it cites the failed attempt"). Its `attempt_run` must
+ * name a discovery run in `tenant`'s run store that did not end `success`. Plain code reads the
+ * run's own `run.json`. Every refusal is `invalid`, with a plain detail.
+ */
+export async function checkWaiverAttempt(
+  deps: Pick<CandidateDeps, "evidence">,
+  tenant: string,
+  value: string,
+): Promise<Outcome<void, "invalid">> {
+  const need = "a waiver needs attempt_run: the discovery run that found no screen to read the result";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return fail("invalid", `${need}; the value is not JSON`);
+  }
+  const runId = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>).attempt_run : undefined;
+  if (typeof runId !== "string" || !RunId.safeParse(runId).success) return fail("invalid", need);
+  const summary = await readRunSummary(deps.evidence, tenant, runId);
+  if (!summary.ok) return fail("invalid", `${need}; ${summary.detail ?? `run ${runId} is not readable`}`);
+  if (summary.value.kind !== "discovery") return fail("invalid", `${need}; ${runId} is a ${summary.value.kind} run`);
+  if (summary.value.status === "success") return fail("invalid", `${need}; ${runId} ended success, so it found a screen`);
   return ok(undefined);
 }
 

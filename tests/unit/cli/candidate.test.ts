@@ -749,6 +749,155 @@ async function resolveBasics(r: string, id: string, clickRisk: string): Promise<
   await cli(r, "op_017", ["candidate", "decide", id, "risk", "click_login", clickRisk]);
 }
 
+/** A root whose sign_in spec says it commits, so the golden candidate has a commit point
+ * (`click_login`, classed irreversible) and so needs a reconciliation check or waiver. */
+async function commitsRoot(): Promise<string> {
+  const r = await root({ irreversibleClick: true });
+  const path = `${r}/library/specs/kvfcu/sign_in.json`;
+  const spec = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  writeFileSync(path, JSON.stringify({ ...spec, expected_effect: "commits", correlation: "none" }));
+  return r;
+}
+
+/** Writes a finished discovery run's `run.json` into `root`'s run store, as `status`. */
+async function seedAttempt(r: string, runId: string, status: "failed" | "success" | "business_outcome"): Promise<void> {
+  const evidence = new FileEvidenceStore({ root: `${r}/state/evidence`, tmpDir: `${r}/state/var/tmp` });
+  const created = await evidence.createRun("keystone", runId);
+  if (!created.ok) throw new Error("createRun failed");
+  await created.value.writeRunJson(
+    maskedCast({
+      schema: "intyy.run/1.0",
+      run_id: runId,
+      tenant: "keystone",
+      kind: "discovery",
+      capability: "kvfcu/sign_in",
+      status,
+      code: null,
+      started_at: "2026-10-01T10:00:00.000Z",
+      ended_at: "2026-10-01T10:00:08.000Z",
+      counts: { turns: 2, actions: 1, blocked: 0, invalid: 0 },
+    }),
+  );
+}
+
+const ATTEMPT_FAILED = "run_2026-10-01_0000000001";
+const ATTEMPT_OK = "run_2026-10-01_0000000002";
+
+/** The candidate's current `recovery.reconciliation`, and its issue codes, read through the CLI. */
+async function reconciliationOf(r: string, id: string): Promise<{ reconciliation: unknown; issues: { code: string; message: string }[] }> {
+  const shown = JSON.parse((await cli(r, "op_017", ["candidate", "show", id, "--json"])).stdout) as {
+    artifact: { recovery: { reconciliation: unknown } };
+    issues: { code: string; message: string }[];
+  };
+  return { reconciliation: shown.artifact.recovery.reconciliation, issues: shown.issues };
+}
+
+describe("candidate reconciliation is check-first (owner decisions, 2026-10-01)", () => {
+  test("a fresh commits candidate lists missing_reconciliation, leading with a check", async () => {
+    const r = await commitsRoot();
+    const id = await newCandidate(r);
+    const { issues } = await reconciliationOf(r, id);
+    const missing = issues.find((i) => i.code === "missing_reconciliation");
+    expect(missing?.message).toContain("needs a linked reconciliation check");
+    expect(missing?.message).toContain("a waiver needs a failed attempt_run");
+  });
+
+  test("decide waiver without attempt_run is refused, and nothing is recorded", async () => {
+    const r = await commitsRoot();
+    const id = await newCandidate(r);
+    const got = await cli(r, "op_017", ["candidate", "decide", id, "waiver", "recovery.reconciliation", '{"reason":"x"}']);
+    // Why invalid (7), not usage (1): the CLI maps a plain-code `invalid` failure so (exitForFailure).
+    expect(got.code).toBe(EXIT.invalid);
+    expect(got.stderr).toContain("attempt_run");
+    const after = await reconciliationOf(r, id);
+    expect(after.reconciliation).toBeNull();
+    expect(after.issues.some((i) => i.code === "missing_reconciliation")).toBe(true);
+  });
+
+  test("decide waiver naming a run that ended success is refused", async () => {
+    const r = await commitsRoot();
+    const id = await newCandidate(r);
+    await seedAttempt(r, ATTEMPT_OK, "success");
+    const value = JSON.stringify({ reason: "No screen shows the result.", attempt_run: ATTEMPT_OK });
+    const got = await cli(r, "op_017", ["candidate", "decide", id, "waiver", "recovery.reconciliation", value]);
+    expect(got.code).toBe(EXIT.invalid);
+    expect((await reconciliationOf(r, id)).reconciliation).toBeNull();
+  });
+
+  test("decide waiver naming a failed discovery run in the tenant is recorded in candidate.json", async () => {
+    const r = await commitsRoot();
+    const id = await newCandidate(r);
+    await seedAttempt(r, ATTEMPT_FAILED, "failed");
+    const value = JSON.stringify({ reason: "No screen shows the result.", attempt_run: ATTEMPT_FAILED });
+    const got = await cli(r, "op_017", ["candidate", "decide", id, "waiver", "recovery.reconciliation", value]);
+    expect(got.code).toBe(EXIT.ok);
+    const after = await reconciliationOf(r, id);
+    expect(after.reconciliation).toEqual({ waiver: { reason: "No screen shows the result.", attempt_run: ATTEMPT_FAILED } });
+    expect(after.issues.some((i) => i.code === "missing_reconciliation")).toBe(false);
+  });
+
+  test("decide recovery with a count_diff link fills mode and count_output, and clears the issue", async () => {
+    const r = await commitsRoot();
+    const id = await newCandidate(r);
+    const value = JSON.stringify({
+      capability: "kvfcu/count_member_subaccounts@1",
+      mode: "count_diff",
+      inputs: { member_id: "{input.member_id}" },
+      count_output: "subaccount_count",
+    });
+    const got = await cli(r, "op_017", ["candidate", "decide", id, "recovery", "recovery.reconciliation", value]);
+    expect(got.code).toBe(EXIT.ok);
+    const after = await reconciliationOf(r, id);
+    expect(after.reconciliation).toEqual({
+      check: {
+        capability: "kvfcu/count_member_subaccounts@1",
+        mode: "count_diff",
+        count_output: "subaccount_count",
+        inputs: { member_id: "{input.member_id}" },
+        not_found_outcomes: [],
+        outputs: {},
+      },
+    });
+    expect(after.issues.some((i) => i.code === "missing_reconciliation")).toBe(false);
+  });
+
+  test("review: a waiver answer without attempt_run is refused, and nothing is recorded", async () => {
+    const r = await commitsRoot();
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "irreversible");
+    const got = await call(["candidate", "review", id], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands },
+      stdinTty: true,
+      // The paths question first (blank keeps them), then the missing_reconciliation prompt.
+      answers: ["", '{"reason":"x"}'],
+    });
+    expect(got.code).toBe(EXIT.invalid);
+    expect(got.stderr).toContain("attempt_run");
+    expect((await reconciliationOf(r, id)).reconciliation).toBeNull();
+  });
+
+  test("review: a waiver answer citing a failed discovery run is recorded", async () => {
+    const r = await commitsRoot();
+    const id = await newCandidate(r);
+    await resolveBasics(r, id, "irreversible");
+    await seedAttempt(r, ATTEMPT_FAILED, "failed");
+    const answer = JSON.stringify({ reason: "No screen shows the result.", attempt_run: ATTEMPT_FAILED });
+    const got = await call(["candidate", "review", id], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands },
+      stdinTty: true,
+      answers: ["", answer],
+    });
+    expect(got.code).toBe(EXIT.ok);
+    expect((await reconciliationOf(r, id)).reconciliation).toEqual({
+      waiver: { reason: "No screen shows the result.", attempt_run: ATTEMPT_FAILED },
+    });
+  });
+});
+
 describe("candidate second-look and seal, through the CLI", () => {
   test("second-look needs exactly one of --agree or --disagree", async () => {
     const r = await root({ irreversibleClick: true });

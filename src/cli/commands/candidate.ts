@@ -18,6 +18,7 @@ import { CapabilityName } from "../../core/model/runspec.js";
 import {
   adoptPackOutcome,
   attachNegativeRun,
+  checkWaiverAttempt,
   recordPositiveRun,
   regenerateCandidate,
   resolveSubject,
@@ -248,7 +249,8 @@ async function askForIssue(
     }
     case "missing_reconciliation": {
       const value = await ask(
-        'Recovery: paste a waiver {"reason":"..."}, or a check {"capability":...,"inputs":{...}}: ',
+        'Recovery: paste a check {"capability":"app/name@1","inputs":{...}} (add "mode":"count_diff","count_output":"..." ' +
+          'for a count), or, only after a failed attempt, a waiver {"reason":"...","attempt_run":"run_..."}: ',
       );
       if (value.trim() === "") return null;
       return { what: value.includes('"reason"') ? "waiver" : "recovery", subject: "recovery.reconciliation", value: value.trim() };
@@ -337,6 +339,8 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
         if (subject === null) {
           throw new CliExit(EXIT.usage, `${id}: ${rawSubject} is not a known ${what} subject`);
         }
+        const runs = orExit(await ctx.wiring.candidates.getFile(id, "runs.json"), id);
+        if (what === "waiver") orExit(await checkWaiverAttempt(candidateDeps(ctx), runs.positive.tenant, value), id);
         const note = ctx.io.stdin.isTTY === true ? "" : (await ctx.io.stdin.readAll()).trim();
         const decision: CandidateDecision = {
           schema: "intyy.candidate_decision/1.0",
@@ -348,7 +352,6 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
           ...(note === "" ? {} : { note }),
         };
         orExit(await ctx.wiring.candidates.appendDecision(id, decision), id);
-        const runs = orExit(await ctx.wiring.candidates.getFile(id, "runs.json"), id);
         const output = orExit(await regenerateCandidate(candidateDeps(ctx), id, runs), id);
         return candidateAnswer(id, output.issues);
       }),
@@ -443,6 +446,9 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
           if (decided === null) {
             issuesFile = { ...issuesFile, issues: issuesFile.issues.filter((i) => i !== next) };
             continue;
+          }
+          if (decided.what === "waiver") {
+            orExit(await checkWaiverAttempt(candidateDeps(ctx), runs.positive.tenant, decided.value), id);
           }
           const decision: CandidateDecision = {
             schema: "intyy.candidate_decision/1.0",

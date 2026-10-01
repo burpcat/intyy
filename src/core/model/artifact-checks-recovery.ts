@@ -93,7 +93,14 @@ export function checkRecovery(
 
   const recon = recovery.reconciliation;
   if (recon === null) {
-    report(MISSING_RECON, "recovery.reconciliation", "no reconciliation check or waiver is recorded yet", true);
+    // Why "check needed": reconciliation is check-first; a waiver needs a failed attempt run
+    // (owner decisions, 2026-10-01).
+    report(
+      MISSING_RECON,
+      "recovery.reconciliation",
+      "the commit point needs a linked reconciliation check (a recovery decision); a waiver needs a failed attempt_run",
+      true,
+    );
   } else {
     const hasCheck = recon.check !== undefined;
     const hasWaiver = recon.waiver !== undefined;
