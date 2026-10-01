@@ -58,4 +58,35 @@ describe("settle (section 6 §10.1 step 1)", () => {
     expect(await settle(e, new SteppingClock())).toEqual({ ok: true, value: b });
     expect(e.calls).toBe(4);
   });
+
+  describe("an unreadable frame is never stable (docs/decisions.md, M05)", () => {
+    const frame = (unreadable: boolean) =>
+      el("f", { role: "iframe", clues: { path: "f" }, ...(unreadable ? { unreadable: true as const } : {}) });
+    const reloading = screen([el("x", { clues: { path: "p", text: "Menu" } }), frame(true)]);
+    // Why: a frame that reads brings its own elements, so the readable look differs from the boxed one.
+    const loaded = screen([
+      el("x", { clues: { path: "p", text: "Menu" } }),
+      frame(false),
+      el("ok", { clues: { path: "f > ok", text: "Confirmed" } }),
+    ]);
+
+    test("two equal looks with an unreadable iframe do not settle; the readable pair does", async () => {
+      const e = eyes([ok(reloading), ok(reloading), ok(loaded), ok(loaded)]);
+      expect(await settle(e, new SteppingClock())).toEqual({ ok: true, value: loaded });
+      expect(e.calls).toBe(4);
+    });
+
+    test("an iframe that never reads returns the newest look at the cap, not page_gone", async () => {
+      const e = eyes([ok(reloading)]);
+      expect(await settle(e, new SteppingClock())).toEqual({ ok: true, value: reloading });
+      expect(e.calls).toBeGreaterThan(30);
+    });
+
+    test("a non-iframe unreadable element still settles on two equal looks", async () => {
+      const canvas = screen([el("c", { role: "canvas", clues: { path: "c" }, unreadable: true })]);
+      const e = eyes([ok(canvas), ok(canvas)]);
+      expect(await settle(e, new SteppingClock())).toEqual({ ok: true, value: canvas });
+      expect(e.calls).toBe(2);
+    });
+  });
 });

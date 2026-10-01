@@ -9,6 +9,15 @@ export const SETTLE_CAP_MS = 10_000;
 /** The gap between two looks. */
 const POLL_MS = 250;
 
+/**
+ * A frame the look could not read: a frameset's content frame that is mid-reload.
+ * ponytail: a frame that is permanently unreadable (another host) also counts, so such a page
+ * costs the full cap each turn; add an `unreadable` reason to the port if that ever happens.
+ */
+function unreadFrame(o: Observation): boolean {
+  return o.elements.some((e) => e.role === "iframe" && e.unreadable === true);
+}
+
 /** What must stay the same between two looks: address, box, and every element's state. */
 function stateKey(o: Observation): string {
   return JSON.stringify([
@@ -23,7 +32,7 @@ function stateKey(o: Observation): string {
  * Looks until two looks in a row agree, then returns the last one. At the cap it returns the
  * newest look anyway: discovery goes on, and the LLM sees what is there. A failed look counts as
  * "still loading": right after a click the page is often mid-navigation. So does a look with no
- * elements. Only a page that is
+ * elements. So does a look with an unreadable frame. Only a page that is
  * still unreadable at the cap is `page_gone`.
  * Why: a still screen alone settles on the old page before the server answers. The loop first
  * waits for the action's own navigation and network quiet (`settleAfterAction`, section 7 §5.1);
@@ -40,7 +49,9 @@ export async function settle(
     const cur = await eyes.observe(signal);
     // Why: a frameset reloading reads as a page with no elements, and two such looks agree. An
     // empty look is never a stable screen (docs/decisions.md, M05); at the cap it is still returned.
-    if (cur.ok && cur.value.elements.length > 0 && prev !== null && stateKey(cur.value) === stateKey(prev)) return ok(cur.value);
+    // The same holds for a look with an unreadable frame: it is mid-reload, and two such looks
+    // agree while the page the LLM needs is not there yet.
+    if (cur.ok && cur.value.elements.length > 0 && !unreadFrame(cur.value) && prev !== null && stateKey(cur.value) === stateKey(prev)) return ok(cur.value);
     if (cur.ok) prev = cur.value;
     if (clock.now().getTime() - start >= SETTLE_CAP_MS)
       return prev === null ? fail("page_gone") : ok(prev);
