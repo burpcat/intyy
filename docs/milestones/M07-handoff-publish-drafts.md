@@ -93,11 +93,11 @@ A human takes over the live browser session and hands it back, set A is publishe
 
 ### Automated (CI `check` job)
 
-- [ ] Lease, mailbox, handoff, forward search, crash sweep (section 7 §21).
-- [ ] Mailbox: exclusive claim; a second claimer exits 6; atomic writes; `closed.json` on each ending.
-- [ ] Draft golden test: a saved takeover log always gives the same draft handler.
-- [ ] Evidence publish: a canary hit refuses; links resolve; artifact copies match their hashes; the manifest is written.
-- [ ] Secret canary and member canary still pass. The known-limit test still runs, marked expected.
+- [x] Lease, mailbox, handoff, forward search, crash sweep (section 7 §21).
+- [x] Mailbox: exclusive claim; a second claimer exits 6; atomic writes; `closed.json` on each ending.
+- [x] Draft golden test: a saved takeover log always gives the same draft handler.
+- [x] Evidence publish: a canary hit refuses; links resolve; artifact copies match their hashes; the manifest is written.
+- [x] Secret canary and member canary still pass. The known-limit test still runs, marked expected.
 
 ### Live (`npm run test:live`)
 

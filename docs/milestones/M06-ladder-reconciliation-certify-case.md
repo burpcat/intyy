@@ -85,16 +85,16 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 
 ### Automated (CI `check` job)
 
-- [ ] Pack loader, merge and override, frozen set, fixture suite, tie rule (section 5 §16).
-- [ ] Helper window matrix, resume rule, pre-commit sweep, rung order, known screen with no progress.
-- [ ] Undeclared outcome: a pack outcome the step does not declare ends `undeclared_outcome`.
-- [ ] Transport: `hang` recovers on an `idempotent` step, and reconciles after Confirm.
-- [ ] Reconciliation: `drop_after_confirm` ends `success`, `found_by_check`, through a child run.
-- [ ] Commit retry: `absent_by_check`, then `retry`, gives a new child run with a new run ID.
-- [ ] Manual reconcile: re-entered inputs are hash-checked; `effect_update` is written; `run status` warns `effect_updated`.
-- [ ] Route map, anchor expansion, truth checks, verdicts, all on the fake harness (section 8 §18).
-- [ ] Harness boundary: no replay-path module imports `ports/harness.ts`.
-- [ ] Canary scan: no canary value in the pack store or fixtures.
+- [x] Pack loader, merge and override, frozen set, fixture suite, tie rule (section 5 §16).
+- [x] Helper window matrix, resume rule, pre-commit sweep, rung order, known screen with no progress.
+- [x] Undeclared outcome: a pack outcome the step does not declare ends `undeclared_outcome`.
+- [x] Transport: `hang` recovers on an `idempotent` step, and reconciles after Confirm.
+- [x] Reconciliation: `drop_after_confirm` ends `success`, `found_by_check`, through a child run.
+- [x] Commit retry: `absent_by_check`, then `retry`, gives a new child run with a new run ID.
+- [x] Manual reconcile: re-entered inputs are hash-checked; `effect_update` is written; `run status` warns `effect_updated`.
+- [x] Route map, anchor expansion, truth checks, verdicts, all on the fake harness (section 8 §18).
+- [x] Harness boundary: no replay-path module imports `ports/harness.ts`.
+- [x] Canary scan: no canary value in the pack store or fixtures.
 
 ### Live (`npm run test:live`)
 

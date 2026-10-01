@@ -100,15 +100,15 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 
 ### Automated (CI `check` job)
 
-- [ ] Pre-run checks: each rejection code, in order. A rejected request still gets a run ID and a short log.
-- [ ] Request index: a true repeat returns the stored result; a changed request with the same ID gives `request_id_reused`.
-- [ ] Settle and wait, outcome race, clue voting, unknown logic, dispatch, native dialog (section 7 §21).
-- [ ] Write-ahead: a failed durable write means the action is never sent. The run fails `evidence_write_failed`.
-- [ ] Live re-check: riskier words on the commit control block the click.
-- [ ] Determinism: two runs on the snapshot surface give the same step trace.
-- [ ] Output rules: terminal delivery; piped outputs masked; `--reveal-outputs` refused off loopback.
-- [ ] Unattended replay is `rejected`, `context_not_approved`, exit 4.
-- [ ] Sweep: a crash after `commit_intent` leaves commit `uncertain` and prints the `reconcile` command.
+- [x] Pre-run checks: each rejection code, in order. A rejected request still gets a run ID and a short log.
+- [x] Request index: a true repeat returns the stored result; a changed request with the same ID gives `request_id_reused`.
+- [x] Settle and wait, outcome race, clue voting, unknown logic, dispatch, native dialog (section 7 §21).
+- [x] Write-ahead: a failed durable write means the action is never sent. The run fails `evidence_write_failed`.
+- [x] Live re-check: riskier words on the commit control block the click.
+- [x] Determinism: two runs on the snapshot surface give the same step trace.
+- [x] Output rules: terminal delivery; piped outputs masked; `--reveal-outputs` refused off loopback.
+- [x] Unattended replay is `rejected`, `context_not_approved`, exit 4.
+- [x] Sweep: a crash after `commit_intent` leaves commit `uncertain` and prints the `reconcile` command.
 
 ### Live (`npm run test:live`)
 
