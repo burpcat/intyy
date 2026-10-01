@@ -13,7 +13,7 @@ Read next: [REPORT.md](REPORT.md) (the decisions), [evidence/README.md](evidence
 - Node.js 24, npm, and git.
 - The bank app `kvfcu`. Its own README lists what it needs. `bankapp.json` pins its repo and commit.
 - An Anthropic API key, only for a new discovery run. The short demo path needs no key.
-- A jev key, only for the jev rung (*jev* is the error sorter that reads a stuck screen on rung 2). The ports, the reviewer, and `--models off` are built. The jev adapter is not, because it needs the owner's jev SDK. Without it, trouble climbs to a human.
+- A TypeSafe AI key (`TYPESAFE_API_KEY`), only for the jev rung (*jev* is the error sorter that reads a stuck screen on rung 2). Replay uses the pinned model `jev-1.13.0`. Without a key, trouble climbs to the reviewer or a human.
 
 ## Setup
 
@@ -67,7 +67,7 @@ Fill in `.env` before the last three commands (see the next section).
 | Variable | Holds | Needed |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Claude key | Discovery only |
-| `JEV_API_KEY` | jev key | Not used yet: no jev adapter is built. Leave empty |
+| `TYPESAFE_API_KEY` | jev key (TypeSafe AI) | Rung 2 only. Without it, trouble climbs to the reviewer or a human |
 | `INTYY_STAFF` | Your staff ID from `library/staff.json`: `op_017`, `op_022`, or `op_031`. Not a secret | Every command that writes |
 | `INTYY_KEYSTONE_KVFCU_OPERATOR_USERNAME` | The bank app's teller user name | Replay, certify, discovery |
 | `INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD` | The teller's password | Replay, certify, discovery |
@@ -119,11 +119,14 @@ The library ships `sign_in@1.0.0`. Discovery signs in first, by replay.
 | # | Command | Expect |
 |---|---|---|
 | 1 | `intyy discover kvfcu/open_share_subaccount` | A real LLM run in a visible browser. Prints the run ID and a candidate ID |
-| 2 | `intyy candidate review <candidate_id>` | You decide tags, risks, labels, and outcomes |
+| 2 | `intyy candidate review <candidate_id>` | You decide tags, risks, labels, and outcomes, and link the reconciliation check (below) |
 | 3 | `intyy candidate seal <candidate_id> --version <next>` | A sealed artifact |
 | 4 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json` | `success` |
 | 5 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/missing.json` | `business_outcome`, exit 2 |
-| 6 | `intyy certify case kvfcu/open_share_subaccount@<next> --class valid --profile reply_lost` | `success`, `found_by_check` |
+| 6 | `intyy certify case kvfcu/open_share_subaccount@<next> --class valid --profile reply_lost` | `failed`, `outputs_unavailable`, commit `found_by_check` |
+
+- A task with a commit point links a read-only check. For kvfcu it is `kvfcu/count_member_subaccounts@1`, which must be sealed first and allowed by the tenant policy. Link it with `intyy candidate decide <candidate_id> recovery recovery.reconciliation '{"capability":"kvfcu/count_member_subaccounts@1","mode":"count_diff","inputs":{"member_id":"{input.member_id}"},"count_output":"subaccount_count"}'`. A waiver is accepted only when its JSON names `attempt_run`, the discovery run that found no screen to read the result.
+- Run every `intyy` command from inside this repository. Run `make reset` in the `kvfcu-bank` folder, then come back.
 
 - The candidate ID looks like `kvfcu/open_share_subaccount/cand_<date>_<id>`. Pass it whole.
 - `<next>` is a version that does not exist yet. `1.0.0` is sealed, so pick the next one. `intyy artifact list` shows what exists. `--version` is required today; the CLI does not propose a number.

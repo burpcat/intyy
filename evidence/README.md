@@ -21,13 +21,13 @@ The owner checks each row against the files. `intyy evidence verify` checks hash
 | ID | What it shows | Brief | Made by | Expected path | Status |
 |---|---|---|---|---|---|
 | A1 | `sign_in` discovery, a real LLM run | 3.1 | `intyy discover kvfcu/sign_in` | `keystone/runs/<run>/` | pending |
-| A2 | `find_account_by_reference` discovery, positive and `not_found` | 3.1 | `intyy discover kvfcu/find_account_by_reference` twice (its spec is not in `library/specs/kvfcu/`: the owner chose a reconciliation waiver and dropped this capability, so owner to confirm; remove the row if it stays dropped) | `keystone/runs/<run>/` (two runs) | pending |
+| A2 | `count_member_subaccounts` discovery, a read-only check capability that reads one count | 3.1 | `intyy discover kvfcu/count_member_subaccounts` | `keystone/runs/<run>/` | pending |
 | A3 | `open_share_subaccount` discovery: positive with the irreversible approval in its mailbox; `member_not_found`; the at-limit outcome | 3.1, 3.2, 3.4 | `intyy discover kvfcu/open_share_subaccount`, then `.missing` and `.at_limit` with `--candidate` | `keystone/runs/<run>/` (three runs) | pending |
 | A4 | The three sealed artifacts, copied with their hashes | 3.2 | `intyy evidence publish <run> ...` | `artifacts/kvfcu/<capability>/<version>/` | pending |
 | A5 | Replay success, supervised | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json` | `keystone/runs/<run>/` | pending |
 | A6 | Replay `member_not_found`, exit 2 | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/missing.json` | `keystone/runs/<run>/` | pending |
 | A7 | Replay at the limit: `business_outcome`, commit `refused` | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/at_limit.json` | `keystone/runs/<run>/` | pending |
-| A8 | Reply lost: `success`, `found_by_check`, through a child run | 3.3 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile reply_lost` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
+| A8 | Reply lost: commit `found_by_check` through a count check child run; `failed`, `outputs_unavailable`, because a count returns no outputs | 3.3 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile reply_lost` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
 | A9 | Session expiry recovered by the `sign_in` handler | 3.3 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile session_expire --at @step:<id>` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
 | A10 | Restricted user: `failed`, `permission_denied` | 3.3 | `(set -a; . ./.env.restricted; set +a; intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json)` | `keystone/runs/<run>/` | pending |
 | A11 | Live handoff: supervisor approval in the same browser | 3.6 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile supervisor_needed --operator mailbox` | `keystone/batches/<batch>/`, `keystone/runs/<run>/mailbox/` | pending |
