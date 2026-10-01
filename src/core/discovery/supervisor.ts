@@ -22,7 +22,40 @@ export type SupervisorFacts = {
   capability: string;
   /** Policy `escalation.approval_minutes` (section 4 §4.4). Stuck requests use it too in M03. */
   deadlineMinutes: number;
+  /** Minutes a claimed takeover has, from the claim (section 7 §13.3: default 60, range 15 to
+   * 240). Out-of-range values are clamped. Omitted means the default. */
+  claimedMinutes?: number;
 };
+
+/** What the supervisor tells its owner while it waits (section 7 §13.3, §13.4). */
+export type SupervisorHooks = {
+  /** A claim arrived and moved the deadline to `deadline` (an ISO time). */
+  onClaim?: (staff: string, implicit: boolean, deadline: string) => void;
+  /** An operator answered a native dialog (section 7 §13.4, `dialogs.jsonl`). */
+  onDialog?: (staff: string, answer: "accept" | "dismiss") => void;
+};
+
+/** What a takeover can end with (section 7 §13.2). */
+export type TakeoverAnswer =
+  | { kind: "ended_run"; staff: string }
+  | { kind: "set_outcome"; staff: string; code: string }
+  | { kind: "released"; staff: string; note: string | null }
+  | { kind: "timed_out" }
+  | { kind: "run_ended" };
+
+/** What a wait ends with, when a release cannot end it. */
+type Waited =
+  | { kind: "decided"; staff: string; decision: string; outcome?: string }
+  | { kind: "timed_out" }
+  | { kind: "run_ended" };
+
+/** A release (the handback) ended the wait. */
+type Released = { kind: "released"; staff: string; note: string | null };
+
+/** Section 7 §13.3: a claimed takeover has 60 minutes, policy range 15 to 240. */
+const CLAIMED_DEFAULT_MINUTES = 60;
+const CLAIMED_MIN_MINUTES = 15;
+const CLAIMED_MAX_MINUTES = 240;
 
 /** The risk hint behind each approval answer (section 3 §6.4, `risk_hint`). */
 const HINTS: Record<(typeof APPROVAL_DECISIONS)[number], RiskHint | null> = {
@@ -43,6 +76,7 @@ export class OperatorSupervisor implements Supervisor {
     private readonly clock: Clock,
     private readonly redactor: Redactor,
     private readonly facts: SupervisorFacts,
+    private readonly hooks: SupervisorHooks = {},
   ) {}
 
   async approve(ask: ApprovalAsk, signal?: AbortSignal): Promise<Answer> {
@@ -156,8 +190,9 @@ export class OperatorSupervisor implements Supervisor {
   /**
    * Opens a rung 4 takeover, with the ladder's full context (section 5 §8.9, section 7 §13.1):
    * the step, the trouble, every rung so far, the commit state, and any handler
-   * `operator_note`. M06 answer: claiming a takeover is M07, so the only decision is `end_run`
-   * (docs/decisions.md).
+   * `operator_note`. An operator claims it, works in the browser, and answers `release` (the
+   * handback), `end_run`, or `set_outcome` with one of `outcomes` (section 7 §13.2;
+   * docs/decisions.md, M07). A claim moves the deadline (section 7 §13.3).
    */
   async takeover(
     ask: {
@@ -168,9 +203,12 @@ export class OperatorSupervisor implements Supervisor {
       commit: { state: string; notice: string | null };
       operatorNote: string | null;
       screenshot: string | null;
+      /** The outcome codes `set_outcome` may name at this step. None: no `set_outcome`. */
+      outcomes?: readonly string[];
     },
     signal?: AbortSignal,
-  ): Promise<{ kind: "ended_run"; staff: string } | { kind: "timed_out" } | { kind: "run_ended" }> {
+  ): Promise<TakeoverAnswer> {
+    const outcomes = ask.outcomes ?? [];
     const req = this.#request({
       kind: "takeover",
       reason: ask.reason,
@@ -178,14 +216,24 @@ export class OperatorSupervisor implements Supervisor {
       trouble: ask.trouble,
       approval: null,
       screenshot: ask.screenshot,
-      decisions: ["end_run"],
-      on_handback: "Claiming a takeover is not built yet (M07). The only answer is end_run.",
+      decisions: outcomes.length === 0 ? ["end_run"] : ["end_run", "set_outcome"],
+      on_handback: "The bot will check where the screen is, then continue.",
       ladder: ask.ladder,
       commit: ask.commit,
       operatorNote: ask.operatorNote,
+      outcomes: [...outcomes],
+      // Why "nobody": the lease is free for an operator to claim (section 7 §12.2).
+      lease: "nobody",
     });
-    const got = await this.#ask(req, signal);
-    return got.kind === "decided" ? { kind: "ended_run", staff: got.staff } : got;
+    const got = await this.#ask(req, signal, true);
+    if (got.kind === "released") return got;
+    if (got.kind !== "decided") return got;
+    if (got.decision === "set_outcome") {
+      // Why: a hand-written decision.json might name any code. Not acting is the safe side.
+      if (got.outcome !== undefined && outcomes.includes(got.outcome))
+        return { kind: "set_outcome", staff: got.staff, code: got.outcome };
+    }
+    return { kind: "ended_run", staff: got.staff };
   }
 
   /**
@@ -276,6 +324,8 @@ export class OperatorSupervisor implements Supervisor {
     ladder?: readonly unknown[];
     commit?: { state: string; notice: string | null };
     operatorNote?: string | null;
+    outcomes?: string[];
+    lease?: string;
   }): Masked<Request> {
     const now = this.clock.now();
     const deadline = this.#deadline();
@@ -294,9 +344,9 @@ export class OperatorSupervisor implements Supervisor {
       approval: p.approval,
       screenshot: p.screenshot,
       decisions: p.decisions,
-      outcomes: [],
+      outcomes: p.outcomes ?? [],
       deadline,
-      lease: null,
+      lease: p.lease ?? null,
       on_handback: p.on_handback,
       opened_at: now.toISOString(),
     });
@@ -317,15 +367,18 @@ export class OperatorSupervisor implements Supervisor {
     return at.toISOString();
   }
 
-  /** Opens a request and waits for the answer, the deadline, or the run's end. */
+  /**
+   * Opens a request and waits for the answer, the deadline, or the run's end. A claim, and a
+   * dialog answer, never end the wait. A claim on a takeover moves the deadline. With
+   * `handback`, a release ends the wait; otherwise a release is ignored.
+   */
+  async #ask(req: Masked<Request>, signal?: AbortSignal, handback?: false): Promise<Waited>;
+  async #ask(req: Masked<Request>, signal: AbortSignal | undefined, handback: true): Promise<Waited | Released>;
   async #ask(
     req: Masked<Request>,
     signal?: AbortSignal,
-  ): Promise<
-    | { kind: "decided"; staff: string; decision: string }
-    | { kind: "timed_out" }
-    | { kind: "run_ended" }
-  > {
+    handback = false,
+  ): Promise<Waited | Released> {
     // Why the timer starts before open(): open() writes a file a test or an operator can observe
     // on disk before this async function resumes. Starting the deadline first means the clock
     // always has a waiter registered by the time anyone can see the request (no wall-clock race).
@@ -338,31 +391,76 @@ export class OperatorSupervisor implements Supervisor {
     // never fires its "abort" event again, so the listener above alone would miss it and wait
     // out the full deadline.
     if (signal?.aborted === true) stop.abort();
-    const timer = this.clock.after(this.facts.deadlineMinutes * 60_000, stop.signal).then(
-      () => "timeout" as const,
-      () => "stopped" as const,
-    );
+    let timerStop = new AbortController();
+    const startTimer = (minutes: number): Promise<"timeout" | "stopped"> => {
+      timerStop.abort(); // the old deadline no longer counts
+      timerStop = new AbortController();
+      return this.clock.after(minutes * 60_000, AbortSignal.any([stop.signal, timerStop.signal])).then(
+        () => "timeout" as const,
+        () => "stopped" as const,
+      );
+    };
+    let timer = startTimer(this.facts.deadlineMinutes);
+    const finish = (): void => {
+      stop.abort();
+      timerStop.abort();
+      signal?.removeEventListener("abort", onRun);
+    };
     const opened = await this.port.open(req, signal);
     // Why: with no request on disk, no human can answer. Ending is the safe side.
     if (!opened.ok) {
-      stop.abort();
-      signal?.removeEventListener("abort", onRun);
+      finish();
       return { kind: "run_ended" };
     }
     const h: Handle = opened.value;
-    const answer = this.port.next(h, stop.signal);
-    const first = await Promise.race([answer, timer]);
-    stop.abort();
-    signal?.removeEventListener("abort", onRun);
-    if (first === "timeout") {
-      await this.port.close(h, "timed_out");
-      return { kind: "timed_out" };
+    for (;;) {
+      const first = await Promise.race([this.port.next(h, stop.signal), timer]);
+      if (first === "timeout") {
+        finish();
+        await this.port.close(h, "timed_out");
+        return { kind: "timed_out" };
+      }
+      if (first === "stopped" || !first.ok) {
+        finish();
+        await this.port.close(h, "run_ended");
+        return { kind: "run_ended" };
+      }
+      const ev = first.value;
+      if (ev.kind === "claimed") {
+        if (req.kind === "takeover") {
+          const minutes = this.#claimedMinutes();
+          timer = startTimer(minutes);
+          this.hooks.onClaim?.(ev.staff, ev.implicit, this.#deadlineIn(minutes));
+        }
+        continue;
+      }
+      if (ev.kind === "dialog") {
+        this.hooks.onDialog?.(ev.staff, ev.answer);
+        continue;
+      }
+      if (ev.kind === "released" && !handback) continue;
+      finish();
+      await this.port.close(h, "resolved");
+      if (ev.kind === "released") return { kind: "released", staff: ev.staff, note: ev.note ?? null };
+      return {
+        kind: "decided",
+        staff: ev.staff,
+        decision: ev.decision,
+        ...(ev.outcome === undefined ? {} : { outcome: ev.outcome }),
+      };
     }
-    if (first === "stopped" || !first.ok || first.value.kind !== "decided") {
-      await this.port.close(h, "run_ended");
-      return { kind: "run_ended" };
-    }
-    await this.port.close(h, "resolved");
-    return { kind: "decided", staff: first.value.staff, decision: first.value.decision };
+  }
+
+  /** Minutes a claimed takeover has, clamped to the policy range (section 7 §13.3). */
+  #claimedMinutes(): number {
+    const m = this.facts.claimedMinutes ?? CLAIMED_DEFAULT_MINUTES;
+    return Math.min(CLAIMED_MAX_MINUTES, Math.max(CLAIMED_MIN_MINUTES, m));
+  }
+
+  /** The time `minutes` from now, as an ISO time. Why `setTime`: core never makes a Date. */
+  #deadlineIn(minutes: number): string {
+    const at = this.clock.now();
+    at.setTime(at.getTime() + minutes * 60_000);
+    return at.toISOString();
   }
 }

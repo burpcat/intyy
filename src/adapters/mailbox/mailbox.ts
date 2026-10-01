@@ -14,7 +14,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { DecisionFile } from "../../core/model/mailbox.js";
+import { ClaimFile, DecisionFile, DialogLine, ReleaseFile } from "../../core/model/mailbox.js";
 import type { Masked } from "../../ports/masked.js";
 import type {
   Handle,
@@ -59,6 +59,51 @@ async function exists(path: string): Promise<boolean> {
   return (await readJsonOrNull(path)) !== null;
 }
 
+/** The valid lines of a `dialogs.jsonl`, in order. A missing file is no lines. */
+async function readDialogs(path: string): Promise<DialogLine[]> {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (e) {
+    if (isCode(e, "ENOENT")) return [];
+    throw e;
+  }
+  const out: DialogLine[] = [];
+  for (const raw of text.split("\n")) {
+    if (raw.trim() === "") continue;
+    const line = DialogLine.safeParse(JSON.parse(raw) as unknown);
+    if (line.success) out.push(line.data);
+  }
+  return out;
+}
+
+/** Writes a file whole or not at all, and only once: temp file, then a hard link (section 9 §10.5). */
+async function writeOnce(
+  tmpDir: string,
+  path: string,
+  body: unknown,
+): Promise<Outcome<void, "exists" | "write_failed">> {
+  const tmp = join(tmpDir, `mailbox-${randomUUID()}.json`);
+  try {
+    await mkdir(tmpDir, { recursive: true });
+    const f = await open(tmp, "wx");
+    await f.writeFile(`${JSON.stringify(body, null, 2)}\n`);
+    await f.sync();
+    await f.close();
+    try {
+      await link(tmp, path);
+    } catch (e) {
+      if (isCode(e, "EEXIST")) return fail("exists");
+      throw e;
+    } finally {
+      await rm(tmp, { force: true });
+    }
+    return ok(undefined);
+  } catch {
+    return fail("write_failed");
+  }
+}
+
 /** The run folder of one run. */
 const runDir = (d: MailboxDirs, tenant: string, runId: string): string =>
   join(d.evidenceRoot, tenant, "runs", runId);
@@ -82,8 +127,14 @@ function pause(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** How many events of one request the engine has already handed to the core. */
+type Seen = { claimed: boolean; dialogs: number; released: boolean };
+
 /** The engine's side: opens requests, waits for answers, and closes them. */
 export class MailboxOperator implements OperatorPort {
+  /** Per request folder: what `next` already returned, so each event comes out once. */
+  readonly #seen = new Map<string, Seen>();
+
   constructor(
     private readonly dirs: MailboxDirs,
     private readonly run: { tenant: string; runId: string },
@@ -108,12 +159,39 @@ export class MailboxOperator implements OperatorPort {
     }
   }
 
-  /** Waits for `decision.json`. The core owns the deadline; it aborts `signal` when time is up. */
+  /**
+   * Waits for the next event: a claim, a dialog answer, a release, or the decision. Each comes
+   * out once, in that order. The core owns the deadline; it aborts `signal` when time is up.
+   */
   async next(h: Handle, signal?: AbortSignal): Promise<Outcome<OperatorEvent, "closed">> {
     const dir = fromHandle(h);
+    const seen = this.#seen.get(dir) ?? { claimed: false, dialogs: 0, released: false };
+    this.#seen.set(dir, seen);
     for (;;) {
       if (signal?.aborted === true || (await exists(join(dir, "closed.json"))))
         return fail("closed");
+      if (!seen.claimed) {
+        const c = ClaimFile.safeParse(await readJsonOrNull(join(dir, "claim.json")));
+        if (c.success) {
+          seen.claimed = true;
+          return ok({ kind: "claimed", staff: c.data.staff_id, implicit: c.data.implicit });
+        }
+      }
+      const lines = await readDialogs(join(dir, "dialogs.jsonl"));
+      const line = lines[seen.dialogs];
+      if (line !== undefined) {
+        seen.dialogs += 1;
+        return ok({ kind: "dialog", staff: line.staff_id, answer: line.answer });
+      }
+      if (!seen.released) {
+        const rel = ReleaseFile.safeParse(await readJsonOrNull(join(dir, "release.json")));
+        if (rel.success) {
+          seen.released = true;
+          const ev: OperatorEvent = { kind: "released", staff: rel.data.staff_id };
+          if (rel.data.note !== null) ev.note = rel.data.note;
+          return ok(ev);
+        }
+      }
       const raw = await readJsonOrNull(join(dir, "decision.json"));
       if (raw !== null) {
         const d = DecisionFile.safeParse(raw);
@@ -172,6 +250,8 @@ export class MailboxDesk implements InterventionDesk {
         folder,
         request,
         decided: await exists(join(box, "decision.json")),
+        claim: await readJsonOrNull(join(box, "claim.json")),
+        released: await exists(join(box, "release.json")),
         runDir: dir,
       });
     }
@@ -201,6 +281,48 @@ export class MailboxDesk implements InterventionDesk {
       } finally {
         await rm(tmp, { force: true });
       }
+      return ok(undefined);
+    } catch {
+      return fail("write_failed");
+    }
+  }
+  async claim(
+    tenant: string,
+    runId: string,
+    folder: string,
+    claim: Masked<unknown>,
+  ): Promise<Outcome<void, "already_claimed" | "write_failed">> {
+    const box = join(runDir(this.dirs, tenant, runId), "mailbox", folder);
+    const w = await writeOnce(this.dirs.tmpDir, join(box, "claim.json"), claim);
+    return w.ok ? w : fail(w.failure === "exists" ? "already_claimed" : "write_failed");
+  }
+
+  async release(
+    tenant: string,
+    runId: string,
+    folder: string,
+    release: Masked<unknown>,
+  ): Promise<Outcome<void, "already_released" | "write_failed">> {
+    const box = join(runDir(this.dirs, tenant, runId), "mailbox", folder);
+    const w = await writeOnce(this.dirs.tmpDir, join(box, "release.json"), release);
+    return w.ok ? w : fail(w.failure === "exists" ? "already_released" : "write_failed");
+  }
+
+  async dialog(
+    tenant: string,
+    runId: string,
+    folder: string,
+    line: Masked<unknown>,
+  ): Promise<Outcome<void, "write_failed">> {
+    const path = join(runDir(this.dirs, tenant, runId), "mailbox", folder, "dialogs.jsonl");
+    try {
+      let before = "";
+      try {
+        before = await readFile(path, "utf8");
+      } catch (e) {
+        if (!isCode(e, "ENOENT")) throw e;
+      }
+      await writeAtomic(this.dirs.tmpDir, path, `${before}${JSON.stringify(line)}\n`);
       return ok(undefined);
     } catch {
       return fail("write_failed");

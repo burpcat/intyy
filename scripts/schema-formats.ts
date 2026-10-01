@@ -15,7 +15,7 @@ import { Faults } from "../src/core/model/faults.js";
 import { Fixture } from "../src/core/model/fixture.js";
 import { LockFile } from "../src/core/model/lock.js";
 import { HandlerDraft } from "../src/core/model/handler-draft.js";
-import { ClosedFile, DecisionFile, Intervention } from "../src/core/model/mailbox.js";
+import { ClaimFile, ClosedFile, DecisionFile, Intervention, ReleaseFile } from "../src/core/model/mailbox.js";
 import { Pack } from "../src/core/model/pack.js";
 import { Patch } from "../src/core/model/patch.js";
 import { Policy } from "../src/core/model/policy.js";
@@ -50,6 +50,8 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.intervention-1.0": Intervention,
   "intyy.decision-1.0": DecisionFile,
   "intyy.closed-1.0": ClosedFile,
+  "intyy.claim-1.0": ClaimFile,
+  "intyy.release-1.0": ReleaseFile,
   "intyy.cassette-1.0": Cassette,
   "intyy.request-1.0": Request,
   "intyy.result-1.0": Result,

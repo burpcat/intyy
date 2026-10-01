@@ -111,3 +111,46 @@ export const ClosedFile = z
 
 /** How a request closed. */
 export type ClosedFile = z.infer<typeof ClosedFile>;
+
+/** One claim of a takeover (`claim.json`, section 9 §10.5). `implicit`: the engine wrote it for
+ * human input from the replay's own staff ID (section 7 §12.4). */
+export const ClaimFile = z
+  .object({
+    schema: z.literal("intyy.claim/1.0"),
+    staff_id: StaffId,
+    at: z.iso.datetime(),
+    implicit: z.boolean(),
+  })
+  .strict();
+
+/** One claim. */
+export type ClaimFile = z.infer<typeof ClaimFile>;
+
+/** One handback (`release.json`, section 9 §10.5). The note passed the text rules. */
+export const ReleaseFile = z
+  .object({
+    schema: z.literal("intyy.release/1.0"),
+    staff_id: StaffId,
+    at: z.iso.datetime(),
+    note: z.string().nullable(),
+  })
+  .strict();
+
+/** One handback. */
+export type ReleaseFile = z.infer<typeof ReleaseFile>;
+
+/**
+ * One native-dialog answer, one line of `dialogs.jsonl` (section 9 §10.5). Not a registered
+ * format: only a whole file carries a `schema` field, and a log line does not (docs/decisions.md,
+ * M07).
+ */
+export const DialogLine = z
+  .object({
+    staff_id: StaffId,
+    at: z.iso.datetime(),
+    answer: z.enum(["accept", "dismiss"]),
+  })
+  .strict();
+
+/** One dialog answer. */
+export type DialogLine = z.infer<typeof DialogLine>;

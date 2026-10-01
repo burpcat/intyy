@@ -59,6 +59,10 @@ const FACT_SHAPES = [
   // A run spec's name, like `kvfcu/open_share_subaccount.missing` (`run.json`'s `spec`, section 6
   // §14.8). Why a fact: the dotted variant could look like a domain name to the masking rules.
   /^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/,
+  // An outcome or decision code a contract declares, like `member_not_found` (section 7 §13.2).
+  // Why a fact: `operator decide --outcome` writes it into `decision.json`. The CLI checks it
+  // against the request's declared codes first, so it is never free text.
+  /^[a-z][a-z0-9_]*$/,
 ];
 
 /**

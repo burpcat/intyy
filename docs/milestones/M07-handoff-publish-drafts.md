@@ -68,7 +68,7 @@ A human takes over the live browser session and hands it back, set A is publishe
 ## Tasks, in order
 
 - [x] 1. Write the lease and its tests: a stale token is blocked; no human-to-bot shortcut; human input pauses the bot.
-- [ ] 2. Write claims, `operator claim | release | dialog`, and takeover decisions. Test exclusive claims and two claimers.
+- [x] 2. Write claims, `operator claim | release | dialog`, and takeover decisions. Test exclusive claims and two claimers.
 - [ ] 3. Write capture and watchers.
 - [ ] 4. Write handback, reverify, and forward search. Test: credits finished fills only; stops at `read` steps; needs `confirmed` to cross the commit.
 - [ ] 5. Write the handoff test: a scripted "human" takes over, acts, and hands back.

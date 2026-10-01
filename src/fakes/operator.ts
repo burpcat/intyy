@@ -4,8 +4,32 @@ import type { Masked } from "../ports/masked.js";
 import type { Handle, Intervention, OperatorEvent, OperatorPort } from "../ports/operator.js";
 import { fail, ok, type Outcome } from "../ports/outcome.js";
 
-/** One scripted answer: a decision word, or `silent` to wait until the deadline or the run's end. */
-export type FakeAnswer = { staff: string; decision: string } | "silent";
+/**
+ * One scripted answer: a decision word (with an optional `outcome` code for `set_outcome`), a
+ * claim, a release (the handback), a native-dialog answer, or `silent` to wait until the deadline
+ * or the run's end (section 9 §5.4, `OperatorEvent`).
+ */
+export type FakeAnswer =
+  | { staff: string; decision: string; outcome?: string; note?: string }
+  | { staff: string; claimed: true; implicit?: boolean }
+  | { staff: string; released: true; note?: string }
+  | { staff: string; dialog: "accept" | "dismiss" }
+  | "silent";
+
+/** The port event one scripted answer stands for. */
+function toEvent(a: Exclude<FakeAnswer, "silent">): OperatorEvent {
+  if ("claimed" in a) return { kind: "claimed", staff: a.staff, implicit: a.implicit ?? false };
+  if ("released" in a)
+    return { kind: "released", staff: a.staff, ...(a.note === undefined ? {} : { note: a.note }) };
+  if ("dialog" in a) return { kind: "dialog", staff: a.staff, answer: a.dialog };
+  return {
+    kind: "decided",
+    staff: a.staff,
+    decision: a.decision,
+    ...(a.outcome === undefined ? {} : { outcome: a.outcome }),
+    ...(a.note === undefined ? {} : { note: a.note }),
+  };
+}
 
 /** Answers requests in order. Past the end of the script, the operator ends the run. */
 export class FakeOperator implements OperatorPort {
@@ -26,7 +50,7 @@ export class FakeOperator implements OperatorPort {
   next(h: Handle, signal?: AbortSignal): Promise<Outcome<OperatorEvent, "closed">> {
     const a = this.answers[this.#next] ?? this.#fallback(h);
     this.#next += 1;
-    if (a !== "silent") return Promise.resolve(ok({ kind: "decided", ...a }));
+    if (a !== "silent") return Promise.resolve(ok(toEvent(a)));
     return new Promise((resolve) => {
       signal?.addEventListener(
         "abort",

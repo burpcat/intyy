@@ -40,6 +40,10 @@ export type OpenRequest = {
   request: unknown;
   /** True once `decision.json` exists. */
   decided: boolean;
+  /** The raw `claim.json`, or null while nobody has claimed (section 9 §10.5). */
+  claim: unknown;
+  /** True once `release.json` exists. */
+  released: boolean;
   /** The run folder on disk, so the CLI can print a full screenshot path. */
   runDir: string;
 };
@@ -60,4 +64,28 @@ export interface InterventionDesk {
     decision: Masked<unknown>,
     signal?: AbortSignal,
   ): Promise<Outcome<void, "already_decided" | "write_failed">>;
+  /** Writes `claim.json` with exclusive create, so a second claimer fails (section 9 §10.5). */
+  claim(
+    tenant: string,
+    runId: string,
+    folder: string,
+    claim: Masked<unknown>,
+    signal?: AbortSignal,
+  ): Promise<Outcome<void, "already_claimed" | "write_failed">>;
+  /** Writes `release.json` with exclusive create: the handback happens once. */
+  release(
+    tenant: string,
+    runId: string,
+    folder: string,
+    release: Masked<unknown>,
+    signal?: AbortSignal,
+  ): Promise<Outcome<void, "already_released" | "write_failed">>;
+  /** Adds one line to `dialogs.jsonl`, written atomically (section 9 §10.5). */
+  dialog(
+    tenant: string,
+    runId: string,
+    folder: string,
+    line: Masked<unknown>,
+    signal?: AbortSignal,
+  ): Promise<Outcome<void, "write_failed">>;
 }

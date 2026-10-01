@@ -381,6 +381,18 @@ async function sealGlobalNeedsHumanPack(env: ReplayEnv, handlerId: string, detec
   if (sealed.code !== 0) throw new Error(`test setup: pack seal failed: ${sealed.stderr}`);
 }
 
+/** Claims the open takeover as `op_017`, retrying past a transient "not open yet" refusal, like
+ * {@link decideRetrying}. A claim comes first: `decide` on a takeover needs it (section 9 §10.4). */
+async function claimRetrying(env: ReplayEnv, runId: string, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  let got = await replayCall(env, ["operator", "claim", runId]);
+  while (got.code !== 0 && Date.now() - start < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    got = await replayCall(env, ["operator", "claim", runId]);
+  }
+  if (got.code !== 0) throw new Error(`test setup: operator claim failed: ${got.stderr}`);
+}
+
 /** Answers one open mailbox request with `word`, retrying past a transient "not yet open" or
  * "wrong slot" refusal (the same tolerant retry `runSupervisedToEnd` uses for the start
  * confirmation), until `timeoutMs` runs out. */
@@ -421,6 +433,7 @@ describe("replay loads library/packs into the frozen set (section 5 §7.4; M06 t
     );
     const runId = await waitForPrompt(started);
     await decideRetrying(env, runId, "approved");
+    await claimRetrying(env, runId);
     await decideRetrying(env, runId, "end_run");
     await started.code;
 

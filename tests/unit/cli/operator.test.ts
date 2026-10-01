@@ -93,7 +93,7 @@ describe("operator commands", () => {
     const got = await call(r, "op_017", ["operator", "list"]);
     expect(got.code).toBe(0);
     expect(got.stdout).toBe(
-      `${RUN}  kvfcu/transfer  approval  discovery_irreversible  t7  2026-09-28T14:30:00.000Z\n`,
+      `${RUN}  kvfcu/transfer  approval  discovery_irreversible  t7  2026-09-28T14:30:00.000Z  -\n`,
     );
   });
 

@@ -47,6 +47,9 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--class": "a suite class ID, like valid or missing; not member data",
   "--profile": "a standard fault profile ID, or a suite extra case ID; not member data",
   "--at": "an anchor, like @step:click_submit; not member data",
+  // M07 task 2: `operator decide --outcome` names one of the request's declared outcome codes,
+  // like `no_member_found`; the CLI checks it against the request. Never member data.
+  "--outcome": "an outcome code the request declares, like no_member_found; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

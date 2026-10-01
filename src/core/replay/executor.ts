@@ -893,13 +893,47 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         r.value({ run_id: fact(runId), at: fact(opening), status: "escalated", code: null, kind: "replay", capability: capabilityStr }),
         deps.signal,
       );
-      const supervisor = new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
-        runId,
-        tenant: input.tenant,
-        capability: capabilityStr,
-        // Why the fallback of 30: section 7 §13.3's own default, "takeover, to claim."
-        deadlineMinutes: input.policy.effective.escalation.takeover_minutes ?? 30,
-      });
+      const supervisor = new OperatorSupervisor(
+        deps.operator({ runId, tenant: input.tenant }),
+        deps.clock,
+        r,
+        {
+          runId,
+          tenant: input.tenant,
+          capability: capabilityStr,
+          // Why the fallback of 30: section 7 §13.3's own default, "takeover, to claim."
+          deadlineMinutes: input.policy.effective.escalation.takeover_minutes ?? 30,
+          // Why: section 7 §13.3, 60 minutes from the claim. The supervisor clamps to 15..240.
+          ...(input.policy.effective.escalation.takeover_claimed_minutes === undefined
+            ? {}
+            : { claimedMinutes: input.policy.effective.escalation.takeover_claimed_minutes }),
+        },
+        {
+          // A claim moves the lease to the human and the deadline out; a new `escalation` line
+          // records it (section 7 §12.2, §13.3).
+          onClaim: (staff, implicit, deadline) => {
+            leaseState.claim(staff, implicit);
+            void log.append({
+              event: "escalation",
+              step: stepId,
+              by: "human",
+              data: { kind: "takeover", reason, state: "claimed", staff_id: staff, deadline: fact(deadline), implicit },
+            });
+          },
+          // Acting on the answer is task 3's capture work. The line records that it arrived.
+          onDialog: (staff, answer) => {
+            void log.append({
+              event: "escalation",
+              step: stepId,
+              by: "human",
+              data: { kind: "takeover", reason, state: "dialog_answered", staff_id: staff, decision: answer },
+            });
+          },
+        },
+      );
+      const stepOutcomes = (artifact.steps.find((s2) => s2.id === stepId)?.outcomes ?? []).filter((c) =>
+        artifact.contract.outcomes.some((o) => o.code === c),
+      );
       const commitState = effect?.commit ?? "none";
       const inFlight = commitState === "uncertain";
       const got = await supervisor.takeover(
@@ -914,21 +948,54 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           },
           operatorNote,
           screenshot,
+          outcomes: stepOutcomes,
         },
         deps.signal,
       );
       await log.append({
         event: "escalation",
         step: stepId,
-        by: got.kind === "ended_run" ? "human" : "engine",
+        by: "staff" in got ? "human" : "engine",
         data: {
           kind: "takeover",
           reason,
           state: got.kind === "timed_out" ? "timed_out" : got.kind === "run_ended" ? "run_ended" : "resolved",
-          decision: got.kind === "ended_run" ? "end_run" : null,
+          decision:
+            got.kind === "ended_run"
+              ? "end_run"
+              : got.kind === "set_outcome"
+                ? "set_outcome"
+                : got.kind === "released"
+                  ? "handed_back"
+                  : null,
           ...("staff" in got ? { staff_id: got.staff } : {}),
+          ...(got.kind === "set_outcome" ? { outcome: got.code } : {}),
         },
       });
+      if (got.kind === "released") leaseState.handBack();
+      // "set_outcome on a commit step in flight gives refused, decided_by: human" (section 7
+      // §13.2). The human says nothing changed, so no reconciliation check runs.
+      if (got.kind === "set_outcome") {
+        if (effect !== null && commitState === "uncertain") effect = { ...effect, commit: "refused" };
+        const declared = artifact.contract.outcomes.find((o) => o.code === got.code);
+        const endedAt = deps.clock.now().toISOString();
+        const result = Result.parse({
+          schema: "intyy.result/1.0",
+          run_id: runId,
+          request_id: input.request.request_id,
+          capability: capabilityBlock,
+          warnings: [],
+          recoveries,
+          interventions: [],
+          timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
+          evidence: `runs/${runId}`,
+          status: "business_outcome",
+          outcome: { code: got.code, description: declared?.description ?? got.code, step: stepId, decided_by: "human", set_by: got.staff },
+          ...(effect === null ? {} : { effect }),
+        });
+        await captureOnFailure(`${stepId}_takeover_outcome`);
+        return endRun("business_outcome", got.code, result, stepId);
+      }
       // "A takeover ended while the commit is in flight first runs the reconciliation check.
       // No retry is offered. The run ends failed, ended_by_operator, with the commit state the
       // check found" (docs/decisions.md, M06). Unlike the ordinary uncertain-commit path, this
@@ -950,7 +1017,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ...(checkRunId === null ? {} : { check: { run_id: checkRunId, decided_by: "code" as const, staff_id: null } }),
         };
       }
-      return endAfterTakeover(stepId, got.kind);
+      // ponytail: a release (the handback) ends the run like `end_run` until task 4 builds
+      // reverify and resume; that task replaces this line.
+      return endAfterTakeover(stepId, got.kind === "released" ? "ended_run" : got.kind);
     };
 
     /** Human input stopped the bot: opens the takeover (section 7 §12.4). */
