@@ -1,6 +1,7 @@
 // Reconciliation: the read-only check that tells the truth about an uncertain commit, as a
 // child run. Follows design section 7 §11 (reconciliation runs), section 2 §16.2 (the check),
 // §16.6 (commit states), and section 5 §2.6 ("never end on `uncertain` while a check can run").
+// A `count_diff` check also reads a baseline count before the task (owner decisions, 2026-10-01).
 import type { z } from "zod";
 import type { Masked } from "../../ports/masked.js";
 import type {
@@ -12,6 +13,7 @@ import type {
 } from "../../ports/models.js";
 import type { LogLine } from "../orchestrator/run-log.js";
 import { maskedInput } from "../safety/redaction/compose.js";
+import { fact } from "../safety/redaction/redactor.js";
 import type { Redactor } from "../safety/redaction/redactor.js";
 import type { Artifact } from "../model/artifact.js";
 import type { ContractInput, ContractOutput } from "../model/artifact/contract.js";
@@ -125,24 +127,26 @@ export type ReconciliationVerdict =
  * capability exists to ask at all: a waiver, or a candidate placeholder). */
 export type ReconciliationRunResult = { verdict: ReconciliationVerdict; childRunId: string | null };
 
+/** One child check run and its result. */
+type CheckChild = { childRunId: string; result: Awaited<ReturnType<typeof runReplay>>["result"] };
+
 /**
  * Runs the linked check as a fresh child run (section 7 §11.1: "a child run, kind
- * `reconciliation`, with `parent_run_id`... in a new browser session, with its own prelude"),
- * and classifies its result. `parent` is the run asking; its own fields (tenant, policy,
- * settings, mode, and the rest) carry over unchanged, except `runId`, `request`, `frozenSet`,
- * and the child-run markers below.
+ * `reconciliation`, with `parent_run_id`... in a new browser session, with its own prelude").
+ * `parent` is the run asking; its own fields (tenant, policy, settings, mode, and the rest) carry
+ * over unchanged, except `runId`, `request`, `frozenSet`, and the child-run markers below.
+ * `null` when the check capability does not resolve.
  */
-export async function runReconciliationCheck(
+async function runCheckChild(
   parent: ReplayInput,
-  parentArtifact: Artifact,
+  check: Check,
   refs: ReadonlyMap<string, string>,
   deps: ReplayDeps,
-): Promise<ReconciliationRunResult> {
-  const check = parentArtifact.recovery?.reconciliation?.check;
-  if (check === undefined) return { verdict: { kind: "unclear" }, childRunId: null };
+  purpose: "commit_check" | "commit_baseline",
+): Promise<CheckChild | null> {
   const link = splitCapabilityLink(check.capability);
   const resolved = await resolveMajor(deps.artifacts, link.app, link.capability, link.major, parent.appVersion);
-  if (!resolved.ok) return { verdict: { kind: "unclear" }, childRunId: null };
+  if (!resolved.ok) return null;
   const checkArtifact = resolved.value;
   // Why `supervised`: the parent's own check 7 already proved the check capability approved
   // (section 3 §4.8, section 8 §10.10), so the child has nothing left to prove, and it must not
@@ -166,11 +170,89 @@ export async function runReconciliationCheck(
     visible: parent.visible,
     parentRunId: parent.runId,
     kind: "reconciliation",
-    purpose: "commit_check",
+    purpose,
     isChildRun: true,
   };
   const childOutcome = await runReplay(childInput, deps);
-  const r = childOutcome.result;
+  return { childRunId, result: childOutcome.result };
+}
+
+/** A `count_diff` check's count: its `count_output`, when the child succeeded with an integer there. */
+function countOf(check: Check, child: CheckChild): number | null {
+  if (child.result.status !== "success" || check.count_output === undefined) return null;
+  const value = child.result.outputs[check.count_output];
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+/** What a `count_diff` baseline read: the count, or `null` when it could not be read. */
+export type CheckBaseline = { count: number | null; childRunId: string | null };
+
+/**
+ * Reads a `count_diff` check's count once, before the task's steps (owner decisions,
+ * 2026-10-01: "reads one count before the run"). Never fails the run: a missing count only makes
+ * a later reconciliation unclear.
+ */
+export async function takeCheckBaseline(
+  parent: ReplayInput,
+  parentArtifact: Artifact,
+  refs: ReadonlyMap<string, string>,
+  deps: ReplayDeps,
+): Promise<CheckBaseline> {
+  const check = parentArtifact.recovery?.reconciliation?.check;
+  if (check === undefined) return { count: null, childRunId: null };
+  const child = await runCheckChild(parent, check, refs, deps, "commit_baseline");
+  return { count: child === null ? null : countOf(check, child), childRunId: child?.childRunId ?? null };
+}
+
+/**
+ * The parent's `reconciliation_baseline` log line. The count goes as text, so the log writer's
+ * redactor masks it like any other value (section 3 §6.7).
+ */
+export function baselineLine(b: CheckBaseline): LogLine {
+  return {
+    event: "reconciliation_baseline",
+    step: null,
+    by: "engine",
+    data: {
+      status: b.count === null ? "unavailable" : "read",
+      count: b.count === null ? null : String(b.count),
+      check_run_id: b.childRunId === null ? null : fact(b.childRunId),
+    },
+  };
+}
+
+/**
+ * Runs the linked check as a fresh child run (section 7 §11.1) and classifies its result.
+ * `baseline` is the count a `count_diff` check read before the task's steps; a `reference`
+ * check ignores it.
+ */
+export async function runReconciliationCheck(
+  parent: ReplayInput,
+  parentArtifact: Artifact,
+  refs: ReadonlyMap<string, string>,
+  deps: ReplayDeps,
+  baseline: number | null = null,
+): Promise<ReconciliationRunResult> {
+  const check = parentArtifact.recovery?.reconciliation?.check;
+  if (check === undefined) return { verdict: { kind: "unclear" }, childRunId: null };
+  // Why no child run: with no baseline, no later count can decide (owner decisions, 2026-10-01).
+  if (check.mode === "count_diff" && baseline === null) return { verdict: { kind: "unclear" }, childRunId: null };
+  const child = await runCheckChild(parent, check, refs, deps, "commit_check");
+  if (child === null) return { verdict: { kind: "unclear" }, childRunId: null };
+  const { childRunId, result: r } = child;
+  if (check.mode === "count_diff" && baseline !== null) {
+    // Why plain code decides: owner decisions, 2026-10-01. One more is found, with outputs
+    // unavailable; the same count is absent; anything else goes to a human.
+    // ponytail: two ceilings. (1) Another change to the same member during the run misreads the
+    // diff. (2) A count returns no outputs. Upgrade: a rows diff that matches inputs and returns outputs.
+    const after = countOf(check, child);
+    if (after === baseline + 1) return { verdict: { kind: "found_outputs_unavailable" }, childRunId };
+    if (after === baseline) return { verdict: { kind: "absent" }, childRunId };
+    // Why no check facts: an unclear count skips jev and the reviewer, straight to a human
+    // (owner decisions, 2026-10-01: "anything else means unable to verify"). A model would see
+    // a check with no counts.
+    return { verdict: { kind: "unclear" }, childRunId };
+  }
   if (r.status === "success") {
     const mapped = mapCheckOutputs(check, parentArtifact.contract.outputs, r.outputs);
     return {

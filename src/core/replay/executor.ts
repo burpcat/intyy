@@ -57,7 +57,7 @@ import { wireBytes } from "../safety/redaction/compose.js";
 import type { Cutoffs } from "./jev-verdict.js";
 import { matchDetectors, resumeSearch, runLadder, type LadderStep } from "./ladder.js";
 import { screenOf, type RungDeps, type StepFacts } from "./rung-input.js";
-import { reconcileInput, reconcileWithModels, runReconciliationCheck, type CheckFacts, type ReconcileSeen, type ReconciliationVerdict } from "./reconciliation.js";
+import { baselineLine, reconcileInput, reconcileWithModels, runReconciliationCheck, takeCheckBaseline, type CheckFacts, type ReconcileSeen, type ReconciliationVerdict } from "./reconciliation.js";
 import { writeLiveLines } from "./live-hook.js";
 import { revokeFromRun, runScope } from "./run-autonomy.js";
 import { grantedFor, spotChecked } from "../trust/autonomy.js";
@@ -753,6 +753,18 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
   if (app === undefined) {
     return failEnd(null, { code: "app_unreachable", phase: "start", message: `${appName} has no bank settings` }, "", true);
   }
+  const refs = new Map(Object.entries(input.request.inputs).map(([k, v]) => [`input.${k}`, String(v)]));
+  // Why here, before this run opens its own browser and signs in: a `count_diff` check reads its
+  // count once before the task's steps (owner decisions, 2026-10-01). CONTRACT.md is silent on
+  // whether one operator may hold two sessions, so the child signs in and ends first. Only a
+  // `count_diff` check pays for it; `deps.reconciliationCheck` scripts the whole check, so skips it.
+  // A failed baseline never stops the run; the later check is then unclear.
+  let checkBaseline: number | null = null;
+  if (artifact.recovery?.reconciliation?.check?.mode === "count_diff" && deps.reconciliationCheck === undefined) {
+    const taken = await takeCheckBaseline(input, artifact, refs, deps);
+    await log.append(baselineLine(taken));
+    checkBaseline = taken.count;
+  }
   const cfg = {
     origin: app.origin,
     allowlist: buildAllowlist({
@@ -829,7 +841,6 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           sessionArtifact.targets,
           deps.signal,
         );
-  const refs = new Map(Object.entries(input.request.inputs).map(([k, v]) => [`input.${k}`, String(v)]));
   /** The step the run is on, for the lines a human's input writes (section 3 §6.4). */
   let currentStep: string | null = null;
   // The commit step's target, so a human click on it counts as the commit (section 7 §14.4).
@@ -1312,7 +1323,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           deps.reconciliationCheck !== undefined
             ? { verdict: await deps.reconciliationCheck(deps.signal), checkRunId: null as string | null }
             : await (async () => {
-                const r2 = await runReconciliationCheck(input, artifact, refs, deps);
+                const r2 = await runReconciliationCheck(input, artifact, refs, deps, checkBaseline);
                 return { verdict: r2.verdict, checkRunId: r2.childRunId };
               })();
         const foundCommit = verdict.kind === "found" || verdict.kind === "found_outputs_unavailable";
@@ -1776,7 +1787,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       const { verdict, childRunId } =
         deps.reconciliationCheck !== undefined
           ? { verdict: await deps.reconciliationCheck(deps.signal), childRunId: null as string | null }
-          : await runReconciliationCheck(input, artifact, refs, deps);
+          : await runReconciliationCheck(input, artifact, refs, deps, checkBaseline);
       if (verdict.kind === "found") return endFound(stepId, verdict.outputs, childRunId, "code", null);
       if (verdict.kind === "found_outputs_unavailable") return endFoundNoOutputs(stepId, childRunId, "code", null);
       if (verdict.kind === "absent") return settleAbsent(stepId, childRunId, "code", null);
