@@ -102,8 +102,9 @@ function watchPage(s: BrowserState, page: Page): void {
     }
   });
   page.on("framenavigated", (frame) => {
-    if (frame !== page.mainFrame()) return;
-    hub.emit({ kind: "navigation_done", url: frame.url() });
+    // Why: a sub-frame that reloads re-numbers its elements, so any ref taken before would
+    // point at a different element. Every frame change makes old refs stale (section 7 §6.1).
+    if (frame === page.mainFrame()) hub.emit({ kind: "navigation_done", url: frame.url() });
     s.changed();
   });
   // Why: section 4 §6.10, a native box is never answered automatically. Holding it keeps it open.

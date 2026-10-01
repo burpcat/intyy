@@ -129,6 +129,24 @@
             },
             "authorization": {
               "type": "string"
+            },
+            "action": {
+              "type": "string"
+            },
+            "rule": {
+              "type": "string"
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [

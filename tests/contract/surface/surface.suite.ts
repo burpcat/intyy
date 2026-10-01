@@ -377,6 +377,74 @@ export function surfaceContract(name: string, make: () => Promise<SurfaceBackend
         expect((await until(g.eyes, (x) => x.dialog === null)).url).toBe(`${g.origin}/`);
       });
 
+      test("accepting a confirm box closes it, reports dispatched, and the page is back", async () => {
+        const g = await start();
+        await act(g, { type: "click", target: find(g.o, "Delete").ref }, true);
+        const box = await until(g.eyes, (x) => x.dialog !== null);
+        const r = await act(g, { type: "click", target: find(box, "OK").ref }, true);
+        // Why: the answer went out, so the hands say so (section 7 §7.2, dispatched).
+        expect(r).toMatchObject({ decision: "allowed", act: { dispatched: true } });
+        const back = await until(g.eyes, (x) => x.dialog === null);
+        expect(back.url).toBe(`${g.origin}/`);
+        expect(back.elements.some((e) => e.clues.name === "Delete")).toBe(true);
+        expect(back.elements.some((e) => e.clues.path.startsWith("native:dialog"))).toBe(false);
+      });
+
+      test("an accept that navigates shows the new page, with no box left", async () => {
+        const g = await start();
+        await act(g, { type: "click", target: find(g.o, "Create").ref }, true);
+        const box = await until(g.eyes, (x) => x.dialog !== null);
+        expect(box.dialog?.message).toBe("Are you sure you want to start a new sub-account?");
+        // Why: no list word in the message, so a human must say yes (section 4 §7.5, C3).
+        expect(await act(g, { type: "click", target: find(box, "OK").ref })).toMatchObject({
+          decision: "needs_approval",
+          rule: "risk.unsure",
+        });
+        const r = await act(g, { type: "click", target: find(box, "OK").ref }, true);
+        expect(r).toMatchObject({ decision: "allowed", act: { dispatched: true } });
+        const next = await until(g.eyes, (x) => x.url === `${g.origin}/members`);
+        expect(next.dialog).toBeNull();
+      });
+
+      test("accepting twice never leaves the box in view", async () => {
+        const g = await start();
+        await act(g, { type: "click", target: find(g.o, "Delete").ref }, true);
+        const box = await until(g.eyes, (x) => x.dialog !== null);
+        const accept = find(box, "OK").ref;
+        await act(g, { type: "click", target: accept }, true);
+        // Why: a spent box handle cannot be answered again, so the old ref is stale.
+        const again = await g.gate.act({
+          actor: "llm",
+          lease: LEASE,
+          action: { type: "click", target: accept },
+          step: null,
+          approval: { by: "op_022" },
+        });
+        expect(again).toMatchObject({ ok: false, failure: "stale_element" });
+        expect((await until(g.eyes, (x) => x.dialog === null)).dialog).toBeNull();
+        expect((await look(g.eyes)).dialog).toBeNull();
+      });
+
+      test("a ref taken inside a frame goes stale when the frame navigates", async () => {
+        const g = await start();
+        const events = g.eyes.events()[Symbol.asyncIterator]();
+        const inFrame = find(g.o, "Help").ref;
+        // Why: section 7 §6.1, a frame that reloads re-numbers its elements, so an old ref could
+        // point at another element. Any frame change bumps the ref generation.
+        await act(g, { type: "click", target: find(g.o, "Reload help").ref }, true);
+        await waitEvent(events, "page_changed");
+        const again = await g.gate.act({
+          actor: "llm",
+          lease: LEASE,
+          action: { type: "click", target: inFrame },
+          step: null,
+          approval: { by: "op_022" },
+        });
+        expect(again).toMatchObject({ ok: false, failure: "stale_element" });
+        const o = await until(g.eyes, (x) => x.elements.some((e) => e.clues.name === "Help"));
+        expect(find(o, "Help").ref).not.toBe(inFrame);
+      });
+
       test("a pop-up becomes the active page, and closing it returns to the opener", async () => {
         const g = await start();
         await act(g, { type: "click", target: find(g.o, "Lookup").ref });

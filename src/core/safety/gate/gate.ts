@@ -94,6 +94,9 @@ export type GateResult = {
   risk: RiskClass | null;
   onBlock: OnBlock;
   act?: ActResult;
+  /** The masked label and path the gate classified, the same values as its log line. */
+  label?: Masked<string>;
+  path?: Masked<string>;
 };
 
 /** One `gate` log line's content (section 4 §3.7). Screen text and paths are masked. */
@@ -137,7 +140,8 @@ export type BlockedLoad = { actor: Actor; path: Masked<string>; rule: RuleId };
 
 /** Failures `gate.act` may return. `secret_unavailable`: the value vanished after the start check.
  * `evidence_write_failed`: `commit_intent` could not be forced to disk (section 3 §6.6). */
-export type GateFailure = "stale_element" | "page_gone" | "secret_unavailable" | "evidence_write_failed";
+export type GateFailure =
+  "stale_element" | "page_gone" | "secret_unavailable" | "evidence_write_failed";
 
 /** The gate's face to the rest of intyy. */
 export interface Gate {
@@ -325,7 +329,15 @@ class ActionGate implements Gate {
       why: { kind: "policy", ref: rule },
       data,
     });
-    return { decision, rule, risk, onBlock: decision === "blocked" ? ON_BLOCK[p.actor] : "none" };
+    // Why: a human asked to approve must see what the gate classified, not what the model named.
+    return {
+      decision,
+      rule,
+      risk,
+      onBlock: decision === "blocked" ? ON_BLOCK[p.actor] : "none",
+      ...(data.label === undefined ? {} : { label: data.label }),
+      ...(data.path === undefined ? {} : { path: data.path }),
+    };
   }
 
   async act(p: Proposal, signal?: AbortSignal): Promise<Outcome<GateResult, GateFailure>> {
@@ -349,11 +361,15 @@ class ActionGate implements Gate {
     // `sign_in` (section 5 §8.13, docs/decisions.md M06): a handler-only, target-free action.
     // Nothing reaches the hands here; the ladder runs the prelude once this is allowed.
     if (a.type === "sign_in") {
-      if (p.actor !== "handler" || !ACTORS_BY_RUN[run.kind].includes(p.actor)) return block("allowlist.action");
+      if (p.actor !== "handler" || !ACTORS_BY_RUN[run.kind].includes(p.actor))
+        return block("allowlist.action");
       if (this.#inFlight) return block("risk.in_flight", a.risk);
       if (a.risk !== "idempotent") return block("risk.actor", a.risk);
       this.#lastActor = p.actor;
-      return ok({ ...this.#decide(p, "allowed", "risk.allowed", a.risk, {}), act: { dispatched: true } });
+      return ok({
+        ...this.#decide(p, "allowed", "risk.allowed", a.risk, {}),
+        act: { dispatched: true },
+      });
     }
 
     // Check 2: the action type, for this actor and this run. `engine` in discovery is the
@@ -522,8 +538,9 @@ class ActionGate implements Gate {
         pageIrreversible,
         submitsMoneyForm: moneyForm,
         // Why: section 4 §7.5 C3, accepting a native box reads its message.
+        // An Accept with no open box on the screen reads an empty message, so it is unsure.
         dialogMessage:
-          o.dialog !== null && el.clues.path === "native:dialog > accept" ? o.dialog.message : null,
+          el.clues.path === "native:dialog > accept" ? (o.dialog?.message ?? "") : null,
       };
     };
     switch (a.type) {

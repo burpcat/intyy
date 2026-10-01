@@ -51,7 +51,15 @@ export class OperatorSupervisor implements Supervisor {
       reason: "discovery_irreversible",
       step: { id: `t${String(ask.turn)}`, intent: null },
       trouble: null,
-      approval: { words: ask.label, risk: "irreversible", authorization: "none" },
+      approval: {
+        words: ask.label,
+        risk: "irreversible",
+        authorization: "none",
+        ...(ask.action === undefined ? {} : { action: ask.action }),
+        ...(ask.rule === undefined ? {} : { rule: ask.rule }),
+        ...(ask.path === undefined ? {} : { path: ask.path }),
+        ...(ask.detail === undefined ? {} : { detail: ask.detail }),
+      },
       screenshot: ask.screenshot,
       decisions: [...APPROVAL_DECISIONS],
       on_handback: null,
@@ -106,7 +114,9 @@ export class OperatorSupervisor implements Supervisor {
     });
     const got = await this.#ask(req, signal);
     if (got.kind !== "decided") return got;
-    return got.decision === "approved" ? { kind: "approved", staff: got.staff } : { kind: "declined" };
+    return got.decision === "approved"
+      ? { kind: "approved", staff: got.staff }
+      : { kind: "declined" };
   }
 
   /**
@@ -138,7 +148,9 @@ export class OperatorSupervisor implements Supervisor {
     if (got.kind !== "decided") return got;
     // Why not "unknown decision word": a hand-written decision.json might hold anything else.
     // Not acting is the safe side (section 4 §2.3, docs/decisions.md M03).
-    return got.decision === "approved" ? { kind: "approved", staff: got.staff } : { kind: "declined" };
+    return got.decision === "approved"
+      ? { kind: "approved", staff: got.staff }
+      : { kind: "declined" };
   }
 
   /**
@@ -249,7 +261,15 @@ export class OperatorSupervisor implements Supervisor {
     reason: RequestReason;
     step: { id: string; intent: string | null };
     trouble: { phase: string; detail: string } | null;
-    approval: { words: string | null; risk: "irreversible"; authorization: string } | null;
+    approval: {
+      words: string | null;
+      risk: "irreversible";
+      authorization: string;
+      action?: string;
+      rule?: string;
+      path?: string | null;
+      detail?: string | null;
+    } | null;
     screenshot: string | null;
     decisions: string[];
     on_handback: string | null;

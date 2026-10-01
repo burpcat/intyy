@@ -168,6 +168,35 @@ export function fixtureSite(origin: string): FakeSite {
             box: box(504),
             covered: true,
           },
+          {
+            // Why: a confirm box whose Accept navigates, so the accept's effect is on the page
+            // (M05 fix: the dialog state clears, the new URL shows). The message has no list word.
+            id: "create",
+            role: "button",
+            roleGroup: "button_like",
+            name: "Create",
+            text: "Create",
+            box: box(536),
+            onClick: {
+              dialog: {
+                kind: "confirm",
+                message: "Are you sure you want to start a new sub-account?",
+              },
+              accept: { go: "/members" },
+            },
+          },
+          {
+            // Why: a control that reloads the iframe. Any frame navigation makes old refs stale
+            // (section 7 §6.1). The fake has no frame reload, so it reloads the page, which also
+            // bumps its generation: the suite only asks that the old ref goes stale.
+            id: "reload_help",
+            role: "button",
+            roleGroup: "button_like",
+            name: "Reload help",
+            text: "Reload help",
+            box: box(568),
+            onClick: { go: "/" },
+          },
         ],
       },
       "/members": {

@@ -22,6 +22,7 @@ import { MapSecrets } from "../../../src/fakes/secrets.js";
 import { snapshotFactory, type FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import { FakeOperator, type FakeAnswer } from "../../../src/fakes/operator.js";
 import type { Planner } from "../../../src/ports/models.js";
+import type { SurfaceFactory } from "../../../src/ports/surface.js";
 import { readTree, tempRoot } from "../safety/canary-kit.js";
 
 /** The test origin. Loopback, like every test host. */
@@ -244,6 +245,8 @@ export async function run(opts: {
   answers?: FakeAnswer[];
   secrets?: Record<string, string>;
   site?: FakeSite;
+  /** A ready surface, instead of one built from `site`. A test wraps the fake to change what it shows. */
+  surface?: SurfaceFactory;
   /** A sealed session artifact, resolvable at `kvfcu/sign_in@1` (section 6 §5.5, M05 task 11).
    * Left out, the store stays empty, so a spec's `session` link never resolves. */
   sealedSession?: Artifact;
@@ -300,7 +303,7 @@ export async function run(opts: {
           INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD: PASSWORD,
         },
       ),
-      surface: snapshotFactory(opts.site ?? SITE),
+      surface: opts.surface ?? snapshotFactory(opts.site ?? SITE),
       marker: new FakeMarker(),
       planner,
       operator: () => operator,

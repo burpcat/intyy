@@ -301,8 +301,9 @@ describe("context rules only raise (section 4 §7.5)", () => {
     );
   });
 
-  test("C3: a safe message keeps its class", () => {
-    expect(cls(button("OK", { dialogMessage: "Show the details?" }))).toBe("idempotent");
+  test("C3: a safe word in the message is ignored, so it is unsure and irreversible", () => {
+    const v = classify(button("OK", { dialogMessage: "Show the details?" }), words);
+    expect([v.risk, v.unsure]).toEqual(["irreversible", true]);
   });
 });
 

@@ -54,12 +54,23 @@ export class PlaywrightHands implements Hands {
         const d = this.s.dialog;
         if (a.type !== "click" || d === null || t.part === "box") return ok({ dispatched: false });
         // Why: section 9 §5.2, answering a native dialog is a click on Accept or Dismiss.
-        if (t.part === "accept") await d.accept();
-        else await d.dismiss();
-        // Why: Playwright has no "dialog closed" event, so the hands report it.
-        this.s.dialog = null;
-        this.s.hub.emit({ kind: "dialog_closed" });
-        this.s.changed();
+        try {
+          if (t.part === "accept") await d.accept();
+          else await d.dismiss();
+        } catch (e) {
+          // Why: Playwright marks the box handled before it tells the browser, and a page that
+          // jumps away as the box closes can still make the call throw. The answer went out
+          // (a real Accept created an account), so it counts as dispatched. Only a lost
+          // connection stays unknown.
+          const lost = transportOf(e);
+          if (lost.transport === "connection_closed") return ok(lost);
+        } finally {
+          // Why: Playwright has no "dialog closed" event, and a spent handle cannot be answered
+          // again, so the eyes must stop reporting it however the call ended.
+          this.s.dialog = null;
+          this.s.hub.emit({ kind: "dialog_closed" });
+          this.s.changed();
+        }
         return done;
       }
 

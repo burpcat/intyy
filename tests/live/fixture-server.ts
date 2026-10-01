@@ -34,7 +34,9 @@ const PAGES: Record<string, string> = {
     <div style="position:relative">
       <button type="button" style="position:relative;z-index:0">Covered</button>
       <div style="position:absolute;inset:0;z-index:1;background:transparent"></div>
-    </div>`,
+    </div>
+    <button type="button" onclick="if (confirm('Are you sure you want to start a new sub-account?')) location.href='/members'">Create</button>
+    <button type="button" onclick="frames[0].location.reload()">Reload help</button>`,
   ),
   "/frame": page("Frame", `<button type="button">Help</button>`),
   // Why: section 7 §5.1, a real static image and a real fetched resource, for the

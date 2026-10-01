@@ -16,8 +16,11 @@ afterAll(cleanRoots);
 
 const RUN = "run_2026-09-28_7kq2m9x4tb";
 
+/** The approval block of the default request: the words only, as before the gate's facts. */
+const PLAIN_APPROVAL = { words: "Submit Transfer", risk: "irreversible", authorization: "none" };
+
 /** A root with an escalated run and one open approval request. */
-async function root(): Promise<string> {
+async function root(approval: Record<string, unknown> = PLAIN_APPROVAL): Promise<string> {
   const r = tempRoot();
   for (const d of ["policy", "settings"])
     cpSync(join("library", d), join(r, "library", d), { recursive: true });
@@ -64,7 +67,7 @@ async function root(): Promise<string> {
     ladder: [],
     commit: { state: "none" },
     operator_note: null,
-    approval: { words: "Submit Transfer", risk: "irreversible", authorization: "none" },
+    approval,
     screenshot: "screens/00031_observation.png",
     decisions: ["approve_irreversible", "approve_reversible", "approve_idempotent", "decline"],
     outcomes: [],
@@ -104,6 +107,35 @@ describe("operator commands", () => {
     expect(got.stdout).toContain(
       "decisions: approve_irreversible | approve_reversible | approve_idempotent | decline",
     );
+  });
+
+  test("show prints the gate's action, rule, path, and the note when they are set", async () => {
+    const r = await root({
+      ...PLAIN_APPROVAL,
+      action: "click",
+      rule: "risk.needs_approval",
+      path: "/home",
+      detail: 'The gate classified "Submit Transfer", but the model named "Transfers".',
+    });
+    const got = await call(r, "op_017", ["operator", "show", RUN]);
+    expect(got.stdout).toContain('control: "Submit Transfer", risk irreversible');
+    expect(got.stdout).toContain("action: click, rule risk.needs_approval, path /home");
+    expect(got.stdout).toContain(
+      'note: The gate classified "Submit Transfer", but the model named "Transfers".',
+    );
+  });
+
+  test("show prints no action or note line for a request without them, or with a null note", async () => {
+    const old = await call(await root(), "op_017", ["operator", "show", RUN]);
+    expect(old.stdout).not.toContain("action:");
+    expect(old.stdout).not.toContain("note:");
+    const same = await call(
+      await root({ ...PLAIN_APPROVAL, action: "click", rule: "risk.unsure", path: null, detail: null }),
+      "op_017",
+      ["operator", "show", RUN],
+    );
+    expect(same.stdout).toContain("action: click, rule risk.unsure, path unknown");
+    expect(same.stdout).not.toContain("note:");
   });
 
   test("decide writes decision.json once; a second answer exits 6", async () => {

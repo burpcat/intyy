@@ -41,8 +41,16 @@ export type RiskHint = "irreversible" | "reversible" | "idempotent";
 export type ApprovalAsk = {
   turn: number;
   element: string | null;
-  /** The control's masked words. */
+  /** The masked label of the live control the gate classified (the gate line's `label`). */
   label: Masked<string> | null;
+  /** The action type the gate classified, like `click`. */
+  action?: string;
+  /** The gate's rule, like `risk.unsure`. */
+  rule?: string;
+  /** The masked path the gate saw. */
+  path?: Masked<string> | null;
+  /** Set when the gate's label differs from the control the model named. */
+  detail?: Masked<string> | null;
   /** The masked screenshot of this turn, if one was saved. */
   screenshot: string | null;
 };
@@ -533,7 +541,7 @@ async function act(
   let result = await d.gate.act(proposal, d.signal);
   let hint: RiskHint | null = null;
   if (result.ok && result.value.decision === "needs_approval") {
-    const answered = await approval(d, s, c, name, shot);
+    const answered = await approval(d, s, c, name, result.value, c.action.type, shot);
     if ("status" in answered) return answered;
     if (answered.hint === null) {
       s.last = "declined";
@@ -620,20 +628,45 @@ async function approval(
   d: LoopDeps,
   s: State,
   c: ScreenCall,
-  name: Masked<string> | null,
+  named: Masked<string> | null,
+  seen: GateResult,
+  action: string,
   shot: string | null,
 ): Promise<{ staff: string; hint: RiskHint | null } | End> {
   const step = `t${String(s.turn)}`;
+  // Why: section 4 §7.7, the human approves what the gate classified. The model's own element
+  // name can come from an older screen, so it is never the label (a real run showed "Search"
+  // while the gate classed a footer).
+  const name = seen.label ?? null;
+  const detail =
+    named !== null && name !== null && (named as string) !== (name as string)
+      ? masked`The gate classified "${name}", but the model named "${named}".`
+      : null;
   await d.log.append({
     event: "escalation",
     step,
     by: "engine",
-    data: { kind: "approval", reason: "discovery_irreversible", state: "open", label: name },
+    data: {
+      kind: "approval",
+      reason: "discovery_irreversible",
+      state: "open",
+      label: name,
+      ...(detail === null ? {} : { detail }),
+    },
   });
   await d.status("escalated");
   const t0 = d.clock.now().getTime();
   const a = await d.supervisor.approve(
-    { turn: s.turn, element: c.element, label: name, screenshot: shot },
+    {
+      turn: s.turn,
+      element: c.element,
+      label: name,
+      action,
+      rule: seen.rule,
+      path: seen.path ?? null,
+      detail,
+      screenshot: shot,
+    },
     d.signal,
   );
   s.humanMs += d.clock.now().getTime() - t0;

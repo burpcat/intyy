@@ -41,7 +41,7 @@ export type ClickInput = {
   pageIrreversible: boolean;
   /** C1: the control submits a form that holds a `financial` input or a money value. */
   submitsMoneyForm: boolean;
-  /** C3: set when this click accepts a native `confirm` box. Its message is the label. */
+  /** C3: set when this click accepts a native box. Its message is the only label read (may be empty). */
   dialogMessage: string | null;
 };
 
@@ -120,9 +120,13 @@ const UNSURE: RiskVerdict = { risk: "irreversible", unsure: true, reason: "unsur
 
 /** Classes a click: words, context rules, then roles (section 4 §7.3 to §7.6). */
 function classifyClick(c: ClickInput, words: RiskWords): RiskVerdict {
-  // Why: section 4 §7.5 C3, the message words of a native confirm box are its label.
-  const texts = c.dialogMessage === null ? c.control.words : [...c.control.words, c.dialogMessage];
-  const found = wordClass(texts, words);
+  // Why: section 4 §7.5 C3, the message words are the label. The Accept button's own "OK" is
+  // a safe word, so it must not count: a box with no list word is unsure, so irreversible.
+  const texts = c.dialogMessage === null ? c.control.words : [c.dialogMessage];
+  const hit = wordClass(texts, words);
+  // Why: owner decision 2026-09-30, a safe word in a box's message ("open", "view") proves
+  // nothing about what OK does. Only irreversible and reversible words count there.
+  const found = c.dialogMessage !== null && hit === "safe" ? null : hit;
   const navigationLike = c.dialogMessage === null && isNavigationLike(c);
 
   // Why: section 4 §7.6 step 1, an irreversible word or any context rule wins.

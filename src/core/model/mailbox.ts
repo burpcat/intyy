@@ -60,6 +60,12 @@ export const Intervention = z
         words: z.string().nullable(),
         risk: z.literal("irreversible"),
         authorization: z.string(),
+        // The gate's own facts for this action (section 4 §7.7): what a human must see before
+        // approving. Optional, so a request from before this change still fits.
+        action: z.string().optional(),
+        rule: z.string().optional(),
+        path: z.string().nullable().optional(),
+        detail: z.string().nullable().optional(),
       })
       .strict()
       .nullable(),

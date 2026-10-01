@@ -99,7 +99,15 @@ export const registerOperator: Register = (program: Command, ctxOf) => {
           `${r.kind}: ${r.reason}, step ${r.step.id}`,
           ...(r.approval === null
             ? []
-            : [`control: "${r.approval.words ?? "(no words)"}", risk ${r.approval.risk}`]),
+            : [
+                `control: "${r.approval.words ?? "(no words)"}", risk ${r.approval.risk}`,
+                ...(r.approval.action === undefined
+                  ? []
+                  : [
+                      `action: ${r.approval.action}, rule ${r.approval.rule ?? "unknown"}, path ${r.approval.path ?? "unknown"}`,
+                    ]),
+                ...(r.approval.detail == null ? [] : [`note: ${r.approval.detail}`]),
+              ]),
           ...(r.trouble === null ? [] : [`trouble: ${r.trouble.detail}`]),
           `screenshot: ${shot ?? "none"}`,
           `deadline: ${r.deadline ?? "none"}`,
