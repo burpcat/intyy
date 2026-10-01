@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.jev.step/1.0"
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "idempotent",
+            "reversible",
+            "irreversible"
+          ]
+        },
+        "phase": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "action",
+        "risk",
+        "phase"
+      ],
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "trace": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "check": {
+                "type": "string"
+              },
+              "passed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "check",
+              "passed"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "condition",
+        "description",
+        "trace"
+      ],
+      "additionalProperties": false
+    },
+    "last_good": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "step": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "step",
+            "location"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "screen": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "role",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "location",
+        "truncated",
+        "elements"
+      ],
+      "additionalProperties": false
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "handlers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "class": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "class",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "tied": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "screenshot": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "step",
+    "expected",
+    "last_good",
+    "screen",
+    "outcomes",
+    "handlers",
+    "tied"
+  ],
+  "additionalProperties": false
+}

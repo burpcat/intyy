@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.reviewer.step/1.0"
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "idempotent",
+            "reversible",
+            "irreversible"
+          ]
+        },
+        "phase": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "action",
+        "risk",
+        "phase"
+      ],
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "trace": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "check": {
+                "type": "string"
+              },
+              "passed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "check",
+              "passed"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "condition",
+        "description",
+        "trace"
+      ],
+      "additionalProperties": false
+    },
+    "last_good": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "step": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "step",
+            "location"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "screen": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "role",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "location",
+        "truncated",
+        "elements"
+      ],
+      "additionalProperties": false
+    },
+    "jev": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "bucket": {
+              "type": "string",
+              "enum": [
+                "outcome",
+                "handler",
+                "needs_review",
+                "unsafe"
+              ]
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "bucket",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowed": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "actions",
+        "keys",
+        "paths"
+      ],
+      "additionalProperties": false
+    },
+    "commit": {
+      "type": "string",
+      "enum": [
+        "not_sent",
+        "confirmed"
+      ]
+    },
+    "screenshot": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "step",
+    "expected",
+    "last_good",
+    "screen",
+    "jev",
+    "inputs",
+    "allowed",
+    "commit",
+    "screenshot"
+  ],
+  "additionalProperties": false
+}

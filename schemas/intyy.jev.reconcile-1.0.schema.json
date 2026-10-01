@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.jev.reconcile/1.0"
+    },
+    "parent": {
+      "type": "object",
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "commit_step": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "intent"
+          ],
+          "additionalProperties": false
+        },
+        "correlation": {
+          "type": "string",
+          "enum": [
+            "notes",
+            "none"
+          ]
+        },
+        "last_screen": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string"
+            },
+            "elements": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "location",
+            "elements"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "capability",
+        "commit_step",
+        "correlation",
+        "last_screen"
+      ],
+      "additionalProperties": false
+    },
+    "check": {
+      "type": "object",
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "string"
+                },
+                "phase": {
+                  "type": "string"
+                },
+                "trace": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "check": {
+                        "type": "string"
+                      },
+                      "passed": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "check",
+                      "passed"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "code",
+                "step",
+                "phase",
+                "trace"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "final_screen": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string"
+            },
+            "elements": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "location",
+            "elements"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "capability",
+        "status",
+        "outcome",
+        "failure",
+        "final_screen"
+      ],
+      "additionalProperties": false
+    },
+    "not_found_outcomes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "parent",
+    "check",
+    "not_found_outcomes"
+  ],
+  "additionalProperties": false
+}
