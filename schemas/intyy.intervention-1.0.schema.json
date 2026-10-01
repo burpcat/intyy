@@ -33,6 +33,7 @@
       "enum": [
         "discovery_irreversible",
         "stuck",
+        "unsafe_state",
         "no_authorization",
         "supervised_mode",
         "needs_human_handler",

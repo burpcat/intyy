@@ -1,16 +1,17 @@
-// The error ladder, rung 1: declared outcomes, then handlers, then retry, then climb.
-// Follows design section 5 §2 (principles), §4 (the ladder), §8.1 to §8.6, §8.10 to §8.13
-// (rung 1, the helper window, the pre-commit sweep, the resume rule, verdicts, log lines),
-// §9.4 (undeclared outcomes), §14 (the bank's faults); section 7 §7.2 to §7.3 (transport
-// failures), §8 (limits), §10 (`sign_in` recovery); docs/decisions.md, M06 (frozen `ladder`
-// facts false, so a climb always goes to rung 4; a location-only precondition never counts as
-// a known screen; a `hard_failure` handler's `transient` flag from a fixed map).
+// The error ladder: rung 1 (declared outcomes, handlers, retry), then rung 2 (jev), rung 3 (the
+// reviewer), else a climb to rung 4 (a takeover).
+// Follows design section 5 §2 (principles), §4 (the ladder), §8.1 to §8.8, §8.10 to §8.13
+// (rungs 1 to 3, the helper window, the pre-commit sweep, the resume rule, verdicts, log lines),
+// §9.4 (undeclared outcomes), §10 (jev), §11 (the reviewer), §14 (the bank's faults); section 7
+// §7.2 to §7.3 (transport failures), §8 (limits), §10 (`sign_in` recovery); docs/decisions.md,
+// M06 (a location-only precondition never counts as a known screen; a `hard_failure` handler's
+// `transient` flag from a fixed map) and M09 (rungs 2 and 3).
 //
-// Rungs 2 and 3 are off in this build (docs/decisions.md, M06): a climb here always means
-// "rung 4." What rung 4 does with a climb is the caller's own choice (a stub the M06 task 4
-// code fills); this module only decides that plain code cannot answer.
+// Models appear only here, on rungs 2 and 3, and only with the helper window open and the rung's
+// port present (`LadderDeps.rungs`). With no `rungs`, a climb means "rung 4", as in M06. This
+// module only decides that plain code cannot answer; rung 4 is the caller's own choice.
 import type { Clock } from "../../ports/clock.js";
-import type { Eyes, LeaseToken } from "../../ports/surface.js";
+import type { Eyes, LeaseToken, Observation } from "../../ports/surface.js";
 import type { Condition } from "../model/artifact/conditions.js";
 import type { ContractOutcome } from "../model/artifact/contract.js";
 import type { RiskKind } from "../model/artifact/steps.js";
@@ -23,8 +24,13 @@ import type { Redactor } from "../safety/redaction/redactor.js";
 import { evaluate, type AnyCheck, type EvalCtx } from "../targets/evaluate.js";
 import { fromObservation, type ScreenView } from "../targets/screen.js";
 import { resolveRefs } from "../targets/text.js";
+import { maskedScreenshot } from "../safety/redaction/images.js";
 import { CLICK_READY_MS } from "./act.js";
 import { findTarget } from "./find-target.js";
+import { troubleVerdict } from "./jev-verdict.js";
+import type { ReviewerInput } from "../../ports/models.js";
+import { jevTroubleInput, reviewerGateAction, reviewerInput, type RungDeps, type TroubleFacts } from "./rung-input.js";
+import { waitForCondition } from "./wait.js";
 
 /** Section 7 §8: retries per step, handler attempts per step and per run, ladder entries per
  * run, rewinds per run, and `sign_in` runs per run. The lower of a handler's own cap and the
@@ -35,6 +41,9 @@ export const HANDLER_ATTEMPTS_PER_RUN = 6;
 export const LADDER_ENTRIES_PER_RUN = 8;
 export const REWINDS_PER_RUN = 4;
 export const SIGN_IN_RUNS_PER_RUN = 2;
+/** Section 7 §8, section 5 §11.5: reviewer calls per stuck step, and per run. */
+export const REVIEWER_CALLS_PER_STEP = 1;
+export const REVIEWER_CALLS_PER_RUN = 2;
 
 /** Section 5 §8.2: open when nothing risky is in flight, or the one in flight is `idempotent`.
  * `dispatched: false` means nothing was sent at all, whatever the step's own risk. */
@@ -47,7 +56,7 @@ export type Verdict = "business_outcome" | "recovered" | "hard_failure" | "needs
  * snapshot the caller saved at this ladder's start (docs/decisions.md, M06: "Every ladder start
  * saves the masked accessibility snapshot beside the screenshot"). */
 export type LadderLogData = {
-  rung: 1;
+  rung: 1 | 2 | 3;
   verdict: Verdict;
   window: Window;
   matched: readonly string[];
@@ -56,7 +65,16 @@ export type LadderLogData = {
   next: "continue" | "resume_at" | "rung_2" | "rung_3" | "takeover" | "reconcile" | "end";
   resume_at: string | null;
   files: readonly string[];
+  /** jev lines only (section 5 §8.12): the bucket, its confidence, and the threshold it met or missed. */
+  bucket?: string;
+  confidence?: number;
+  threshold?: number;
+  /** jev or reviewer lines: the relative path of the request file in `llm/` (section 5 §8.12). */
+  input?: string;
 };
+
+/** What a rung 2 or rung 3 line adds to a `ladder` line (section 5 §8.12). */
+type RungMark = Pick<LadderLogData, "rung" | "bucket" | "confidence" | "threshold" | "input">;
 
 /** What went wrong, the way a step or the commit path already reports it, plus what the ladder
  * needs that a `StepFailure` does not carry: whether the trouble's own action was actually
@@ -94,15 +112,18 @@ export type LadderLimits = {
 };
 
 /** Section 3 §5.10: one automatic recovery, in the shape the result's `recoveries[]` wants. */
-export type LadderRecovery = { via: "handler" | "retry"; ref: string; resumedAt: string };
+export type LadderRecovery = { via: "handler" | "retry" | "jev" | "reviewer"; ref: string; resumedAt: string };
 
 /** What `runLadder` answers (section 5 §8.10). `index` for `recovered` is the step to resume at,
  * or the failed step's own index for a plain "continue." */
 export type LadderResult =
-  | { kind: "business_outcome"; code: string; log: LadderLogData }
+  /** `decidedBy: "jev"` when rung 2 named the outcome (section 3 §5.8); absent means plain code. */
+  | { kind: "business_outcome"; code: string; decidedBy?: "jev"; log: LadderLogData }
   | { kind: "recovered"; index: number; recovery: LadderRecovery; log: LadderLogData }
   | { kind: "hard_failure"; code: string; message: string; transient: boolean; ladderRef: string; log: LadderLogData }
   | { kind: "needs_human"; operatorNote: string; log: LadderLogData }
+  /** A takeover with reason `unsafe_state`: jev said `unsafe`, or the gate blocked the reviewer (section 5 §8.7, §11.3). */
+  | { kind: "unsafe"; log: LadderLogData }
   | { kind: "climb"; log: LadderLogData };
 
 /** Section 5 §8.2: the helper window. `dispatched` mirrors `ActResult.dispatched`; `"unknown"`
@@ -319,6 +340,8 @@ export type LadderDeps = {
   packTargets: ReadonlyMap<string, PackTarget>;
   lastGoodPath: string;
   runPrelude: (signal?: AbortSignal) => Promise<boolean>;
+  /** Rungs 2 and 3. Absent: neither exists, and a climb goes to rung 4 (docs/decisions.md, M06). */
+  rungs?: RungDeps;
   signal?: AbortSignal;
 };
 
@@ -339,9 +362,38 @@ export type LadderInput = {
   captureFiles: readonly string[];
 };
 
+/**
+ * Where a landing resumes (section 5 §8.6 rule 1). The failed step's checkpoint passed: go on with
+ * the NEXT step, so a step that already acted is never run twice. Otherwise run the earlier step
+ * the search found. The one place every rung turns a landing into a step index.
+ */
+function landingIndex(resumed: { kind: "continue" } | { kind: "resume_at"; index: number }, stepIndex: number): number {
+  return resumed.kind === "continue" ? stepIndex + 1 : resumed.index;
+}
+
+/**
+ * What a passing checkpoint means for a step the ladder just fixed (section 5 §8.6 rule 1, §11.3).
+ * `next`: skip it, it acted or is safe to skip. `human`: an irreversible step the bot never sent,
+ * yet its checkpoint shows; the bot cannot claim that work, so a person decides.
+ * Why: CLAUDE.md "never retry an irreversible step"; running it would send it twice, and skipping
+ * it would claim a change the bot never made. `no`: the checkpoint did not pass.
+ */
+function checkpointLanding(step: LadderStep, dispatched: boolean, checkpointPassed: boolean): "next" | "human" | "no" {
+  if (!checkpointPassed) return "no";
+  if (dispatched) return "next";
+  return step.risk === "irreversible" ? "human" : step.risk === "idempotent" ? "next" : "no";
+}
+
 /** Appends one `ladder` line (section 5 §8.12: "Every rung writes one line"). */
 function logLadder(deps: LadderDeps, step: string, data: LadderLogData, why: { kind: string; ref: string }): void {
-  deps.log({ event: "ladder", step, by: "engine", why, data });
+  // Why `by`: section 3 §6.4, "jev verdicts are `ladder` lines with `by: jev`"; the reviewer's own line says `reviewer`.
+  const by = data.rung === 2 ? "jev" : data.rung === 3 ? "reviewer" : "engine";
+  deps.log({ event: "ladder", step, by, why, data });
+}
+
+/** A `warning` line (section 3 §6.4): something to review, not fatal. */
+function logWarning(deps: LadderDeps, step: string, code: string, detail: string): void {
+  deps.log({ event: "warning", step, by: "engine", data: { code, detail } });
 }
 
 function logCheck(
@@ -358,16 +410,45 @@ function logHandlerAction(deps: LadderDeps, step: string, handlerId: string, typ
   deps.log({ event: "action", step, by: "handler", why: { kind: "handler", ref: handlerId }, data: { type, ok } });
 }
 
-/** Runs rung 1 over one trouble (section 5 §8.4), in order: declared outcomes, handlers, retry,
- * known-screen-no-progress, else climb. Never asks a model (rungs 2 and 3 are off, M06).
+/** True when the reviewer may still be called: its port is present, and it has calls left for
+ * this stuck step and this run (section 5 §11.5, section 7 §8). */
+function reviewerAvailable(r: RungDeps): boolean {
+  return (
+    r.reviewer !== null &&
+    r.reviewerCalls.step < REVIEWER_CALLS_PER_STEP &&
+    r.reviewerCalls.run < REVIEWER_CALLS_PER_RUN
+  );
+}
+
+/** Where rung 1's climb goes next (section 5 §8.10): rung 2, rung 3, or rung 4 (a takeover). */
+function nextAfterRung1(rungs: RungDeps | undefined): LadderLogData["next"] {
+  if (rungs === undefined) return "takeover";
+  if (rungs.jev !== null) return "rung_2";
+  return reviewerAvailable(rungs) ? "rung_3" : "takeover";
+}
+
+/** Runs rungs 1 to 3 over one trouble (section 5 §8.4, §8.7, §8.8), in order: declared outcomes,
+ * handlers, retry, climb; then jev, then the reviewer. A model is asked only on a climb, with the
+ * helper window open, and only through `deps.rungs` (never otherwise).
  */
 export async function runLadder(input: LadderInput, deps: LadderDeps): Promise<LadderResult> {
   const window = helperWindow(input.trouble.risk, input.trouble.dispatched);
+  // Why: section 5 §8.2, "Rung 2 jev: skipped; Rung 3 reviewer: skipped" while the window is closed.
+  const rungs = window === "open" ? deps.rungs : undefined;
 
   const climb = (): LadderResult => {
     const data: LadderLogData = { rung: 1, verdict: "climb", window, matched: [], handler: null, attempt: 1, next: "takeover", resume_at: null, files: input.captureFiles };
     logLadder(deps, input.stepId, data, { kind: "engine_rule", ref: "window.closed" });
     return { kind: "climb", log: data };
+  };
+
+  /** A climb that may go on to rung 2 or 3. `tied` are the handlers rung 1 could not choose between. */
+  const climbUp = async (observation: Observation, tied: readonly string[]): Promise<LadderResult> => {
+    const next = nextAfterRung1(rungs);
+    if (rungs === undefined || next === "takeover") return climb();
+    const data: LadderLogData = { rung: 1, verdict: "climb", window, matched: [], handler: null, attempt: 1, next, resume_at: null, files: input.captureFiles };
+    logLadder(deps, input.stepId, data, { kind: "engine_rule", ref: "climb" });
+    return await higherRungs(rungs, input, deps, window, observation, tied);
   };
 
   if (input.limits.ladderEntriesUsed >= LADDER_ENTRIES_PER_RUN) return climb();
@@ -398,7 +479,7 @@ export async function runLadder(input: LadderInput, deps: LadderDeps): Promise<L
   for (const id of matched) logCheck(deps, input.stepId, "handler", id, true);
   if (matched.length > 0) {
     const winner = matched.length === 1 && matched[0] !== undefined ? { winner: matched[0] } : breakTie(matched, deps.frozen);
-    if ("tied" in winner) return climb();
+    if ("tied" in winner) return await climbUp(observed.value, matched);
     const handler = deps.frozen.handlers.find((h) => h.id === winner.winner);
     if (handler === undefined) throw new Error(`runLadder: matched handler ${winner.winner} is not in the frozen set`);
     return await applyHandler(handler, matched, window, input, deps);
@@ -419,7 +500,7 @@ export async function runLadder(input: LadderInput, deps: LadderDeps): Promise<L
       const freshScreen = fromObservation(fresh.value);
       const resumed = resumeSearch(input.steps, input.stepIndex, input.trouble.dispatched, input.floorIndex, freshScreen, deps.taskCtx);
       if (resumed.kind !== "not_recovered") {
-        const index = resumed.kind === "continue" ? input.stepIndex : resumed.index;
+        const index = landingIndex(resumed, input.stepIndex);
         const resumeAtId = input.steps[index]?.id ?? input.stepId;
         const data: LadderLogData = {
           rung: 1,
@@ -455,24 +536,29 @@ export async function runLadder(input: LadderInput, deps: LadderDeps): Promise<L
   }
 
   // Step 6: otherwise climb.
-  return climb();
+  return await climbUp(observed.value, []);
 }
 
-/** Applies the winning handler's class (section 5 §8.4 step 3, §6.2). */
+/** Applies the winning handler's class (section 5 §8.4 step 3, §6.2). `mark` is set when jev
+ * picked the handler (section 5 §8.7): the lines say rung 2, and the handler keeps all its limits. */
 async function applyHandler(
   handler: Handler,
   matched: readonly string[],
   window: Window,
   input: LadderInput,
   deps: LadderDeps,
+  mark?: RungMark,
 ): Promise<LadderResult> {
   const attempt = (input.limits.handlerAttemptsThisStep[handler.id] ?? 0) + 1;
 
   if (handler.class === "business_outcome") {
     const declared = input.stepOutcomes.some((o) => o.code === handler.outcome.code);
-    const data: LadderLogData = { rung: 1, verdict: declared ? "business_outcome" : "hard_failure", window, matched, handler: handler.id, attempt, next: "end", resume_at: null, files: input.captureFiles };
+    const data: LadderLogData = { rung: 1, verdict: declared ? "business_outcome" : "hard_failure", window, matched, handler: handler.id, attempt, next: "end", resume_at: null, files: input.captureFiles, ...mark };
     logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
-    if (declared) return { kind: "business_outcome", code: handler.outcome.code, log: data };
+    if (declared) {
+      // Why: section 3 §5.8, `decided_by: jev` when jev, not a matched detector, chose the handler.
+      return { kind: "business_outcome", code: handler.outcome.code, ...(mark === undefined ? {} : { decidedBy: "jev" as const }), log: data };
+    }
     return {
       kind: "hard_failure",
       code: "undeclared_outcome",
@@ -484,13 +570,13 @@ async function applyHandler(
   }
 
   if (handler.class === "hard_failure") {
-    const data: LadderLogData = { rung: 1, verdict: "hard_failure", window, matched, handler: handler.id, attempt, next: "end", resume_at: null, files: input.captureFiles };
+    const data: LadderLogData = { rung: 1, verdict: "hard_failure", window, matched, handler: handler.id, attempt, next: "end", resume_at: null, files: input.captureFiles, ...mark };
     logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
     return { kind: "hard_failure", code: handler.failure, message: handler.description, transient: HARD_FAILURE_TRANSIENT[handler.failure], ladderRef: handler.id, log: data };
   }
 
   if (handler.class === "needs_human") {
-    const data: LadderLogData = { rung: 1, verdict: "needs_human", window, matched, handler: handler.id, attempt, next: "takeover", resume_at: null, files: input.captureFiles };
+    const data: LadderLogData = { rung: 1, verdict: "needs_human", window, matched, handler: handler.id, attempt, next: "takeover", resume_at: null, files: input.captureFiles, ...mark };
     logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
     return { kind: "needs_human", operatorNote: handler.operator_note, log: data };
   }
@@ -499,7 +585,7 @@ async function applyHandler(
   // (section 5 §8.2: "recoverable handlers: No" when the window is closed).
   if (window === "closed") {
     deps.log({ event: "action", step: input.stepId, by: "handler", why: { kind: "handler", ref: handler.id }, data: { type: "response", ok: false, warning: "handler_matched_not_run" } });
-    const data: LadderLogData = { rung: 1, verdict: "climb", window, matched, handler: handler.id, attempt, next: "takeover", resume_at: null, files: input.captureFiles };
+    const data: LadderLogData = { rung: 1, verdict: "climb", window, matched, handler: handler.id, attempt, next: "takeover", resume_at: null, files: input.captureFiles, ...mark };
     logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
     return { kind: "climb", log: data };
   }
@@ -511,7 +597,7 @@ async function applyHandler(
     (input.limits.handlerAttemptsThisStep[handler.id] ?? 0) >= stepCap ||
     input.limits.handlerAttemptsThisRun >= runCap ||
     (usesSignIn && input.limits.signInRunsUsed >= SIGN_IN_RUNS_PER_RUN);
-  if (exhausted) return applyOnExhausted(handler, matched, window, attempt, input, deps);
+  if (exhausted) return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
 
   if (handler.delay_ms !== undefined) await deps.clock.after(handler.delay_ms, deps.signal);
   const responseDeps: ResponseDeps = {
@@ -529,25 +615,25 @@ async function applyHandler(
   };
   const ranOk = await runResponse(handler.response, responseDeps);
   logHandlerAction(deps, input.stepId, handler.id, handler.response[0]?.type ?? "response", ranOk);
-  if (!ranOk) return applyOnExhausted(handler, matched, window, attempt, input, deps);
+  if (!ranOk) return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
 
   if (handler.done_when !== undefined) {
     const doneScreen = await deps.eyes.observe(deps.signal);
     const done = doneScreen.ok && passes(handler.done_when, fromObservation(doneScreen.value), deps.packCtx);
-    if (!done) return applyOnExhausted(handler, matched, window, attempt, input, deps);
+    if (!done) return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
   }
 
   const fresh = await deps.eyes.observe(deps.signal);
-  if (!fresh.ok) return applyOnExhausted(handler, matched, window, attempt, input, deps);
+  if (!fresh.ok) return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
   const freshScreen = fromObservation(fresh.value);
   const resumed = resumeSearch(input.steps, input.stepIndex, input.trouble.dispatched, input.floorIndex, freshScreen, deps.taskCtx);
-  if (resumed.kind === "not_recovered") return applyOnExhausted(handler, matched, window, attempt, input, deps);
+  if (resumed.kind === "not_recovered") return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
 
-  const index = resumed.kind === "continue" ? input.stepIndex : resumed.index;
+  const index = landingIndex(resumed, input.stepIndex);
   const resumeAtId = input.steps[index]?.id ?? input.stepId;
-  const data: LadderLogData = { rung: 1, verdict: "recovered", window, matched, handler: handler.id, attempt, next: "resume_at", resume_at: resumeAtId, files: input.captureFiles };
+  const data: LadderLogData = { rung: 1, verdict: "recovered", window, matched, handler: handler.id, attempt, next: "resume_at", resume_at: resumeAtId, files: input.captureFiles, ...mark };
   logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
-  return { kind: "recovered", index, recovery: { via: "handler", ref: handler.id, resumedAt: resumeAtId }, log: data };
+  return { kind: "recovered", index, recovery: { via: mark === undefined ? "handler" : "jev", ref: handler.id, resumedAt: resumeAtId }, log: data };
 }
 
 /** A `recoverable` handler's `on_exhausted` (section 5 §6.6): either a fixed hard failure, or a
@@ -559,14 +645,171 @@ function applyOnExhausted(
   attempt: number,
   input: LadderInput,
   deps: LadderDeps,
+  mark?: RungMark,
 ): LadderResult {
   if (handler.on_exhausted.class === "hard_failure") {
     const code = handler.on_exhausted.failure;
-    const data: LadderLogData = { rung: 1, verdict: "hard_failure", window, matched, handler: handler.id, attempt, next: "end", resume_at: null, files: input.captureFiles };
+    const data: LadderLogData = { rung: 1, verdict: "hard_failure", window, matched, handler: handler.id, attempt, next: "end", resume_at: null, files: input.captureFiles, ...mark };
     logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
     return { kind: "hard_failure", code, message: handler.description, transient: HARD_FAILURE_TRANSIENT[code], ladderRef: "on_exhausted", log: data };
   }
-  const data: LadderLogData = { rung: 1, verdict: "needs_human", window, matched, handler: handler.id, attempt, next: "takeover", resume_at: null, files: input.captureFiles };
+  const data: LadderLogData = { rung: 1, verdict: "needs_human", window, matched, handler: handler.id, attempt, next: "takeover", resume_at: null, files: input.captureFiles, ...mark };
   logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
   return { kind: "needs_human", operatorNote: handler.on_exhausted.operator_note, log: data };
+}
+
+/**
+ * Rungs 2 and 3, after a rung 1 climb with the window open (section 5 §8.7, §8.8): jev sorts the
+ * trouble; if it cannot, the reviewer proposes one action. `tied` are the handlers rung 1 could
+ * not choose between. Anything neither rung resolves climbs to rung 4.
+ */
+async function higherRungs(
+  rungs: RungDeps,
+  input: LadderInput,
+  deps: LadderDeps,
+  window: Window,
+  observation: Observation,
+  tied: readonly string[],
+): Promise<LadderResult> {
+  const step = input.steps[input.stepIndex];
+  const facts = rungs.steps.get(input.stepId);
+  if (step === undefined || facts === undefined) throw new Error(`runLadder: no facts for step ${input.stepId}`);
+  const troubleFacts: TroubleFacts = {
+    r: deps.redactor,
+    observation,
+    step,
+    stepIndex: input.stepIndex,
+    steps: input.steps,
+    facts,
+    trouble: input.trouble,
+    conditions: deps.taskCtx.conditions,
+    lastGoodPath: deps.lastGoodPath,
+  };
+  const line = (rung: 2 | 3, verdict: Verdict, next: LadderLogData["next"], resumeAt: string | null, extra: Partial<LadderLogData>): LadderLogData => ({
+    rung,
+    verdict,
+    window,
+    matched: tied,
+    handler: null,
+    attempt: 1,
+    next,
+    resume_at: resumeAt,
+    files: input.captureFiles,
+    ...extra,
+  });
+
+  // Rung 2: jev (section 5 §8.7).
+  let hint: ReviewerInput["jev"] = null;
+  if (rungs.jev !== null) {
+    const rec = rungs.recorder("jev");
+    const call = await rungs.jev.trouble(
+      jevTroubleInput(troubleFacts, { outcomes: input.stepOutcomes, handlers: deps.frozen.handlers, tied }),
+      rec.record,
+      deps.signal,
+    );
+    const verdict = troubleVerdict(
+      call,
+      { outcomes: input.stepOutcomes.map((o) => o.code), handlers: deps.frozen.handlers.map((h) => h.id) },
+      rungs.cutoffs,
+    );
+    if (verdict.kind === "needs_review" && verdict.warning !== undefined) {
+      logWarning(deps, input.stepId, verdict.warning, call.ok ? "jev named something this step does not offer, or broke its format" : `the jev call failed: ${call.failure}`);
+    }
+    const mark = (bucket: string, threshold?: number): RungMark => ({
+      rung: 2,
+      bucket,
+      confidence: verdict.confidence,
+      ...(threshold === undefined ? {} : { threshold }),
+      input: rec.request,
+    });
+
+    if (verdict.kind === "outcome") {
+      // Why: section 5 §8.7. The outcome is one this step declares (checked in `troubleVerdict`),
+      // and it ends the run only as a business outcome; a model never reports `refused`.
+      const data = line(2, "business_outcome", "end", null, mark("outcome", rungs.cutoffs.outcome_min));
+      logLadder(deps, input.stepId, data, { kind: "classifier", ref: "outcome" });
+      return { kind: "business_outcome", code: verdict.code, decidedBy: "jev", log: data };
+    }
+    if (verdict.kind === "handler") {
+      const handler = deps.frozen.handlers.find((h) => h.id === verdict.handler);
+      if (handler === undefined) throw new Error(`runLadder: jev's handler ${verdict.handler} is not in the frozen set`);
+      // Why: section 5 §8.7, "jev may pick a handler whose detector did not match."
+      if (!tied.includes(handler.id)) logWarning(deps, input.stepId, "detector_missed", `jev picked ${handler.id}, but its detector did not match`);
+      return await applyHandler(handler, tied, window, input, deps, mark("handler", rungs.cutoffs.handler_min));
+    }
+    if (verdict.kind === "unsafe") {
+      // Why: section 5 §8.7, "unsafe: any confidence"; when unsure, assume the worst.
+      const data = line(2, "needs_human", "takeover", null, mark("unsafe"));
+      logLadder(deps, input.stepId, data, { kind: "classifier", ref: "unsafe" });
+      return { kind: "unsafe", log: data };
+    }
+    hint = call.ok && verdict.warning === undefined ? { bucket: call.value.bucket, confidence: call.value.confidence } : null;
+    const next = reviewerAvailable(rungs) ? "rung_3" : "takeover";
+    const data = line(2, "climb", next, null, mark("needs_review"));
+    logLadder(deps, input.stepId, data, { kind: "classifier", ref: "needs_review" });
+    if (next === "takeover") return { kind: "climb", log: data };
+  }
+
+  // Rung 3: the reviewer (section 5 §8.8, §11).
+  const reviewer = rungs.reviewer;
+  const stuck = (ref: string, input3: string): LadderResult => {
+    const data = line(3, "climb", "takeover", null, { input: input3 });
+    logLadder(deps, input.stepId, data, { kind: "llm_reason", ref });
+    return { kind: "climb", log: data };
+  };
+  if (reviewer === null || !reviewerAvailable(rungs)) return stuck("unavailable", "");
+  rungs.onReviewerCall();
+  const rec = rungs.recorder("reviewer");
+  const shot = rungs.sendScreenshots ? await maskedScreenshot(deps.eyes, deps.redactor, deps.signal) : null;
+  if (shot !== null && !shot.ok) logWarning(deps, input.stepId, "screenshot_withheld", shot.failure);
+  const built = reviewerInput(troubleFacts, {
+    hint,
+    inputs: [...rungs.inputs.keys()],
+    allowed: rungs.allowed,
+    commit: rungs.commit(),
+    shot: shot !== null && shot.ok ? shot.value : null,
+  });
+  const call = await reviewer.fixStep(built.input, rec.record, deps.signal);
+  // Why every failure is "stuck": section 5 §8.8, "anything else: takeover, reason `stuck`".
+  if (!call.ok) return stuck(call.failure, rec.request);
+  if ("give_up" in call.value) return stuck("give_up", rec.request);
+  const fix = call.value;
+  const gateAction = reviewerGateAction(fix.action, built.refs, rungs.inputs);
+  if (gateAction === null) return stuck("unknown_element", rec.request);
+  const proposed = await deps.gate.act({ actor: "reviewer", lease: deps.lease, action: gateAction, step: input.stepId }, deps.signal);
+  if (!proposed.ok) return stuck(proposed.failure, rec.request);
+  if (proposed.value.decision !== "allowed") {
+    // Why: section 5 §11.3 step 1, "Blocked: takeover, `unsafe_state`."
+    const data = line(3, "needs_human", "takeover", null, { input: rec.request });
+    logLadder(deps, input.stepId, data, { kind: "llm_reason", ref: proposed.value.rule });
+    return { kind: "unsafe", log: data };
+  }
+  if (proposed.value.act?.dispatched === false) return stuck("not_dispatched", rec.request);
+  // Why read before the log call: `log.append` takes its number at once, so this is the line's own.
+  const seq = rungs.nextSeq();
+  deps.log({ event: "action", step: input.stepId, by: "reviewer", why: { kind: "llm_reason", ref: fix.reason }, data: { type: fix.action.type, ok: true, expected: fix.expected } });
+
+  // Landing (section 5 §11.3 steps 2 to 5): the step's checkpoint or its precondition must show,
+  // within the step's timeout. No wider rewind: the reviewer is the least trusted helper.
+  const waited = await waitForCondition(
+    { check: "any_of", checks: [{ ref: step.checkpoint }, { ref: step.precondition }] },
+    deps.eyes,
+    deps.taskCtx,
+    facts.timeoutMs,
+    deps.clock,
+    deps.signal,
+  );
+  if (!waited.ok) return stuck("page_gone", rec.request);
+  const landing = checkpointLanding(step, input.trouble.dispatched, passes(step.checkpoint, waited.value.screen, deps.taskCtx));
+  if (landing === "human") return stuck("irreversible_not_sent", rec.request);
+  const onCheckpoint = landing === "next";
+  if (!onCheckpoint && !passes(step.precondition, waited.value.screen, deps.taskCtx)) return stuck("no_landing", rec.request);
+  const index = onCheckpoint ? input.stepIndex + 1 : input.stepIndex;
+  const resumeAt = input.steps[index]?.id ?? step.id;
+
+  // Why `patch_needed`: section 5 §11.4, the step's own action on another control, and the checkpoint passed.
+  logWarning(deps, input.stepId, onCheckpoint && fix.action.type === facts.action ? "patch_needed" : "handler_needed", `the reviewer fixed ${input.stepId} (line ${String(seq)})`);
+  const data = line(3, "recovered", "resume_at", resumeAt, { input: rec.request });
+  logLadder(deps, input.stepId, data, { kind: "llm_reason", ref: fix.reason });
+  return { kind: "recovered", index, recovery: { via: "reviewer", ref: `seq:${String(seq)}`, resumedAt: resumeAt }, log: data };
 }

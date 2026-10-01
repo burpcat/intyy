@@ -228,6 +228,23 @@ export function outputLines(result: Result): string[] {
   return lines;
 }
 
+/**
+ * The models a replay run may use (section 5 §8.7, §8.8). There is no jev adapter, so rung 2 is
+ * never wired. The reviewer is built only when policy `llm.replay_reviewer` is on, the run is not
+ * `--models off`, and the key variable `intyy.json` names is set (never read from a file).
+ */
+function replayModels(ctx: Ctx, reviewerSwitch: boolean): NonNullable<ReplayDeps["models"]> {
+  if (ctx.flags.models === "off") return { off: true };
+  if (!reviewerSwitch) return {};
+  const name = ctx.config.model_keys.claude;
+  const key = ctx.io.env[name];
+  if (key === undefined || key === "") {
+    progress(ctx.io, `the reviewer is off for this run: set ${name} to turn it on.`);
+    return {};
+  }
+  return { reviewer: ctx.wiring.reviewer(key) };
+}
+
 /** Registers `replay`. */
 export const registerReplay: Register = (program: Command, ctxOf) => {
   program
@@ -339,6 +356,7 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           artifacts: ctx.wiring.candidates,
           requestIndex: { store: ctx.wiring.requestIndexStore, clock: ctx.wiring.clock, secrets: ctx.wiring.secrets, keys },
           operator: ctx.wiring.discovery.operator,
+          models: replayModels(ctx, policy.effective.llm.replay_reviewer),
           signal: stop.signal,
         };
         // Section 5 §7.4: the merged, approved handler set for this tenant, app, and app

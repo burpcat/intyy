@@ -40,6 +40,8 @@ export const Intervention = z
     reason: z.enum([
       "discovery_irreversible",
       "stuck",
+      // Why: docs/decisions.md, M09. Section 3 §5.7, a takeover after jev said `unsafe` or the gate blocked the reviewer.
+      "unsafe_state",
       "no_authorization",
       "supervised_mode",
       "needs_human_handler",

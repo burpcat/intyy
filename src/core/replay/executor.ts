@@ -5,6 +5,7 @@
 // points"), section 2 §16.6 (commit states). Handlers, packs, retries, and reconciliation are
 // M06; in this milestone any unexpected screen is a hard `failed`. Core stays pure: only ports.
 import type { Clock, Ids } from "../../ports/clock.js";
+import type { Classifier, Reviewer } from "../../ports/models.js";
 import type { Outcome } from "../../ports/outcome.js";
 import type { OperatorPort } from "../../ports/operator.js";
 import type { Secrets } from "../../ports/secrets.js";
@@ -39,7 +40,11 @@ import { Lease, leaseWhy } from "../handoff/lease.js";
 import { forwardSearch } from "../handoff/handback.js";
 import { checkCommitNow, watchCommit, type WatchDeps, type WatchVerdict } from "../handoff/watch.js";
 import { capture } from "../capture/capture.js";
+import { DEFAULT_CUTOFFS } from "../model/thresholds.js";
+import { wireBytes } from "../safety/redaction/compose.js";
+import type { Cutoffs } from "./jev-verdict.js";
 import { matchDetectors, resumeSearch, runLadder, type LadderStep } from "./ladder.js";
+import type { RungDeps, StepFacts } from "./rung-input.js";
 import { runReconciliationCheck, type ReconciliationVerdict } from "./reconciliation.js";
 import { PRECONDITION_TIMEOUT_MS, runPrelude, runStep, type StepFailure, type StepRunnerContext } from "./prelude.js";
 import { waitForCondition } from "./wait.js";
@@ -146,8 +151,31 @@ export type ReplayDeps = {
    * for tests, so a case need not seal a whole second, read-only check capability. Omitted, the
    * run asks the artifact's own `recovery.reconciliation.check` as a real child run. */
   reconciliationCheck?: (signal?: AbortSignal) => Promise<ReconciliationVerdict>;
+  /**
+   * The models on rungs 2 and 3 (section 5 §8.7, §8.8). Each rung runs only when policy allows it
+   * (`llm.replay_jev`, `llm.replay_reviewer`), its port is here, and `off` is not set (`--models
+   * off`). Omitted: no model is ever called, and a climb goes to rung 4.
+   */
+  models?: {
+    classifier?: Classifier;
+    reviewer?: Reviewer;
+    /** The app's jev cutoffs; omitted means the starting values (section 5 §10.4). */
+    cutoffs?: Pick<Cutoffs, "handler_min" | "outcome_min" | "reconciliation_min">;
+    /** `--models off`: no rung 2, no rung 3. */
+    off?: boolean;
+  };
   signal?: AbortSignal;
 };
+
+/** Which rungs this run has, frozen at `run_start` (section 5 §10.8). A frozen fact must be true:
+ * the policy switch allows it AND the engine has that rung AND `--models off` is not set. */
+function rungFlags(policy: MergeResult, models: ReplayDeps["models"]): { jev: boolean; reviewer: boolean } {
+  const on = models?.off !== true;
+  return {
+    jev: on && policy.effective.llm.replay_jev && models?.classifier !== undefined,
+    reviewer: on && policy.effective.llm.replay_reviewer && models?.reviewer !== undefined,
+  };
+}
 
 /** How the run ended. */
 export type ReplayOutcome = { runId: string; result: Result };
@@ -187,7 +215,14 @@ function knownInput(input: Artifact["contract"]["inputs"][number], value: Contra
 
 /** The frozen facts for a replay `run_start` line (section 3 §6.5). `artifact`/`session` are
  * null when pre-run checks stopped before resolving them. */
-function frozenFacts(input: ReplayInput, artifact: Artifact | null, session: Artifact | null): unknown {
+function frozenFacts(
+  input: ReplayInput,
+  artifact: Artifact | null,
+  session: Artifact | null,
+  models: ReplayDeps["models"],
+): unknown {
+  const flags = rungFlags(input.policy, models);
+  const cutoffs = models?.cutoffs ?? DEFAULT_CUTOFFS;
   const masks: Record<string, string> = {};
   if (artifact !== null) {
     for (const i of artifact.contract.inputs) {
@@ -226,9 +261,15 @@ function frozenFacts(input: ReplayInput, artifact: Artifact | null, session: Art
       timeouts_from: null,
       // Why draft: check 7 is thin until the score store exists (M10; section 3 §4.8 check 7).
       approval: { state: "draft", batch: null, record: null },
-      // Why both false: rungs 2 and 3 do not exist until M09; a frozen fact must be true
-      // (docs/decisions.md, M06). A climb goes straight to rung 4.
-      ladder: { jev: false, reviewer: false },
+      // Why: section 5 §10.8, a flag is true only when the policy allows the rung AND its port
+      // is wired AND `--models off` is not set (docs/decisions.md, M06, M09). The cutoffs are
+      // frozen with jev, because they decide what a run does with its answers.
+      ladder: {
+        ...flags,
+        ...(flags.jev
+          ? { handler_min: cutoffs.handler_min, outcome_min: cutoffs.outcome_min, reconciliation_min: cutoffs.reconciliation_min }
+          : {}),
+      },
     },
     fault_profile: null,
     outputs_revealed: input.outputsRevealed,
@@ -315,7 +356,7 @@ async function finish(
     result: { ...(result as unknown as Record<string, unknown>), run_id: fact(result.run_id), request_id: protectId(result.request_id) },
     // Why not masked here: `r.value(raw)` below masks it once, and keeps each `fact(...)` whole. A
     // second pass over the unwrapped text read `kvfcu/open_sub@1.0.0` as an email.
-    frozen: frozenFacts(input, artifact, session) as Record<string, unknown>,
+    frozen: frozenFacts(input, artifact, session, deps.models) as Record<string, unknown>,
     files: fileEntries.map((f) => ({
       path: isCapturePath(f.path) ? fact(f.path) : f.path,
       sha256: fact(f.sha256),
@@ -479,7 +520,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     deps.signal,
   );
   await log.append(
-    { event: "run_start", step: null, by: "engine", data: frozenFacts(input, artifactForFacts, sessionForFacts) },
+    { event: "run_start", step: null, by: "engine", data: frozenFacts(input, artifactForFacts, sessionForFacts, deps.models) },
     true,
   );
   await log.append({ event: "precheck", step: null, by: "engine", data: { checks: pre.results } });
@@ -911,6 +952,8 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     let signInRunsUsed = 0;
     let ladderEntriesUsed = 0;
     let rewindsUsed = 0;
+    const reviewerCallsByStep = new Map<string, number>();
+    let reviewerCallsRun = 0;
     let lastGoodPath = pathAndQuery(artifact.runs_on.entry);
     const recoveries: RecoveryLine[] = [];
     /** Every rung so far, this run (section 7 §13.1, "the ladder lines so far"): a takeover
@@ -957,7 +1000,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
      */
     const attemptTakeover = async (
       stepId: string,
-      reason: "stuck" | "needs_human_handler" | "unexpected_human_input",
+      reason: "stuck" | "unsafe_state" | "needs_human_handler" | "unexpected_human_input",
       trouble: { phase: string; detail: string } | null,
       operatorNote: string | null,
       screenshot: string | null,
@@ -1530,6 +1573,60 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       return askHumanReconciliation(stepId);
     };
 
+    /** What rungs 2 and 3 read for `stepId`'s ladder, or `undefined` when neither rung is on
+     * (section 5 §10.8). Every model call stores its request, then its reply, in `llm/`, named by
+     * the next run-log number and the caller (docs/decisions.md, M09). */
+    const rungDepsFor = (stepId: string): RungDeps | undefined => {
+      const flags = rungFlags(input.policy, deps.models);
+      if (!flags.jev && !flags.reviewer) return undefined;
+      const stepFacts = new Map<string, StepFacts>(
+        artifact.steps.map((s2) => [s2.id, { intent: s2.intent, action: s2.action.type, timeoutMs: s2.timeout_ms }]),
+      );
+      const inputFacts = new Map(
+        artifact.contract.inputs.flatMap((i) => {
+          const v = input.request.inputs[i.name];
+          return v === undefined ? [] : [[i.name, { value: String(v), label: i.sensitivity }] as const];
+        }),
+      );
+      const policyActions = input.policy.effective.actions;
+      return {
+        jev: flags.jev ? (deps.models?.classifier ?? null) : null,
+        reviewer: flags.reviewer ? (deps.models?.reviewer ?? null) : null,
+        cutoffs: deps.models?.cutoffs ?? DEFAULT_CUTOFFS,
+        recorder: (who) => {
+          const base = `llm/${String(log.nextSeq).padStart(5, "0")}_${who}`;
+          return {
+            request: `${base}_request.json`,
+            record: async (part, bytes) => {
+              const path = `${base}_${part}.json`;
+              const w = await folder.writeFile(path, wireBytes(bytes), deps.signal);
+              if (w.ok) captureFiles.push(path);
+              return w.ok;
+            },
+          };
+        },
+        sendScreenshots: input.policy.effective.llm.send_screenshots,
+        steps: stepFacts,
+        inputs: inputFacts,
+        allowed: {
+          actions: ["click", "type", "select", "set_checked", "press", "navigate"].filter((t) => policyActions.types.includes(t)),
+          keys: ["Tab", "Escape"].filter((k) => policyActions.keys.includes(k)),
+          paths: artifact.runs_on.paths,
+        },
+        commit: () => (effect?.commit === "confirmed" ? "confirmed" : "not_sent"),
+        reviewerCalls: { step: reviewerCallsByStep.get(stepId) ?? 0, run: reviewerCallsRun },
+        onReviewerCall: () => {
+          reviewerCallsByStep.set(stepId, (reviewerCallsByStep.get(stepId) ?? 0) + 1);
+          reviewerCallsRun += 1;
+        },
+        nextSeq: () => log.nextSeq,
+      };
+    };
+
+    const rungsPart = (stepId: string): { rungs?: RungDeps } => {
+      const rungs = rungDepsFor(stepId);
+      return rungs === undefined ? {} : { rungs };
+    };
     /** One `runLadder` call for `step`'s trouble, and the counters that go with it. `stepIndex`
      * is the failed step's own index in `artifact.steps` (section 5 §8.6's search range). */
     const attemptLadder = async (
@@ -1575,18 +1672,29 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           clock: deps.clock,
           redactor: r,
           lease,
-          log: (line) => void log.append(line),
+          // Why: every rung's `ladder` line joins the takeover request's trail (section 7 §13.1).
+          log: (line) => {
+            if (line.event === "ladder") ladderTrail.push(line.data);
+            // Why `fact`: the digit rule would mask `llm/00031_jev_request.json` in the log. The
+            // path is intyy's own, in the run-file shape (section 3 §7.2).
+            const data = line.data as { input?: unknown };
+            void log.append(
+              line.event === "ladder" && typeof data.input === "string"
+                ? { ...line, data: { ...data, input: fact(data.input) } }
+                : line,
+            );
+          },
           taskCtx: { targets, conditions, refs },
           packCtx,
           frozen,
           packTargets,
           lastGoodPath,
           runPrelude: runPreludeAgain,
+          ...rungsPart(step.id),
           ...(deps.signal === undefined ? {} : { signal: deps.signal }),
         },
       );
       ladderEntriesUsed += 1;
-      ladderTrail.push(ladderResult.log);
 
       if (ladderResult.kind === "business_outcome") {
         const declared = artifact.contract.outcomes.find((o) => o.code === ladderResult.code);
@@ -1602,7 +1710,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
           evidence: `runs/${runId}`,
           status: "business_outcome",
-          outcome: { code: ladderResult.code, description: declared?.description ?? ladderResult.code, step: step.id, decided_by: "code", set_by: null },
+          outcome: { code: ladderResult.code, description: declared?.description ?? ladderResult.code, step: step.id, decided_by: ladderResult.decidedBy ?? "code", set_by: null },
           ...(effect === null ? {} : { effect }),
         });
         return { kind: "end", outcome: await endRun("business_outcome", ladderResult.code, result, step.id) };
@@ -1631,6 +1739,11 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         return { kind: "end", outcome: await endRun("failed", ladderResult.code, result, step.id) };
       }
 
+      if (ladderResult.kind === "unsafe") {
+        // Section 5 §8.7, §11.3: jev said `unsafe`, or the gate blocked the reviewer.
+        return await attemptTakeover(step.id, "unsafe_state", { phase: failure.phase, detail: failure.message }, null, startFiles.find((f) => f.endsWith(".png")) ?? null);
+      }
+
       if (ladderResult.kind === "climb" || ladderResult.kind === "needs_human") {
         const reason = ladderResult.kind === "needs_human" ? "needs_human_handler" : "stuck";
         const note = ladderResult.kind === "needs_human" ? ladderResult.operatorNote : null;
@@ -1640,7 +1753,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       // ladderResult.kind === "recovered"
       if (ladderResult.recovery.via === "retry") {
         retriesUsedByStep.set(step.id, (retriesUsedByStep.get(step.id) ?? 0) + 1);
+      } else if (ladderResult.recovery.via === "reviewer") {
+        // Why nothing here: the reviewer's calls were counted when it was asked (`onReviewerCall`).
       } else {
+        // `handler`, or `jev` (a handler jev picked): the same attempt counts (section 5 §8.7).
         const handlerId = ladderResult.recovery.ref;
         const perStep = handlerAttemptsByStep.get(step.id) ?? {};
         handlerAttemptsByStep.set(step.id, { ...perStep, [handlerId]: (perStep[handlerId] ?? 0) + 1 });
@@ -1648,11 +1764,13 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         const used = frozen.handlers.find((h) => h.id === handlerId);
         if (used?.class === "recoverable" && used.response.some((a) => a.type === "sign_in")) signInRunsUsed += 1;
       }
-      if (ladderResult.index !== stepIndex) rewindsUsed += 1;
+      // Why `<`: only a step before the failed one is a rewind; going on to the next step is not.
+      if (ladderResult.index < stepIndex) rewindsUsed += 1;
       recoveries.push({
         step: step.id,
-        rung: 1,
-        via: ladderResult.recovery.via,
+        rung: ladderResult.log.rung,
+        // Why: section 3 §5.10 has no `jev` via; a handler jev picked is a handler recovery on rung 2.
+        via: ladderResult.recovery.via === "jev" ? "handler" : ladderResult.recovery.via,
         ref: ladderResult.recovery.ref,
         resumed_at: ladderResult.log.resume_at ?? step.id,
         at: deps.clock.now().toISOString(),

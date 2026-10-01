@@ -210,6 +210,33 @@ describe("fixStep: failures (section 9 §5.3)", () => {
   });
 });
 
+describe("the time limit (section 5 §11.5)", () => {
+  /** A fetch that never answers on its own; it ends only when its signal aborts. */
+  const hang: typeof fetch = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        reject(new DOMException("aborted", "AbortError"));
+      });
+    });
+
+  test("a call past its time limit is a timeout", async () => {
+    const slow = new ClaudeReviewer({
+      apiKey: "test-key",
+      fetch: hang,
+      baseURL: "http://127.0.0.1:9",
+      timeoutMs: 20,
+    });
+    expect(await slow.fixStep(input(), recorder().record)).toMatchObject({
+      ok: false,
+      failure: "timeout",
+    });
+    expect(await slow.secondOpinion(opinionInput(), recorder().record)).toMatchObject({
+      ok: false,
+      failure: "timeout",
+    });
+  });
+});
+
 describe("call order (section 9 §5.3)", () => {
   test("the stored request equals the sent request; the reply is stored after it", async () => {
     const { f, sent } = fakeFetch(reply("take_action", CLICK));

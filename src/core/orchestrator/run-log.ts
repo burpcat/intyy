@@ -6,7 +6,7 @@ import type { RunFolder } from "../../ports/stores.js";
 import { fact, type Redactor } from "../safety/redaction/redactor.js";
 
 /** Who wrote a line. */
-export type By = "engine" | "gate" | "llm" | "human" | "handler" | "reviewer";
+export type By = "engine" | "gate" | "llm" | "jev" | "human" | "handler" | "reviewer";
 
 /** One log line before its header. `data` may hold raw text; the writer masks it. */
 export type LogLine = {

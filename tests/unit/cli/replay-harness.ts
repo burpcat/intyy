@@ -5,7 +5,7 @@
 // `describe`/`test` here. Follows design section 9 §10.1 to §10.3; M05 task 9.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { wire as realWire } from "../../../src/cli/wiring.js";
+import { wire as realWire, type Wiring } from "../../../src/cli/wiring.js";
 import { commands } from "../../../src/cli/commands/index.js";
 import { run } from "../../../src/cli/program.js";
 import type { Io } from "../../../src/cli/output.js";
@@ -13,7 +13,12 @@ import { stubSweep, type Sweep } from "../../../src/cli/sweep.js";
 import { MailboxOperator } from "../../../src/adapters/mailbox/mailbox.js";
 import { Config } from "../../../src/core/model/config.js";
 import { policyKind, settingsKind } from "../../../src/core/model/kinds.js";
-import { AppPolicy, GlobalPolicy, TenantPolicy, type Policy } from "../../../src/core/model/policy.js";
+import {
+  AppPolicy,
+  GlobalPolicy,
+  TenantPolicy,
+  type Policy,
+} from "../../../src/core/model/policy.js";
 import { Settings } from "../../../src/core/model/settings.js";
 import { SteppingClock } from "../../../src/fakes/clock.js";
 import { FakeDocumentStore } from "../../../src/fakes/stores.js";
@@ -43,7 +48,9 @@ export const REQUEST_INDEX_ENV = "INTYY_KEYSTONE_REQUEST_INDEX_KEY_K1";
 const REQUEST_INDEX_KEY_VALUE = "test-request-index-key";
 
 const GLOBAL_LAYER = GlobalPolicy.parse(
-  JSON.parse(readFileSync(new URL("../../../library/policy/global/1.json", import.meta.url), "utf8")),
+  JSON.parse(
+    readFileSync(new URL("../../../library/policy/global/1.json", import.meta.url), "utf8"),
+  ),
 );
 
 /** A test kvfcu app layer: the fixture site's four paths, no secrets (neither fixture artifact
@@ -54,7 +61,12 @@ function appLayer(): Policy {
     scope: { level: "app", app: "kvfcu" },
     revision: 1,
     reason: "Test app layer.",
-    paths: { allow: ["/", "/home", "/result", "/done", "/check"], deny: [], irreversible: [], case_sensitive: true },
+    paths: {
+      allow: ["/", "/home", "/result", "/done", "/check"],
+      deny: [],
+      irreversible: [],
+      case_sensitive: true,
+    },
     secrets: {},
   });
 }
@@ -72,7 +84,9 @@ function tenantLayer(): Policy {
 
 /** `settingsOverrides` lets a test build a settings doc that fails `--reveal-outputs`'s own
  * checks (a non-test environment, or a non-loopback origin), without touching the fixture site. */
-function settingsDoc(overrides: { environment?: "test" | "production"; origin?: string } = {}): Settings {
+function settingsDoc(
+  overrides: { environment?: "test" | "production"; origin?: string } = {},
+): Settings {
   return Settings.parse({
     schema: "intyy.settings/1.0",
     tenant: TENANT,
@@ -89,7 +103,9 @@ function settingsDoc(overrides: { environment?: "test" | "production"; origin?: 
       },
     },
     system_secrets: {
-      request_index_keys: [{ key_id: "k1", source: "env", key: REQUEST_INDEX_ENV, status: "current" }],
+      request_index_keys: [
+        { key_id: "k1", source: "env", key: REQUEST_INDEX_ENV, status: "current" },
+      ],
     },
   });
 }
@@ -159,7 +175,11 @@ async function sealArtifacts(root: string): Promise<void> {
 }
 
 /** One CLI test's root, plus its policy and settings stores, ready for `replayCall`. */
-export type ReplayEnv = { root: string; policy: FakeDocumentStore<Policy>; settings: FakeDocumentStore<Settings> };
+export type ReplayEnv = {
+  root: string;
+  policy: FakeDocumentStore<Policy>;
+  settings: FakeDocumentStore<Settings>;
+};
 
 /** The real, file-backed wiring for `env.root`: its evidence store, candidate store, and lock
  * manager, all pointed at the same files a `replayCall` would use. For a test that seeds a
@@ -228,6 +248,9 @@ export type CallOpts = {
    * `run sweep`'s own body in isolation, clear of the hook's sweep racing ahead of it, passes
    * `stubSweep` here. */
   sweep?: Sweep;
+  /** Replaces `wiring.reviewer`, so a test can see whether (and with which key) the replay
+   * command asks for the rung 3 reviewer (design section 5 §11.5; M09). */
+  reviewer?: Wiring["reviewer"];
 };
 
 /** Starts one `intyy` call against `env`, without waiting for it to end. The real `wire()`,
@@ -255,6 +278,7 @@ export function startCall(env: ReplayEnv, argv: readonly string[], opts: CallOpt
     ...(opts.sweep === undefined ? {} : { sweep: opts.sweep }),
     wire: (root, config, wireEnv) => ({
       ...realWire(root, config, wireEnv),
+      ...(opts.reviewer === undefined ? {} : { reviewer: opts.reviewer }),
       policy: env.policy,
       settings: env.settings,
       discovery: {
@@ -267,7 +291,10 @@ export function startCall(env: ReplayEnv, argv: readonly string[], opts: CallOpt
           // Why a real mailbox, fast polling: the CLI's own `operator decide` must be able to
           // answer it, over the same files (section 9 §10.4, §10.5).
           new MailboxOperator(
-            { evidenceRoot: join(root, config.state, "evidence"), tmpDir: join(root, config.state, "var", "tmp") },
+            {
+              evidenceRoot: join(root, config.state, "evidence"),
+              tmpDir: join(root, config.state, "var", "tmp"),
+            },
             r,
             30,
           ),
@@ -290,7 +317,11 @@ export async function replayCall(
 
 /** Polls `check` until it is true, or throws past `timeoutMs`. CLI tests only: real runs need
  * real waiting (the mailbox adapter polls real files). */
-export async function waitUntil(check: () => boolean, timeoutMs = 5000, stepMs = 15): Promise<void> {
+export async function waitUntil(
+  check: () => boolean,
+  timeoutMs = 5000,
+  stepMs = 15,
+): Promise<void> {
   const start = Date.now();
   for (;;) {
     if (check()) return;
@@ -361,7 +392,10 @@ export function readRunJson(env: ReplayEnv, runId: string): unknown {
 
 /** Reads every line of `events.jsonl` straight off disk. */
 export function readEvents(env: ReplayEnv, runId: string): unknown[] {
-  const text = readFileSync(join(env.root, "state", "evidence", TENANT, "runs", runId, "events.jsonl"), "utf8");
+  const text = readFileSync(
+    join(env.root, "state", "evidence", TENANT, "runs", runId, "events.jsonl"),
+    "utf8",
+  );
   return text
     .split("\n")
     .filter((line) => line.trim() !== "")

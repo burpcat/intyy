@@ -82,3 +82,12 @@ export function maskedTurn(parts: TurnParts): Masked<PlannerTurn> {
 export function wireBytes(bytes: Uint8Array): Masked<Uint8Array> {
   return bytes as Masked<Uint8Array>;
 }
+
+/**
+ * Brands a model input built by the replay ladder (section 5 §10.2, §11.1). Every text in it
+ * went through the redactor, or is a fixed word written in code (a role, a step ID, a field name).
+ * Why a cast: the brand has no runtime form; the builder's `r.text` calls are the proof.
+ */
+export function maskedInput<T>(value: T): Masked<T> {
+  return value as Masked<T>;
+}
