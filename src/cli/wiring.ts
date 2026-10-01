@@ -7,6 +7,7 @@ import { FileDocumentStore } from "../adapters/files/document-store.js";
 import { FsFileTree } from "../adapters/files/file-tree.js";
 import { FileLockSlots, systemLockEnv } from "../adapters/files/locks.js";
 import { FileDraftStore, FileEvidenceStore, FileLogStore } from "../adapters/files/other-stores.js";
+import { FileScoreStore } from "../adapters/files/score-store.js";
 import { ClaudePlanner } from "../adapters/claude/planner.js";
 import { ClaudeReviewer } from "../adapters/claude/reviewer.js";
 import { KvfcuHarness, type KvfcuHarnessConfig } from "../adapters/kvfcu-harness/harness.js";
@@ -36,6 +37,8 @@ import type { Pack } from "../core/model/pack.js";
 import type { Policy } from "../core/model/policy.js";
 import type { CandidateFiles } from "../core/recorder/candidates.js";
 import { RequestIndexLine } from "../core/model/request-index.js";
+import { HistoryLine } from "../core/model/score-history.js";
+import { ScoreRecord } from "../core/model/score.js";
 import type { Settings } from "../core/model/settings.js";
 import type { Suite } from "../core/model/suite.js";
 import type { Testdata } from "../core/model/testdata.js";
@@ -47,6 +50,7 @@ import type { Marker } from "../ports/marker.js";
 import type { Planner, Reviewer } from "../ports/models.js";
 import type { InterventionDesk, OperatorPort } from "../ports/operator.js";
 import type { SurfaceFactory } from "../ports/surface.js";
+import type { ScoreStore } from "../ports/scores.js";
 import type { Secrets } from "../ports/secrets.js";
 import type { FileTree } from "../ports/tree.js";
 import type { CandidateStore, DocumentStore, DraftStore, EvidenceStore, LogStore } from "../ports/stores.js";
@@ -88,6 +92,8 @@ export type Wiring = {
   /** The request index's keyed-hash log, one per tenant key (section 3 §4.4, section 4 §8.11).
    * Replay is the only reader; `runReplay` never touches `node:fs` itself. */
   requestIndexStore: LogStore<RequestIndexLine, never>;
+  /** Trust state per key: history lines and the rebuilt record, in `state/trust/scores/` (section 8 §5.2). */
+  scores: ScoreStore<HistoryLine, ScoreRecord>;
   /** The bank app's test-mode controls, for one app's settings (section 8 §6.5). Only certify uses it. */
   harness: (app: KvfcuHarnessConfig) => KvfcuHarness;
   /** The three folders evidence publish reads and writes (section 9 §6.6): `state/evidence`,
@@ -149,6 +155,10 @@ export function wire(
     requestIndexStore: new FileLogStore<RequestIndexLine, never>(
       { line: RequestIndexLine, record: z.never() },
       { dir: join(state, "request-index"), tmpDir },
+    ),
+    scores: new FileScoreStore(
+      { line: HistoryLine, record: ScoreRecord },
+      { dir: join(state, "trust", "scores"), tmpDir },
     ),
     harness: (app) => new KvfcuHarness(app),
     publish: {

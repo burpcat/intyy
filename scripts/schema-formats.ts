@@ -25,6 +25,7 @@ import { Request } from "../src/core/model/request.js";
 import { Result } from "../src/core/model/result.js";
 import { ReviewerInput } from "../src/core/model/reviewer.js";
 import { RunJson } from "../src/core/model/run.js";
+import { ScoreRecord } from "../src/core/model/score.js";
 import { RunSpec } from "../src/core/model/runspec.js";
 import { SafetyReport } from "../src/core/model/safety-report.js";
 import { Settings } from "../src/core/model/settings.js";
@@ -69,6 +70,7 @@ export const formats: Record<string, z.ZodType> = {
   "intyy.batch_plan-1.0": BatchPlan,
   "intyy.batch_report-1.0": BatchReport,
   "intyy.thresholds-1.0": Thresholds,
+  "intyy.score-1.0": ScoreRecord,
   "intyy.jev.step-1.0": JevTroubleInput,
   "intyy.jev.reconcile-1.0": JevReconcileInput,
   "intyy.reviewer.step-1.0": ReviewerInput,

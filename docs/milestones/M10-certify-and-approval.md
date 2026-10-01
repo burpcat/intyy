@@ -1,6 +1,6 @@
 # M10 — Certify and approval
 
-> **Phase:** B · **Size:** L · **Depends on:** M07; M08 and M09 if built · **Status:** not started
+> **Phase:** B · **Size:** L · **Depends on:** M07; M08 and M09 if built · **Status:** in progress
 
 ## Read first
 
@@ -57,8 +57,8 @@ A key earns trust from a full certify batch and a human approval, and only then 
 
 ## Tasks, in order
 
-- [ ] 1. Write the score store and the record rebuild. Golden test: same lines, same record bytes.
-- [ ] 2. Write the trust state machine. Test every transition; nothing moves up without a staff ID.
+- [x] 1. Write the score store and the record rebuild. Golden test: same lines, same record bytes.
+- [x] 2. Write the trust state machine. Test every transition; nothing moves up without a staff ID.
 - [ ] 3. Write the scorer and the `full` batch runner.
 - [ ] 4. Write the gate. Test each rule failing alone.
 - [ ] 5. Write the approval family, the approval screen, and `--expect-record`.
@@ -82,7 +82,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 
 ### Automated (CI `check` job)
 
-- [ ] Record rebuild golden test; state machine; lock and atomic write (section 8 §18).
+- [x] Record rebuild golden test; state machine; lock and atomic write (section 8 §18).
 - [ ] Verdicts, gate, approval rules, resolver.
 - [ ] `--expect-record` refuses after the record changed. Approval screen golden test.
 - [ ] Check 7: unattended open-share is rejected until sign-in, the check, and open-share are all approved.

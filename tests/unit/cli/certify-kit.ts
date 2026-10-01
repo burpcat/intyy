@@ -5,7 +5,7 @@
 // Not a test file. M08 task 1.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { wire as realWire } from "../../../src/cli/wiring.js";
+import { wire as realWire, type Wiring } from "../../../src/cli/wiring.js";
 import { commands } from "../../../src/cli/commands/index.js";
 import { run } from "../../../src/cli/program.js";
 import type { Io } from "../../../src/cli/output.js";
@@ -38,6 +38,8 @@ export async function certifyCall(
   staff: string,
   argv: readonly string[],
   routeFor: Readonly<Record<string, string>> = OPEN_SUB_ROUTE_FOR,
+  /** Ports to swap in last, such as a `FakeScoreStore` whose writes fail (M10 task 1). */
+  over: Partial<Wiring> = {},
 ): Promise<Call> {
   let stdout = "";
   let stderr = "";
@@ -73,6 +75,7 @@ export async function certifyCall(
         // Why a plain cast: `Wiring.harness` is typed to the concrete `KvfcuHarness`, but certify
         // only uses it through the `Harness` port (same cast as certify.test.ts).
         harness: (() => routeHarness) as unknown as typeof real.harness,
+        ...over,
       };
     },
   });

@@ -15,6 +15,7 @@ import { declareInstance } from "../../core/certify/instance.js";
 import { isDrill, matrixProfiles, runCertifyQuick } from "../../core/certify/quick.js";
 import { runCertifyCase, type CertifySelection } from "../../core/certify/runner.js";
 import type { FrozenSet } from "../../core/packs/merge.js";
+import { appendHistory, batchLine } from "../../core/trust/scores.js";
 import type { LockHold } from "../../ports/locks.js";
 import { requireRole, requireStaff, takeLock, type Ctx } from "../context.js";
 import { instanceKey } from "./discover.js";
@@ -159,6 +160,48 @@ async function buildDeps(
   return { deps, origin: appSettings.origin, appVersion: appSettings.app_version, frozenSet };
 }
 
+/**
+ * Writes the batch's `batch` history line and rebuilds the key's record (section 8 §5.4, §5.6).
+ * Every certify path calls it. A failed score write never changes the batch's result (section 8
+ * §5.6): it prints a warning, and `intyy trust rebuild` repairs the record later.
+ */
+async function recordBatch(
+  ctx: Ctx,
+  kind: "quick" | "full" | "regression",
+  plan: BatchPlan,
+  report: BatchReport,
+  facts: { appVersion: string; engine: string; frozenSet: FrozenSet },
+): Promise<void> {
+  const line = batchLine({
+    at: ctx.wiring.clock.now(),
+    by: "certify",
+    reason: `${kind} batch ${report.gate.passed ? "passed" : "failed"} its gate`,
+    batch: plan.batch_id,
+    kind,
+    gatePassed: report.gate.passed,
+    report,
+    under: {
+      engine: facts.engine,
+      handler_set: facts.frozenSet.runStart.hash,
+      jev: null,
+      session: null,
+      check: null,
+    },
+  });
+  const written = await appendHistory(
+    { scores: ctx.wiring.scores, locks: ctx.wiring.locks, artifacts: ctx.wiring.candidates },
+    { capability: plan.pin, tenant: ctx.tenant, app_version: facts.appVersion, patch_revision: null },
+    line,
+    { owner: plan.batch_id, command: "certify", staff: ctx.staff },
+  );
+  if (!written.ok) {
+    progress(
+      ctx.io,
+      `warning: the batch result was not saved to the score store (${written.failure}${written.detail === undefined ? "" : `: ${written.detail}`}). Run intyy trust rebuild after you fix it.`,
+    );
+  }
+}
+
 /** Prints the `needs_at` refusal, with the request steps the baseline found. */
 function refuseNeedsAt(detail: string | undefined): never {
   const steps = (detail ?? "").split(", ").filter((s) => s.length > 0);
@@ -267,6 +310,7 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
     writeFileSync(join(dir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+    await recordBatch(ctx, "quick", plan, report, { appVersion, engine: deps.engineVersion, frozenSet });
     const lines = [
       `batch ${plan.batch_id} (quick${report.drill === true ? ", drill" : ""})`,
       ...report.cases.map((c) => `${c.case_id}: ${c.result.status}${c.result.detail === null ? "" : ` ${c.result.detail}`}, ${c.verdict}`),
@@ -356,7 +400,13 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
             if (result.failure === "needs_at") refuseNeedsAt(result.detail);
             throw new CliExit(EXIT.invalid, `certify case: ${result.failure}${result.detail ? `: ${result.detail}` : ""}`);
           }
-          return writeAndAnswer(ctx, result.value.plan, result.value.report);
+          const answered = writeAndAnswer(ctx, result.value.plan, result.value.report);
+          await recordBatch(ctx, "quick", result.value.plan, result.value.report, {
+            appVersion,
+            engine: deps.engineVersion,
+            frozenSet,
+          });
+          return answered;
         } finally {
           for (const h of holds) await ctx.wiring.locks.release(h);
         }
@@ -443,7 +493,13 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
             if (result.failure === "needs_at") refuseNeedsAt(result.detail);
             throw new CliExit(EXIT.invalid, `certify rerun: ${result.failure}${result.detail ? `: ${result.detail}` : ""}`);
           }
-          return writeAndAnswer(ctx, result.value.plan, result.value.report);
+          const answered = writeAndAnswer(ctx, result.value.plan, result.value.report);
+          await recordBatch(ctx, "quick", result.value.plan, result.value.report, {
+            appVersion,
+            engine: deps.engineVersion,
+            frozenSet,
+          });
+          return answered;
         } finally {
           for (const h of holds) await ctx.wiring.locks.release(h);
         }
