@@ -17,7 +17,9 @@ import type { CommitState } from "../../../src/core/model/result.js";
 import { FakeHarness } from "../../../src/fakes/harness.js";
 import type { FakeElement, FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import type { Ids } from "../../../src/ports/clock.js";
-import type { FaultLogEntry } from "../../../src/ports/harness.js";
+import type { FaultLogEntry, HarnessFailure, OracleAnswer } from "../../../src/ports/harness.js";
+import { fail, type Outcome } from "../../../src/ports/outcome.js";
+import { Secret } from "../../../src/ports/secret.js";
 import {
   ACCOUNT_NUMBER,
   CHECK_SUB,
@@ -221,14 +223,32 @@ function siteCounting(counts: readonly number[]): FakeSite {
   } as FakeSite;
 }
 
-/** `unsent` names the n-th run ID minted (1-based) whose attempt the oracle must answer "no account" for. */
-async function setup(site: FakeSite, unsent: number | null = null) {
+/** A harness whose oracle read fails for one exact notes text (an unreachable app on that attempt). */
+class OracleFailingHarness extends RouteMappingHarness {
+  failFor: string | null = null;
+  override oracle(notes: Secret): Promise<Outcome<OracleAnswer, HarnessFailure>> {
+    if (this.failFor !== null && Secret.open(notes) === this.failFor) return Promise.resolve(fail("unreachable"));
+    return super.oracle(notes);
+  }
+}
+
+/**
+ * `unsent` names the n-th run IDs minted (1-based) whose attempt the oracle must answer "no account" for.
+ * `accountOf` gives an attempt another account number than the fixture's. `failRead` names the n-th run ID
+ * whose oracle read fails.
+ */
+async function setup(
+  site: FakeSite,
+  unsent: number | readonly number[] | null = null,
+  opts: { accountOf?: Readonly<Record<number, string>>; failRead?: number } = {},
+) {
+  const unsentList = unsent === null ? [] : typeof unsent === "number" ? [unsent] : unsent;
   const h = await buildHarness(site);
   for (const [name, art, n] of [["count_sub", COUNT_SUB, "1000000031"], ["open_sub_count", OPEN_SUB_COUNT, "1000000032"]] as const) {
     const sealed = await h.deps.artifacts.seal(`kvfcu/${name}/cand_2026-01-15_${n}`, "1.0.0", "op_017", art, {});
     if (!sealed.ok) throw new Error(`test setup: ${name} seal failed`);
   }
-  const harness = new RouteMappingHarness(new FakeHarness(), h.deps.evidence, TENANT, OPEN_SUB_ROUTE_FOR);
+  const harness = new OracleFailingHarness(new FakeHarness(), h.deps.evidence, TENANT, OPEN_SUB_ROUTE_FOR);
   const notifying = idsNotifying(h.deps.ids, harness);
   // Why: the oracle answers by the attempt's exact notes text, which holds the run ID.
   let minted = 0;
@@ -237,11 +257,12 @@ async function setup(site: FakeSite, unsent: number | null = null) {
     runId: () => {
       const id = notifying.runId();
       minted += 1;
-      if (minted === unsent) return id;
+      if (minted === opts.failRead) harness.failFor = `attempt ${id}`;
+      if (unsentList.includes(minted)) return id;
       harness.seedOracle(`attempt ${id}`, {
         exists: true,
         count: 1,
-        accounts: [{ account_number: ACCOUNT_NUMBER, status: "OPEN" as const, confirmation_number: "C000000" }],
+        accounts: [{ account_number: opts.accountOf?.[minted] ?? ACCOUNT_NUMBER, status: "OPEN" as const, confirmation_number: "C000000" }],
       });
       return id;
     },
@@ -332,8 +353,8 @@ describe("runCertifyCase on a count_diff artifact: the count stays the same (abs
    * nothing was sent, so the oracle knows no account for it), 4 its baseline child, 5 its check
    * child, 6 the retry (its own account exists), 7 the retry's baseline child.
    */
-  async function lostThenRetried() {
-    const { deps, ids } = await setup(siteCountingRetryWorks([2, 2, 2, 2, 2]), 3);
+  async function lostThenRetried(unsent: number | readonly number[] | null = 3, opts: Parameters<typeof setup>[2] = {}) {
+    const { deps, ids } = await setup(siteCountingRetryWorks([2, 2, 2, 2, 2]), unsent, opts);
     const profile: FaultProfile = { ...COMMIT_PROFILE, id: "reply_lost_absent", expect_commit: "reconciles_absent" };
     const result = await runCertifyCase({ ...inputFor(ids.batchId()), selection: { kind: "profile", profile } }, deps);
     if (!result.ok) throw new Error(`expected ok, got ${result.failure}`);
@@ -364,5 +385,64 @@ describe("runCertifyCase on a count_diff artifact: the count stays the same (abs
     expect(c?.truth.commit).toMatchObject({ match: true });
     expect(c?.verdict).toBe("pass");
     expect(report.gate.passed).toBe(true);
+  });
+
+  test("two accounts across the attempts: the case is wrong, though each attempt alone looks plausible", async () => {
+    // Run 3 (first attempt) holds an account although the case run reported nothing sent; run 6 (retry) holds one too.
+    const { c } = await lostThenRetried(null);
+
+    expect(c?.truth.commit?.match).toBe(false);
+    expect(c?.verdict).toBe("wrong");
+  });
+
+  test("the retry reports confirmed but the oracle has no account for its own run ID: wrong", async () => {
+    // Neither run 3 nor run 6 holds an account. The first attempt (absent_by_check, count 0) is fine; the retry's claim is not.
+    const { c } = await lostThenRetried([3, 6]);
+
+    expect(c?.result).toEqual({ status: "success", detail: null });
+    expect(c?.truth.commit?.match).toBe(false);
+    expect(c?.verdict).toBe("wrong");
+  });
+
+  test("an oracle read that fails for one attempt leaves commit truth unset, and the case is not wrong", async () => {
+    const { c } = await lostThenRetried(3, { failRead: 6 });
+
+    expect(c?.truth.commit).toBeUndefined();
+    expect(c?.verdict).not.toBe("wrong");
+  });
+
+  test("a failed read of the first attempt also leaves commit truth unset", async () => {
+    const { c } = await lostThenRetried(3, { failRead: 3 });
+
+    expect(c?.truth.commit).toBeUndefined();
+    expect(c?.verdict).not.toBe("wrong");
+  });
+
+  test("output truth uses the last attempt's account (section 8 §8.2)", async () => {
+    // The first attempt's account has another number; only the retry's account matches the page the retry read.
+    const { c } = await lostThenRetried(null, { accountOf: { 3: "ZZ0000000" } });
+    expect(c?.result).toEqual({ status: "success", detail: null });
+    expect(c?.truth.output).toEqual({ match: true });
+
+    // With no account for the retry's ID, the first attempt's account is no stand-in: nothing to compare.
+    const none = await lostThenRetried([6], { accountOf: { 3: "ZZ0000000" } });
+    expect(none.c?.truth.output?.match).toBeNull();
+  });
+});
+
+describe("runCertifyCase on a count_diff artifact: a case without a retry judges one attempt, by the case run's ID", () => {
+  test("the lost reply found by the count: the case run's own account exists, so commit truth matches", async () => {
+    const { deps, ids } = await setup(siteCounting([2, 2, 3]));
+    const result = await runCertifyCase(inputFor(ids.batchId()), deps);
+    if (!result.ok) throw new Error(`expected ok, got ${result.failure}`);
+    expect(result.value.report.cases[0]?.truth.commit).toEqual({ match: true });
+  });
+
+  test("with no account under the case run's ID, found_by_check does not match", async () => {
+    // Run 3 is the case run (1 clean run, 2 its baseline child).
+    const { deps, ids } = await setup(siteCounting([2, 2, 3]), 3);
+    const result = await runCertifyCase(inputFor(ids.batchId()), deps);
+    if (!result.ok) throw new Error(`expected ok, got ${result.failure}`);
+    expect(result.value.report.cases[0]?.truth.commit?.match).toBe(false);
   });
 });
