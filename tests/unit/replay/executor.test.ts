@@ -5,7 +5,9 @@
 import { describe, expect, test } from "vitest";
 import { runReplay } from "../../../src/core/replay/executor.js";
 import { FakeOperator } from "../../../src/fakes/operator.js";
-import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import { SnapshotSurface, type FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
+import { toFactory } from "../../../src/ports/hands.js";
+import { ok } from "../../../src/ports/outcome.js";
 import {
   ACCOUNT_NUMBER,
   MEMBER_MISSING,
@@ -264,5 +266,49 @@ describe("runReplay: an uncertain commit (section 5 §2.6: never end on uncertai
     expect(result.failure.code).toBe("escalation_timeout");
     expect(result.failure.safe_to_retry).toBe(false);
     expect(result.effect).toMatchObject({ commit: "uncertain", performed_by: "bot" });
+  });
+});
+
+describe("runReplay: a failed session prelude (section 3 §5.5, §6.4)", () => {
+  /** The run must end as a failed result, not throw: `failure.step` names no task step (null),
+   * while the log's `run_end` line keeps the `session:` step ID. */
+  async function expectSessionFailure(h: Awaited<ReturnType<typeof buildHarness>>): Promise<void> {
+    const { runId, result } = await runReplay(replayInputOf(h, requestOf({ authorization: OPEN_SUB_AUTH })), h.deps);
+    expect(result.status).toBe("failed");
+    if (result.status !== "failed") throw new Error(`expected failed, got ${result.status}`);
+    expect(result.failure.step).toBeNull();
+    const events = await h.deps.evidence.events(TENANT, runId);
+    if (!events.ok) throw new Error("events failed");
+    const end = events.value.find((e) => (e as { event?: string }).event === "run_end") as { step?: string | null } | undefined;
+    expect(end?.step).toMatch(/^session:/);
+  }
+
+  test("a failing sign-in step (no login button): a failed result with a null failure step", async () => {
+    const base = fixtureSite();
+    const site: FakeSite = { ...base, screens: { ...base.screens, "/": { elements: [] } } };
+    await expectSessionFailure(await buildHarness(site));
+  });
+
+  test("human input during sign-in: a failed result with a null failure step, no throw", async () => {
+    const site = fixtureSite();
+    class InputDuringSignIn extends SnapshotSurface {
+      #sent = false;
+      override async open(...args: Parameters<SnapshotSurface["open"]>): ReturnType<SnapshotSurface["open"]> {
+        const opened = await super.open(...args);
+        if (!opened.ok) return opened;
+        const { eyes, hands } = opened.value;
+        const watching = Object.create(eyes) as typeof eyes;
+        // The person touches the page at the first look, which is inside the sign-in prelude.
+        watching.observe = (signal) => {
+          if (!this.#sent) {
+            this.#sent = true;
+            this.humanInput();
+          }
+          return eyes.observe(signal);
+        };
+        return ok({ eyes: watching, hands });
+      }
+    }
+    await expectSessionFailure(await buildHarness(site, { surface: toFactory(new InputDuringSignIn(site)) }));
   });
 });

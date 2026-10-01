@@ -563,7 +563,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     safeToRetry: boolean,
   ): Promise<ReplayOutcome> => {
     const endedAt = deps.clock.now().toISOString();
-    const result = failedResult(runId, capabilityBlock, stepId, failure, location, safeToRetry, captureFiles, startedAt, endedAt, effect);
+    // Why: a prelude step logs as `session:<id>` (section 3 §6.4), but the result's `failure.step`
+    // holds a task step ID in snake_case (§5.5). A session failure names no task step: `null`.
+    const resultStep = stepId?.includes(":") === true ? null : stepId;
+    const result = failedResult(runId, capabilityBlock, resultStep, failure, location, safeToRetry, captureFiles, startedAt, endedAt, effect);
     return endRun("failed", failure.code, result, stepId);
   };
 
