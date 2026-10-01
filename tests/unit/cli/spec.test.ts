@@ -35,7 +35,7 @@ describe("spec commands", () => {
       schema: "intyy.runspec/1.0",
       caller: { tenant: "keystone", agent_id: "op_017" },
       capability: "sign_in",
-      prompt: "discovery@1.0",
+      prompt: "discovery@1.1",
     });
     expect((await call(r, "op_017", ["spec", "new", "kvfcu/sign_in"])).code).toBe(EXIT.refused);
     const empty = await call(r, "op_031", ["spec", "check", "kvfcu/sign_in"]);

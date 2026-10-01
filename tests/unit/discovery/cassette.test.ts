@@ -2,13 +2,16 @@
 // adapter (over a fake HTTP layer) is saved as a cassette; the cassette replays it with no model;
 // a changed observation stops the replay loudly. Design section 9 §16 ("Planner cassette"); M03
 // tasks 12 and 13. The live replay on the bank app is tests/live/cassette.test.ts.
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { ClaudePlanner } from "../../../src/adapters/claude/planner.js";
 import { CassettePlanner } from "../../../src/fakes/cassette-planner.js";
 import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import { cassetteOf } from "../../../scripts/cassette.js";
-import { run, SIGN_IN_STEPS, SITE, type Ran } from "./run-kit.js";
+import { RunSpec } from "../../../src/core/model/runspec.js";
+import { run, SIGN_IN, SIGN_IN_STEPS, SITE, type Ran } from "./run-kit.js";
 
 const done: Ran[] = [];
 afterEach(async () => {
@@ -106,5 +109,46 @@ describe("planner cassette", () => {
     await expect(run({ planner: new CassettePlanner(cassette), site: changed })).rejects.toThrow(
       /turn 1 saw a changed observation, line \d+:\n {2}saved: e1 heading "Teller Sign In"\n {2}now: {3}e1 heading "Staff Sign In"/,
     );
+  });
+});
+
+describe("the cassette's prompt label (section 6 §11.4: versions are frozen per run)", () => {
+  /** Records a run of the sign-in spec on `prompt`, and returns its folder and ID. */
+  async function recorded(prompt: string) {
+    const r = await run({ planner: claude(), spec: RunSpec.parse({ ...SIGN_IN, prompt }) });
+    done.push(r);
+    expect(r.result.status).toBe("success");
+    return { dir: join(r.root, "evidence", "keystone", "runs", r.result.runId), id: r.result.runId };
+  }
+
+  test.each(["discovery@1.0", "discovery@1.1"])(
+    "with no argument, a %s run is labelled with its own version",
+    async (prompt) => {
+      const { dir, id } = await recorded(prompt);
+      expect(cassetteOf(dir, id).prompt).toBe(prompt);
+    },
+  );
+
+  test("an explicit argument wins over the run's version", async () => {
+    const { dir, id } = await recorded("discovery@1.1");
+    expect(cassetteOf(dir, id, "discovery@1.0").prompt).toBe("discovery@1.0");
+  });
+
+  test("a run_start with no prompt version throws", async () => {
+    const { dir, id } = await recorded("discovery@1.0");
+    const tmp = mkdtempSync(join(tmpdir(), "intyy-cassette-"));
+    try {
+      cpSync(dir, tmp, { recursive: true });
+      const lines = readFileSync(join(tmp, "events.jsonl"), "utf8").split("\n");
+      const start = JSON.parse(lines[0] ?? "") as { data: { frozen: { models: Record<string, unknown> } } };
+      delete start.data.frozen.models.prompt;
+      lines[0] = JSON.stringify(start);
+      writeFileSync(join(tmp, "events.jsonl"), lines.join("\n"));
+      expect(() => cassetteOf(tmp, id)).toThrow("run_start records no prompt version");
+      // An explicit argument needs no recorded version.
+      expect(cassetteOf(tmp, id, "discovery@1.0").prompt).toBe("discovery@1.0");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

@@ -1,4 +1,4 @@
-// Proves the discovery prompt, version discovery@1.0: the task block shows names not values,
+// Proves the discovery prompt, versions discovery@1.0 and 1.1: the task block shows names not values,
 // secrets by name, the untrusted-screen rule, and each turn's message. Its text is frozen: a
 // change needs a new version file. Design section 6 §8.1, §11, section 4 §10.2; M03 task 5.
 import { describe, expect, test } from "vitest";
@@ -159,5 +159,57 @@ describe("turn message (section 6 §11.2)", () => {
     expect(text).toContain('last="blocked" />\n<feedback>Blocked by policy');
     expect(text).toContain("<history>\n(none yet)\n</history>");
     expect(text).toMatch(/<\/screen>\n<note>No screenshot this turn\./);
+  });
+});
+
+describe("discovery@1.1 (section 6 §11.1, §11.4)", () => {
+  const next = PROMPTS["discovery@1.1"];
+  if (next === undefined) throw new Error("discovery@1.1 is missing");
+
+  const OLD_RULE = "- Change data at most once. That change needs the operator's approval.";
+  const NEW_RULE =
+    "- Change data at most once. Take that action as normal: intyy pauses it and asks the operator. Never call stuck to ask for approval.";
+  const view = taskView(SIGN_IN, redactor(), SECRETS);
+
+  test("the registry holds both versions, each module named by its key", () => {
+    expect(Object.keys(PROMPTS).sort()).toEqual(["discovery@1.0", "discovery@1.1"]);
+    for (const [key, mod] of Object.entries(PROMPTS)) expect(mod.version).toBe(key);
+  });
+
+  test("1.1 has the new rule and not the old one; 1.0 keeps the old one", () => {
+    const text = next.system(view);
+    expect(text).toContain(NEW_RULE);
+    expect(text).not.toContain(OLD_RULE);
+    expect(prompt.system(view)).toContain(OLD_RULE);
+    expect(prompt.system(view)).not.toContain(NEW_RULE);
+  });
+
+  test("1.1 is the 1.0 system prompt with only that line swapped", () => {
+    expect(next.system(view)).toBe(prompt.system(view).replace(OLD_RULE, NEW_RULE));
+  });
+
+  test("the 1.1 text is frozen for this version", () => {
+    // Why: section 6 §11.4, a new prompt can change what the LLM does. Change text, add a version.
+    expect(sha256Hex(next.system(view))).toBe("472c0283aca23453cbfb90aedf16d5cc2e2e7ab520938522a4bcecaa9115551b");
+  });
+
+  test("turn messages are identical for 1.0 and 1.1", () => {
+    const screenView = buildScreen(
+      screen([el("b", { role: "button", roleGroup: "button_like", clues: { path: "b", name: "Go" } })], {
+        url: "http://127.0.0.1:8080/x",
+        title: "X",
+      }),
+      redactor(),
+    );
+    const turn = {
+      turn: 2,
+      limit: 40,
+      last: "ok" as const,
+      feedback: masked`Look again.`,
+      history: masked`t1 click e1 → ok  [flow_step]`,
+      screen: screenView,
+      withheld: true,
+    };
+    expect(next.turn(turn)).toBe(prompt.turn(turn));
   });
 });

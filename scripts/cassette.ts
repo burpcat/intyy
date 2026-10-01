@@ -7,8 +7,20 @@ import { replyOf } from "../src/adapters/claude/planner.js";
 import { sha256Hex } from "../src/core/model/canonical.js";
 import { Cassette } from "../src/core/model/cassette.js";
 
-/** The cassette of a run: each planner request's turn text, and its reply. */
-export function cassetteOf(runDir: string, runId: string, prompt = "discovery@1.0"): Cassette {
+/** The prompt version the run froze: `run_start` in `events.jsonl` records it (section 3 §6.5). */
+function frozenPrompt(runDir: string): string {
+  const first = readFileSync(join(runDir, "events.jsonl"), "utf8").split("\n")[0] ?? "";
+  const line = JSON.parse(first) as { data?: { frozen?: { models?: { prompt?: unknown } } } };
+  const prompt = line.data?.frozen?.models?.prompt;
+  if (typeof prompt !== "string") throw new Error("run_start records no prompt version");
+  return prompt;
+}
+
+/**
+ * The cassette of a run: each planner request's turn text, and its reply. The prompt label comes
+ * from the run's own `run_start` unless the caller names one.
+ */
+export function cassetteOf(runDir: string, runId: string, prompt?: string): Cassette {
   const llm = join(runDir, "llm");
   const names = readdirSync(llm).sort();
   const turns: Cassette["turns"] = [];
@@ -38,7 +50,7 @@ export function cassetteOf(runDir: string, runId: string, prompt = "discovery@1.
     schema: "intyy.cassette/1.0",
     run_id: runId,
     model,
-    prompt,
+    prompt: prompt ?? frozenPrompt(runDir),
     system: `sha256:${sha256Hex(system)}`,
     turns,
   });

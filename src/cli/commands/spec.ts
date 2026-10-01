@@ -99,7 +99,7 @@ function skeleton(
     session: opts.session,
     entry: "/",
     model: "claude-sonnet-5",
-    prompt: "discovery@1.0",
+    prompt: "discovery@1.1",
   };
 }
 
