@@ -3,14 +3,21 @@
 // gate passes and the batch is no drill (design section 8 §7.1; section 9 §9.1, §9.2). Needs the
 // owner's sealed artifact, approved suite, test data, faults, and packs: until they exist,
 // `beforeAll` fails with one message naming what is missing. Never skips. The instance lock is
-// held for the file. M08 gate row "A quick batch on keystone, flag off, passes".
+// held for the file. M08 gate row "A quick batch on keystone, flag off, passes". M10 gate row "a
+// quick batch passes on the bank app with jev and the reviewer faked": the same batch, with a
+// table classifier and a table reviewer swapped into the wiring by the TEST (made-up key variables,
+// no call leaves the machine; the real library's global policy has `replay_jev` and
+// `replay_reviewer` on). Both fakes are unsure, so neither decides an outcome nor says "found".
 import { afterAll, beforeAll, expect, test } from "vitest";
+import { TableClassifier } from "../../src/fakes/table-classifier.js";
+import { TableReviewer } from "../../src/fakes/table-reviewer.js";
 import type { LockHold } from "../../src/ports/locks.js";
 import { acquireInstanceLock, locks } from "./replay-demo-kit.js";
 import { QUICK_TIMEOUT_MS, certifyQuick, requireCertifyPrereqs, type QuickRun } from "./certify-kit.js";
 
 let hold: LockHold | null = null;
 let batch: QuickRun | null = null;
+const extra: QuickRun[] = [];
 
 beforeAll(async () => {
   await requireCertifyPrereqs();
@@ -19,6 +26,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (batch !== null) await batch.remove();
+  for (const b of extra) await b.remove();
   if (hold !== null) await locks.release(hold);
 });
 
@@ -33,6 +41,32 @@ test(
     expect(batch.plan.declaration).toBeUndefined();
     expect(batch.plan.kind).toBe("quick");
     expect(batch.report.cases.map((c) => c.case_id)).toContain("baseline");
+  },
+  QUICK_TIMEOUT_MS,
+);
+
+test(
+  "a quick batch passes with jev and the reviewer faked, and is not a drill",
+  async () => {
+    const jev = new TableClassifier({
+      trouble: [
+        { when: {}, reply: { answer: { bucket: "needs_review", handler: null, outcome: null, confidence: 0.5 } } },
+      ],
+      reconcile: [{ when: {}, reply: { answer: { verdict: "unclear", confidence: 0.5 } } }],
+    });
+    const reviewer = new TableReviewer({
+      fixStep: [{ when: {}, reply: { answer: { give_up: true, reason: "No safe fix." } } }],
+      secondOpinion: [{ when: {}, reply: { answer: { verdict: "unclear", confidence: 0.5 } } }],
+    });
+    const run = await certifyQuick([], {
+      wire: { classifier: () => jev, jevVersion: "jev-1.13.0", reviewer: () => reviewer },
+    });
+    extra.push(run);
+    expect(run.report.gate.passed).toBe(true);
+    expect(run.code).toBe(0);
+    expect(run.report.drill).toBeUndefined();
+    expect(run.plan.kind).toBe("quick");
+    expect(run.report.cases.map((c) => c.case_id)).toContain("baseline");
   },
   QUICK_TIMEOUT_MS,
 );

@@ -24,6 +24,7 @@ import { act, readVersion, type Register } from "../program.js";
 import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
+import { target as thresholdsTarget } from "./thresholds.js";
 import { driftDeps, driftTenants } from "./trust-shared.js";
 import { raiseLiveWriteFailed, scanDrift } from "../../core/trust/alerts.js";
 
@@ -231,21 +232,47 @@ export function outputLines(result: Result): string[] {
 }
 
 /**
- * The models a replay run may use (section 5 §8.7, §8.8). There is no jev adapter, so rung 2 is
- * never wired. The reviewer is built only when policy `llm.replay_reviewer` is on, the run is not
- * `--models off`, and the key variable `intyy.json` names is set (never read from a file).
- * `certify` uses it too, so a batch tests the ladder a live run gets (section 8 §7.1).
+ * The models a replay run may use (section 5 §8.7, §8.8). Each is built only when its policy
+ * switch is on (`llm.replay_jev`, `llm.replay_reviewer`), the run is not `--models off`, and the
+ * key variable `intyy.json` names is set (never read from a file). Jev also loads the app's
+ * approved threshold record for its pinned version; with none, the starting values apply
+ * (section 5 §10.4). `certify` uses it too, so a batch tests the ladder a live run gets (section 8 §7.1).
  */
-export function replayModels(ctx: Ctx, reviewerSwitch: boolean): NonNullable<ReplayDeps["models"]> {
+export async function replayModels(
+  ctx: Ctx,
+  switches: { jev: boolean; reviewer: boolean },
+  app: string,
+): Promise<NonNullable<ReplayDeps["models"]>> {
   if (ctx.flags.models === "off") return { off: true };
-  if (!reviewerSwitch) return {};
-  const name = ctx.config.model_keys.claude;
-  const key = ctx.io.env[name];
-  if (key === undefined || key === "") {
-    progress(ctx.io, `the reviewer is off for this run: set ${name} to turn it on.`);
-    return {};
+  const models: NonNullable<ReplayDeps["models"]> = {};
+  if (switches.reviewer) {
+    const name = ctx.config.model_keys.claude;
+    const key = ctx.io.env[name];
+    if (key === undefined || key === "") {
+      progress(ctx.io, `the reviewer is off for this run: set ${name} to turn it on.`);
+    } else {
+      models.reviewer = ctx.wiring.reviewer(key);
+    }
   }
-  return { reviewer: ctx.wiring.reviewer(key) };
+  if (switches.jev) {
+    const name = ctx.config.model_keys.jev;
+    const key = ctx.io.env[name];
+    if (key === undefined || key === "") {
+      progress(ctx.io, `jev is off for this run: set ${name} to turn it on.`);
+    } else {
+      models.classifier = ctx.wiring.classifier(key);
+      models.jevVersion = ctx.wiring.jevVersion;
+      // Why approved only: section 8 §14.1, a cutoff counts once a human approved it.
+      const record = await load(thresholdsTarget(ctx, app, ctx.wiring.jevVersion), ["approved"]);
+      if (record === undefined) {
+        progress(ctx.io, `jev uses the starting thresholds: ${app} ${ctx.wiring.jevVersion} has no approved record.`);
+      } else {
+        const { handler_min, outcome_min, reconciliation_min } = record.doc;
+        models.cutoffs = { handler_min, outcome_min, reconciliation_min };
+      }
+    }
+  }
+  return models;
 }
 
 /**
@@ -391,7 +418,11 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
             await scanDrift(driftDeps(ctx), await driftTenants(ctx));
           },
           operator: ctx.wiring.discovery.operator,
-          models: replayModels(ctx, policy.effective.llm.replay_reviewer),
+          models: await replayModels(
+            ctx,
+            { jev: policy.effective.llm.replay_jev, reviewer: policy.effective.llm.replay_reviewer },
+            appName,
+          ),
           signal: stop.signal,
         };
         // Section 5 §7.4: the merged, approved handler set for this tenant, app, and app

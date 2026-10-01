@@ -253,6 +253,10 @@ export type CallOpts = {
   /** Replaces `wiring.reviewer`, so a test can see whether (and with which key) the replay
    * command asks for the rung 3 reviewer (design section 5 §11.5; M09). */
   reviewer?: Wiring["reviewer"];
+  /** Replaces `wiring.classifier` and `wiring.jevVersion`, so a test can see whether (and with
+   * which key) the replay command asks for the rung 2 jev classifier (design section 5 §10; M09). */
+  classifier?: Wiring["classifier"];
+  jevVersion?: string;
 };
 
 /** Starts one `intyy` call against `env`, without waiting for it to end. The real `wire()`,
@@ -284,6 +288,8 @@ export function startCall(env: ReplayEnv, argv: readonly string[], opts: CallOpt
     wire: (root, config, wireEnv) => ({
       ...realWire(root, config, wireEnv),
       ...(opts.reviewer === undefined ? {} : { reviewer: opts.reviewer }),
+      ...(opts.classifier === undefined ? {} : { classifier: opts.classifier }),
+      ...(opts.jevVersion === undefined ? {} : { jevVersion: opts.jevVersion }),
       policy: env.policy,
       settings: env.settings,
       discovery: {

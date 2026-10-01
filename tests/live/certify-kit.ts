@@ -153,7 +153,11 @@ export type CaseRun = {
 
 /** How a case treats the models. Default: off, like the M06 table. */
 export type ModelsOpt = {
-  /** Ports swapped into the wiring by the test, such as `reviewer: () => new TableReviewer(...)`. */
+  /**
+   * Ports swapped into the wiring by the test, such as `reviewer: () => new TableReviewer(...)`,
+   * or `classifier: () => new TableClassifier(...)` with `jevVersion`. A model with no swapped-in
+   * fake gets no key, so it stays off.
+   */
   wire: Partial<Wiring>;
 };
 
@@ -187,9 +191,18 @@ async function invoke(tail: string[], models?: ModelsOpt): Promise<{
   symlinkSync(lib, join(tmp.root, config.library));
   const env: Record<string, string | undefined> = { ...process.env };
   loadDotEnv(ROOT, env);
-  // Why a made-up key when models are on: the CLI builds a reviewer only when the key variable is
-  // set, and the test's table reviewer replaces the real one, so no call ever leaves the machine.
-  if (models !== undefined) env[config.model_keys.claude] = "table-reviewer-no-real-key";
+  // Why a made-up key when a fake is swapped in: the CLI builds a model only when its key variable
+  // is set, and the test's table fake replaces the real adapter, so no call ever leaves the machine.
+  // Why delete the key when no fake is swapped in: `.env` may hold a real key, and the real adapter
+  // would then call out. A test never reaches a live model (CLAUDE.md, Test gate).
+  if (models !== undefined) {
+    // Why `undefined`, not `delete`: lint forbids dynamic delete, and an unset variable reads the same.
+    const set = (name: string, fake: boolean, value: string): void => {
+      env[name] = fake ? value : undefined;
+    };
+    set(config.model_keys.claude, models.wire.reviewer !== undefined, "table-reviewer-no-real-key");
+    set(config.model_keys.jev, models.wire.classifier !== undefined, "table-jev-no-real-key");
+  }
   const done = await call(
     [
       "--root",
@@ -317,8 +330,8 @@ export const QUICK_TIMEOUT_MS = 900_000;
  * Runs `certify kvfcu/open_share_subaccount@1.0.0 --kind quick` with `extra` flags, and reads back
  * the printed plan and report (section 9 §9.1). Throws with the CLI's stderr when no batch printed.
  */
-export async function certifyQuick(extra: string[] = []): Promise<QuickRun> {
-  const r = await invoke(["certify", KEY, "--kind", "quick", ...extra]);
+export async function certifyQuick(extra: string[] = [], models?: ModelsOpt): Promise<QuickRun> {
+  const r = await invoke(["certify", KEY, "--kind", "quick", ...extra], models);
   try {
     const raw: unknown = JSON.parse(r.stdout);
     const parsed = z.object({ plan: BatchPlan, report: BatchReport }).parse(raw);

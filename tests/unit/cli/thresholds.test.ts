@@ -133,3 +133,62 @@ describe("thresholds show", () => {
     );
   });
 });
+
+// Why a second version string: the real jev adapter reports `jev-1.13.0` (docs/decisions.md, M09,
+// 2026-10-01), with a dash and dots and no `@`. Every verb must take it as the version folder.
+describe("thresholds with the pinned jev version jev-1.13.0", () => {
+  const PINNED = "jev-1.13.0";
+  const PIN = ["--jev", PINNED];
+  const pinnedBody = (over: Record<string, unknown> = {}) => body({ jev_version: PINNED, ...over });
+
+  /** Like `editWith`, for the pinned version. */
+  function editPinned(r: string, doc: Record<string, unknown>): ReturnType<typeof cli> {
+    const path = join(r, `edited-pinned-${String(Math.random()).slice(2)}.json`);
+    writeFileSync(path, JSON.stringify(doc));
+    return cli(r, "op_017", ["thresholds", "edit", APP, ...PIN], { EDITOR: `cp "${path}"` });
+  }
+
+  test("edit saves a valid candidate; check passes", async () => {
+    const r = tempRoot();
+    expect((await editPinned(r, pinnedBody())).code).toBe(EXIT.ok);
+    expect((await cli(r, "op_017", ["thresholds", "check", APP, ...PIN])).code).toBe(EXIT.ok);
+  });
+
+  test("a bad edit (outcome_min below handler_min) saves nothing", async () => {
+    const r = tempRoot();
+    const edited = await editPinned(r, pinnedBody({ outcome_min: 0.5 }));
+    expect(edited.code).toBe(EXIT.invalid);
+    expect((await cli(r, "op_017", ["thresholds", "check", APP, ...PIN])).code).toBe(EXIT.usage);
+  });
+
+  test("op_017 seals; the sealer cannot approve; op_031 approves", async () => {
+    const r = tempRoot();
+    await editPinned(r, pinnedBody());
+    expect((await cli(r, "op_017", ["thresholds", "seal", APP, ...PIN])).code).toBe(EXIT.ok);
+    expect(
+      (await cli(r, "op_017", ["thresholds", "approve", APP, ...PIN, "--rev", "1"])).code,
+    ).toBe(EXIT.refused);
+    expect(
+      (await cli(r, "op_031", ["thresholds", "approve", APP, ...PIN, "--rev", "1"])).code,
+    ).toBe(EXIT.ok);
+  });
+
+  test("show lists the approved record under its version", async () => {
+    const r = tempRoot();
+    await editPinned(r, pinnedBody({ handler_min: 0.85 }));
+    await cli(r, "op_017", ["thresholds", "seal", APP, ...PIN]);
+    await cli(r, "op_031", ["thresholds", "approve", APP, ...PIN, "--rev", "1"]);
+    const shown = await cli(r, "op_017", ["thresholds", "show", APP, "--json"]);
+    const records = (JSON.parse(shown.stdout) as { records: { jev_version: string; rev: string; state: string; handler_min: number }[] }).records;
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      jev_version: PINNED,
+      rev: "1",
+      state: "approved",
+      handler_min: 0.85,
+    });
+    expect((await cli(r, "op_017", ["thresholds", "show", APP, ...PIN])).stdout).toContain(
+      "rev 1 (approved)",
+    );
+  });
+});

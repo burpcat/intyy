@@ -46,7 +46,7 @@ function jevOption(opts: Record<string, unknown>, required: boolean): string | u
 }
 
 /** One app and jev version's threshold record. Shared across tenants, so roles sit on `*` (like faults). */
-function target(ctx: Ctx, app: string, jev: string): DocTarget<Thresholds> {
+export function target(ctx: Ctx, app: string, jev: string): DocTarget<Thresholds> {
   const id = `${app}/${jev}`;
   return {
     store: ctx.wiring.thresholds,

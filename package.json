@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
+    "@typesafe-ai/sdk": "0.6.0",
     "commander": "^15.0.0",
     "playwright": "^1.63.0",
     "zod": "^4.6.5"

@@ -173,8 +173,12 @@ async function buildDeps(
     engineVersion: readVersion(),
     mailboxOperator: ctx.wiring.discovery.operator,
     // Why: section 8 §7.1. A batch tests the ladder a live run would use, so it gets the models a
-    // live replay gets: the reviewer only when the policy switch and the key allow, never a fake jev.
-    models: replayModels(ctx, policy.effective.llm.replay_reviewer),
+    // live replay gets: each model only when its policy switch and its key allow, never a fake jev.
+    models: await replayModels(
+      ctx,
+      { jev: policy.effective.llm.replay_jev, reviewer: policy.effective.llm.replay_reviewer },
+      app,
+    ),
   } satisfies Parameters<typeof runCertifyCase>[1];
   const frozenSet = await loadFrozenSetFor(ctx, ctx.tenant, app, appSettings.app_version);
   return { deps, origin: appSettings.origin, appVersion: appSettings.app_version, frozenSet };

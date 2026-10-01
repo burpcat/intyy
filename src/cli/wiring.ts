@@ -11,6 +11,7 @@ import { FileAlertStore } from "../adapters/files/alert-store.js";
 import { FileScoreStore } from "../adapters/files/score-store.js";
 import { ClaudePlanner } from "../adapters/claude/planner.js";
 import { ClaudeReviewer } from "../adapters/claude/reviewer.js";
+import { JEV_MODEL, JevClassifier } from "../adapters/jev/classifier.js";
 import { KvfcuHarness, type KvfcuHarnessConfig } from "../adapters/kvfcu-harness/harness.js";
 import { MailboxDesk, MailboxOperator } from "../adapters/mailbox/mailbox.js";
 import { PlaywrightMarker } from "../adapters/playwright/marker.js";
@@ -52,7 +53,7 @@ import { LockManager } from "../core/locks/manager.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Locks } from "../ports/locks.js";
 import type { Marker } from "../ports/marker.js";
-import type { Planner, Reviewer } from "../ports/models.js";
+import type { Classifier, Planner, Reviewer } from "../ports/models.js";
 import type { InterventionDesk, OperatorPort } from "../ports/operator.js";
 import type { SurfaceFactory } from "../ports/surface.js";
 import type { AlertStore } from "../ports/alerts.js";
@@ -94,9 +95,16 @@ export type Wiring = {
   /**
    * The rung 3 reviewer, built from the API key (section 5 §11). The caller decides whether to ask
    * for one: only when policy `replay_reviewer` is on and the run is not `--models off`.
-   * There is no jev here on purpose: no jev adapter exists, so real runs freeze `ladder.jev: false`.
    */
   reviewer: (apiKey: string) => Reviewer;
+  /**
+   * The rung 2 jev classifier, built from the API key (section 5 §10). Same rule as the reviewer:
+   * the caller asks only when policy `replay_jev` is on and the run is not `--models off`.
+   * A test swaps it for a table fake, as it does the reviewer.
+   */
+  classifier: (apiKey: string) => Classifier;
+  /** The jev version this wiring's classifier reports, frozen per run (section 5 §10.8). A test that fakes jev swaps it too. */
+  jevVersion: string;
   /** The request index's keyed-hash log, one per tenant key (section 3 §4.4, section 4 §8.11).
    * Replay is the only reader; `runReplay` never touches `node:fs` itself. */
   requestIndexStore: LogStore<RequestIndexLine, never>;
@@ -163,6 +171,8 @@ export function wire(
         new MailboxOperator({ evidenceRoot: join(state, "evidence"), tmpDir }, run),
     },
     reviewer: (apiKey) => new ClaudeReviewer({ apiKey }),
+    classifier: (apiKey) => new JevClassifier({ apiKey }),
+    jevVersion: JEV_MODEL,
     requestIndexStore: new FileLogStore<RequestIndexLine, never>(
       { line: RequestIndexLine, record: z.never() },
       { dir: join(state, "request-index"), tmpDir },
