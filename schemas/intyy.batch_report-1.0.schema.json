@@ -31,7 +31,8 @@
       "type": "string",
       "enum": [
         "quick",
-        "full"
+        "full",
+        "regression"
       ]
     },
     "key": {
@@ -637,6 +638,10 @@
     "drill": {
       "type": "boolean",
       "const": true
+    },
+    "pack": {
+      "type": "string",
+      "minLength": 1
     }
   },
   "required": [

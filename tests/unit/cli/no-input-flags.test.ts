@@ -67,6 +67,8 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   // M11 chunk B: `drift report --since` names a date, never member data. Alert notes come from standard input.
   "--since": "a date like 2026-09-30; not member data",
   // M11 chunk C: `major deprecate`. The reason comes from standard input.
+  // M11 chunk D: `certify --kind regression --pack`.
+  "--pack": "a pack revision, like app:kvfcu@5; not member data",
   "--successor": "a capability major number, like 2; not member data",
   "--retires-on": "a date like 2027-01-31; not member data",
 };

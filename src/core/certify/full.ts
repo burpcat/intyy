@@ -44,6 +44,13 @@ export type SetupSpec = { app: string; capability: string; major: number; cls: S
 
 /** What a full batch needs: the case input minus its single selection, plus the suite's parts. */
 export type CertifyFullInput = Omit<CertifyCaseInput, "selection" | "at" | "rerun" | "operator" | "beforeRun"> & {
+  /**
+   * `regression` runs the baseline, matrix, and extra cases only: no drills and no stability, and no tuned
+   * timeouts (section 8 §7.1, §15.1). Omitted: `full`. The caller passes the frozen set that holds the candidate pack revision.
+   */
+  kind?: "full" | "regression";
+  /** The candidate pack revision a regression batch tests, like `app:kvfcu@5`. Recorded in the plan and report. */
+  pack?: string;
   /** The sealed, approved fault profile set's profiles (section 8 §6.3). */
   profiles: readonly FaultProfile[];
   /** The suite's `matrix.profiles`: `standard` (every profile) or a list of profile IDs. */
@@ -261,6 +268,8 @@ export async function runCertifyFull(
   input: CertifyFullInput,
   deps: CertifyDeps,
 ): Promise<Outcome<FullBatch, CertifyFailure>> {
+  const kind = input.kind ?? "full";
+  const regression = kind === "regression";
   const setupPlan: BatchPlanCase[] = [];
   const beforeRun: BatchInput["beforeRun"] =
     input.setup.length === 0
@@ -367,8 +376,9 @@ export async function runCertifyFull(
 
   // Drills: the commit-step faults that need reconciliation, judged on truth only (section 8 §7.2).
   const reconciling = input.profiles.filter((pr) => pr.expect_commit.startsWith("reconciles_"));
-  if (input.drills > 0 && reconciling.length === 0) gaps.push("drills: no fault profile ends in a reconciliation, so none could run");
-  for (let i = 0; reconciling.length > 0 && i < input.drills; i += 1) {
+  const drillCount = regression ? 0 : input.drills;
+  if (drillCount > 0 && reconciling.length === 0) gaps.push("drills: no fault profile ends in a reconciliation, so none could run");
+  for (let i = 0; reconciling.length > 0 && i < drillCount; i += 1) {
     const profile = reconciling[i % reconciling.length];
     if (profile === undefined) break;
     const caseId = `drill_${String(i + 1)}`;
@@ -381,7 +391,8 @@ export async function runCertifyFull(
 
   // Stability: random faults at each entropy level, seeds from the batch ID, each run twice (section 8 §9.3).
   const stabilityRuns: StabilityRun[] = [];
-  const stab = input.stability ?? null;
+  // Why null for a regression: section 8 §7.1 lists no stability runs for it.
+  const stab = regression ? null : (input.stability ?? null);
   const stabClass = stab === null ? undefined : input.classes.find((c) => c.id === stab.class);
   if (stab !== null && stabClass === undefined) return fail("unknown_class", stab.class);
   for (const entropy of stab === null ? [] : stab.levels) {
@@ -414,7 +425,7 @@ export async function runCertifyFull(
   const judged: GateCase[] = cases.map((c) => ({ group: c.reportCase.group ?? "baseline", verdict: c.reportCase.verdict }));
   const drill = isDrill(input.declaration) || input.modelsOff === true;
   const rules = gateRules({
-    kind: "full",
+    kind,
     drill,
     complete: deps.signal?.aborted !== true,
     cases: judged,
@@ -437,7 +448,7 @@ export async function runCertifyFull(
     tenant: input.tenant,
     app: input.app,
     capability: p.link,
-    kind: "full",
+    kind,
     pin: p.pin,
     started_by: input.staff,
     operator: "scripted",
@@ -445,6 +456,7 @@ export async function runCertifyFull(
     instance: input.instance,
     route_map: routeMapPlain(p.routeMap),
     cases: planCases,
+    ...(input.pack === undefined ? {} : { pack: input.pack }),
     ...(drill ? { drill: true as const } : {}),
     ...(input.modelsOff === true ? { models_off: true as const } : {}),
     ...(input.declaration === undefined
@@ -458,7 +470,7 @@ export async function runCertifyFull(
     app: input.app,
     capability: p.link,
     ended_at: deps.clock.now().toISOString(),
-    kind: "full",
+    kind,
     ...(input.appVersion === undefined
       ? {}
       : { key: { capability: p.pin, tenant: input.tenant, app_version: input.appVersion, patch_revision: null } }),
@@ -470,8 +482,9 @@ export async function runCertifyFull(
     margin,
     fragile,
     coverage_gaps: gaps,
-    timeouts: timeoutsReport(timed, stepKinds, input.timeouts ?? { values: {}, from: null }),
+    ...(regression ? {} : { timeouts: timeoutsReport(timed, stepKinds, input.timeouts ?? { values: {}, from: null }) }),
     stability: stab === null ? null : stabilityCurve(stabilityRuns),
+    ...(input.pack === undefined ? {} : { pack: input.pack }),
     ...(drill ? { drill: true as const } : {}),
     ...(input.modelsOff === true ? { models_off: true as const } : {}),
   };

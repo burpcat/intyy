@@ -27,7 +27,10 @@ import { CliExit, EXIT } from "../exit-codes.js";
 import { answer, progress, type Answer } from "../output.js";
 import { act, readVersion, type Register } from "../program.js";
 import { keyPath } from "../../core/trust/keys.js";
-import { loadFrozenSetFor } from "./pack.js";
+import { buildFrozenSet, type PackLayer } from "../../core/packs/merge.js";
+import { layersWith, packImpact } from "../../core/trust/pack-impact.js";
+import { activeLayers, loadFrozenSetFor, readCandidateLayer } from "./pack.js";
+import { driftTenants, scoreDeps } from "./trust-shared.js";
 import { effectivePolicy } from "./policy.js";
 import { replayModels } from "./replay.js";
 import { settingsTarget } from "./settings.js";
@@ -317,7 +320,7 @@ function fullSummary(plan: BatchPlan, report: BatchReport): string[] {
   const failed = rules === undefined ? [] : Object.entries(rules).filter(([, v]) => !v).map(([k]) => k);
   const v = report.verdicts;
   return [
-    `batch ${plan.batch_id} (full${report.drill === true ? ", drill" : ""})`,
+    `batch ${plan.batch_id} (${plan.kind}${report.drill === true ? ", drill" : ""})${plan.pack === undefined ? "" : ` under pack ${plan.pack}`}`,
     `runs: ${String(report.cases.length)}`,
     ...(v === undefined ? [] : [`verdicts: ${Object.entries(v).map(([k, n]) => `${k} ${String(n)}`).join(", ")}`]),
     `outcome score: ${report.outcome_score === null || report.outcome_score === undefined ? "none" : report.outcome_score.toFixed(2)}`,
@@ -333,13 +336,19 @@ function fullSummary(plan: BatchPlan, report: BatchReport): string[] {
 /** `certify <key> [--kind full|quick]`. `quick`: a baseline, then the commit-step matrix. `full`:
  * baselines, the whole matrix, extras, and drills (section 8 §7.1, §7.2; section 9 §9.1, §9.2).
  * `--plan-only` contacts nothing and writes nothing. */
-async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<string, unknown>): Promise<Answer> {
+async function certifyQuick(
+  ctx: Ctx,
+  key: string | undefined,
+  opts: Record<string, unknown>,
+  /** Set for a regression batch: the candidate pack revision it tests (section 8 §15.1). */
+  regression?: { pack: string; candidate: PackLayer },
+): Promise<Answer> {
   const kind = typeof opts.kind === "string" ? opts.kind : "full";
-  if (kind === "regression") {
-    throw new CliExit(EXIT.usage, "--kind regression is not built yet; it arrives in M11 (pack regression batches)");
+  if (kind !== "quick" && kind !== "full" && kind !== "regression") {
+    throw new CliExit(EXIT.usage, `--kind ${kind}: use full, quick, or regression`);
   }
-  if (kind !== "quick" && kind !== "full") {
-    throw new CliExit(EXIT.usage, `--kind ${kind}: use full or quick`);
+  if ((kind === "regression") !== (regression !== undefined)) {
+    throw new CliExit(EXIT.usage, "--kind regression goes with --pack <scope>@<rev>, and --pack with --kind regression");
   }
   const staff = requireRole(ctx, ctx.tenant, "operator");
   const { app, capability, major, version } = parseKey(key);
@@ -355,7 +364,10 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
   // Why: section 8 §7.1. A batch run with `--models off` did not test the ladder live runs use, so it is a drill.
   const modelsOff = ctx.flags.models === "off";
   const drill = isDrill(declaration) || modelsOff;
-  const { deps, origin, appVersion, frozenSet } = await buildDeps(ctx, app);
+  const built = await buildDeps(ctx, app);
+  const { deps, origin, appVersion } = built;
+  // Why: section 8 §15.1 and section 9 §9.1. A regression batch uses the candidate revision, and only here: live runs never see it.
+  const frozenSet = regression === undefined ? built.frozenSet : candidateFrozenSet(await activeLayers(ctx, ctx.tenant, app), regression.candidate, appVersion);
   if (deps.settings.doc.apps[app]?.environment !== "test") {
     throw new CliExit(EXIT.invalid, "certify: environment_not_test");
   }
@@ -365,17 +377,21 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
     // Why: section 9 §9.1, "stops here with --plan-only". The route map needs a baseline run, so
     // the plan here holds no routes and no run IDs, and no file is written.
     const runs = matrixProfiles(faults.profiles, null).length;
-    if (kind === "full") {
+    if (kind === "full" || kind === "regression") {
       const baselines = suite.classes.length * BASELINE_REPEATS + 1;
       const profiles = suite.matrix.profiles === "standard" ? faults.profiles.length : suite.matrix.profiles.length;
       const lines = [
-        `plan for ${app}/${capability}@${String(major)} (full, plan only)`,
+        `plan for ${app}/${capability}@${String(major)} (${kind}, plan only)`,
         `class: ${className}`,
         `baseline: ${String(suite.classes.length)} classes x ${String(BASELINE_REPEATS)} repeats + 1 twin = ${String(baselines)} runs`,
         `matrix: ${String(profiles)} profiles on every request step and the commit step; the count is known after the baseline`,
         `extra: ${String(suite.extra.length)} cases`,
-        `drills: ${String(suite.drills.count)}`,
-        `stability: ${String(suite.stability.levels.length)} levels x ${String(suite.stability.seeds)} seeds${suite.stability.twins ? " x 2 twins" : ""} = ${String(suite.stability.levels.length * suite.stability.seeds * (suite.stability.twins ? 2 : 1))} runs`,
+        ...(kind === "regression"
+          ? [`pack: ${regression?.pack ?? ""}`, "drills and stability: none in a regression batch"]
+          : [
+              `drills: ${String(suite.drills.count)}`,
+              `stability: ${String(suite.stability.levels.length)} levels x ${String(suite.stability.seeds)} seeds${suite.stability.twins ? " x 2 twins" : ""} = ${String(suite.stability.levels.length * suite.stability.seeds * (suite.stability.twins ? 2 : 1))} runs`,
+            ]),
         `setup runs: ${String(suite.setup.length)} before each case`,
         `instance: ${instanceLine(instance)}`,
         declaration === undefined
@@ -414,10 +430,13 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
     }),
   ];
   try {
-    if (kind === "full") {
-      const tuned = await candidateTimeouts(ctx, deps.artifacts, { app, capability, major, version, appVersion });
+    if (kind === "full" || kind === "regression") {
+      // Why none for a regression: tuned timeouts come from full batches only (section 8 §9.6, §15.1).
+      const tuned = kind === "regression" ? undefined : await candidateTimeouts(ctx, deps.artifacts, { app, capability, major, version, appVersion });
       const result = await runCertifyFull(
         {
+          kind,
+          ...(regression === undefined ? {} : { pack: regression.pack }),
           batchId,
           tenant: ctx.tenant,
           app,
@@ -453,7 +472,15 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
       }
       const { plan, report, scores, under, failing } = result.value;
       writeBatchFiles(ctx, plan, report);
-      await recordBatch(ctx, "full", plan, report, { appVersion, engine: deps.engineVersion, frozenSet, under, scores, failing });
+      // Why no scores and no degrade for a regression: its summary holds none, and a failed regression writes no demotion (section 8 §15.1).
+      await recordBatch(ctx, kind, plan, report, {
+        appVersion,
+        engine: deps.engineVersion,
+        frozenSet,
+        under,
+        ...(kind === "regression" ? {} : { scores }),
+        failing,
+      });
       return answer({ batch_id: plan.batch_id, plan, report }, fullSummary(plan, report).join("\n"), report.gate.passed ? EXIT.ok : EXIT.failed);
     }
     const result = await runCertifyQuick(
@@ -501,16 +528,60 @@ async function certifyQuick(ctx: Ctx, key: string | undefined, opts: Record<stri
   }
 }
 
+/** The frozen set with `candidate` standing in for its scope's active revision. A broken set ends the command. */
+function candidateFrozenSet(active: readonly PackLayer[], candidate: PackLayer, appVersion: string): FrozenSet {
+  const built = buildFrozenSet(layersWith(active, candidate), { appVersion });
+  if (!built.ok) throw new CliExit(EXIT.invalid, `frozen set with the candidate: ${built.detail ?? built.failure}`);
+  return built.value;
+}
+
+/**
+ * `certify --kind regression --pack <scope>@<rev> --all-affected` (section 9 §9.1): one regression batch
+ * per approved key of this tenant that `pack impact` lists, one after another. Other tenants' keys are
+ * named, and each tenant runs its own (a batch needs that bank's settings, test data, and test instance).
+ */
+async function certifyRegression(ctx: Ctx, key: string | undefined, opts: Record<string, unknown>): Promise<Answer> {
+  if (opts.kind !== "regression" || typeof opts.pack !== "string") {
+    throw new CliExit(EXIT.usage, "--kind regression needs --pack <scope>@<rev>, like --pack app:kvfcu@5");
+  }
+  const { layer, label } = await readCandidateLayer(ctx, opts.pack);
+  let keys: string[];
+  const elsewhere: string[] = [];
+  if (key !== undefined) keys = [key];
+  else {
+    const impact = await packImpact(scoreDeps(ctx), await driftTenants(ctx), layer, (tenant, app) => activeLayers(ctx, tenant, app));
+    keys = impact.impacted.filter((i) => i.key.tenant === ctx.tenant).map((i) => i.key.capability);
+    elsewhere.push(...impact.impacted.filter((i) => i.key.tenant !== ctx.tenant).map((i) => `${i.key.tenant} ${i.text}`));
+  }
+  const answers: Answer[] = [];
+  for (const k of keys) answers.push(await certifyQuick(ctx, k, opts, { pack: label, candidate: layer }));
+  const failed = answers.some((a) => a.code !== undefined && a.code !== EXIT.ok);
+  const text = [
+    ...answers.map((a) => a.text(false)),
+    ...(keys.length === 0 ? [`${label}: no approved key of tenant ${ctx.tenant} is touched.`] : []),
+    ...elsewhere.map((e) => `not run here (other tenant): ${e}`),
+  ].join("\n\n");
+  return answer({ pack: label, batches: answers.map((a) => a.data(false)), other_tenants: elsewhere }, text, failed ? EXIT.failed : EXIT.ok);
+}
+
 /** Registers the certify commands. */
 export const registerCertify: Register = (program: Command, ctxOf) => {
   const certify = program
     .command("certify")
     .description("certify a capability: a full or quick batch, or one fault case on demand")
     .argument("[key]", "app/capability@major, for a batch")
-    .option("--kind <kind>", "full (default), quick, or regression (M11)")
+    .option("--kind <kind>", "full (default), quick, or regression")
+    .option("--pack <pack>", "with --kind regression: the candidate pack revision, like app:kvfcu@5")
+    .option("--all-affected", "with --kind regression: one batch per approved key the pack revision touches")
     .option("--instance <facts>", "declared instance facts, like strip_semantics=1,drop_labels=0.3")
     .option("--plan-only", "print the plan and stop; contact nothing")
-    .action(act(ctxOf, (ctx, args, opts) => certifyQuick(ctx, args[0], opts)));
+    .action(
+      act(ctxOf, async (ctx, args, opts) => {
+        if (opts.kind !== "regression") return certifyQuick(ctx, args[0], opts);
+        if (opts.allAffected !== true && args[0] === undefined) throw new CliExit(EXIT.usage, "--kind regression needs a key, or --all-affected");
+        return certifyRegression(ctx, args[0], opts);
+      }),
+    );
 
   certify
     .command("case")

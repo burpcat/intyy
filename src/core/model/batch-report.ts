@@ -144,7 +144,7 @@ export const BatchReport = z
     app: AppId,
     capability: z.string().min(1),
     ended_at: z.iso.datetime(),
-    kind: z.enum(["quick", "full"]).optional(),
+    kind: z.enum(["quick", "full", "regression"]).optional(),
     key: ScoreKey.optional(),
     under: Under.optional(),
     cases: z.array(BatchReportCase).min(1),
@@ -185,6 +185,8 @@ export const BatchReport = z
     /** `true` for a drill batch (section 8 §7.1): the plan's instance facts differ from the test
      * data set's. */
     drill: z.literal(true).optional(),
+    /** The candidate pack revision a regression batch ran under, like `app:kvfcu@5` (section 8 §15.1). */
+    pack: z.string().min(1).optional(),
   })
   .strict();
 

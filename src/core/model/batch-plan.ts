@@ -64,7 +64,7 @@ export const BatchPlan = z
     tenant: TenantId,
     app: AppId,
     capability: z.string().min(1),
-    kind: z.enum(["quick", "full"]),
+    kind: z.enum(["quick", "full", "regression"]),
     /** The exact sealed key under test, like `kvfcu/open_share_subaccount@1.0.0` (section 3 §4.9,
      * the certify run spec's `pin`). `certify rerun` reuses it. */
     pin: z.string().regex(/^[a-z][a-z0-9_-]*\/[a-z][a-z0-9_]*@\d+\.\d+\.\d+$/, "app/capability@x.y.z"),
@@ -89,6 +89,8 @@ export const BatchPlan = z
     /** `true` when the batch ran with `--models off`: it did not test the ladder live runs use, so it is a
      * drill (section 8 §7.1). */
     models_off: z.literal(true).optional(),
+    /** The candidate pack revision a regression batch ran under, like `app:kvfcu@5` (section 8 §15.1). */
+    pack: z.string().min(1).optional(),
     rerun_of: z.object({ batch_id: z.string().min(1), case_id: z.string().min(1) }).optional(),
   })
   .strict();

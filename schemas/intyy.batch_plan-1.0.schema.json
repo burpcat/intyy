@@ -26,7 +26,8 @@
       "type": "string",
       "enum": [
         "quick",
-        "full"
+        "full",
+        "regression"
       ]
     },
     "pin": {
@@ -263,6 +264,10 @@
     "models_off": {
       "type": "boolean",
       "const": true
+    },
+    "pack": {
+      "type": "string",
+      "minLength": 1
     },
     "rerun_of": {
       "type": "object",

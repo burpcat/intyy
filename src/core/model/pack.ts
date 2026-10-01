@@ -191,6 +191,24 @@ export function packScopeId(scope: PackScope): string {
   }
 }
 
+/**
+ * The scope as a person types it (section 9 §8.5), the inverse of `parsePackScopeArg`: `app:kvfcu`, not the
+ * store ID `app/kvfcu`. Use it wherever a user reads or types a scope. An `app_version` scope with several
+ * patterns joins them with `+` (the parser reads one pattern).
+ */
+export function packScopeText(scope: PackScope): string {
+  switch (scope.level) {
+    case "global":
+      return "global";
+    case "app":
+      return `app:${scope.app}`;
+    case "app_version":
+      return `app_version:${scope.app}:${scope.app_versions.join("+")}`;
+    case "tenant":
+      return `tenant:${scope.tenant}:${scope.app}`;
+  }
+}
+
 /** The CLI's scope notation (section 9 §8.5): `global`, `app:kvfcu`, `app_version:kvfcu:9.*`,
  * `tenant:keystone:kvfcu`. `null` when `text` fits none of these shapes. */
 export function parsePackScopeArg(text: string): PackScope | null {

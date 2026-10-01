@@ -2,12 +2,14 @@
 // Follows design section 9 §8.5 and section 5 §5 (pack file), §7 (scope, merge, frozen set).
 import type { Command } from "commander";
 import { checkPack, type PackCheckContext } from "../../core/packs/checks.js";
+import { packImpact, uncovered } from "../../core/trust/pack-impact.js";
 import { handlerFiresOn } from "../../core/packs/fixture-suite.js";
 import { buildFrozenSet, type FrozenSet, type PackLayer } from "../../core/packs/merge.js";
 import { packKind } from "../../core/model/kinds.js";
 import { matchPath, normalizePath, parsePattern } from "../../core/safety/policy/paths.js";
 import {
   packScopeId,
+  packScopeText,
   parentScopes,
   parsePackScopeArg,
   type Decision,
@@ -25,6 +27,7 @@ import {
   editDoc,
   load,
   orExit,
+  readSealed,
   revOption,
   sealDoc,
   type DocTarget,
@@ -32,6 +35,7 @@ import {
 } from "./documents.js";
 import { listFixtures } from "./fixtures-fs.js";
 import { effectivePolicy } from "./policy.js";
+import { driftTenants, scoreDeps } from "./trust-shared.js";
 
 /** Parses the `<scope>` argument (section 9 §8.5). */
 function scopeArg(text: string | undefined): PackScope {
@@ -51,7 +55,7 @@ function scopeRole(scope: PackScope): string {
 }
 
 /** The document-store target for one scope. */
-function target(ctx: Ctx, scope: PackScope): DocTarget<Pack> {
+export function target(ctx: Ctx, scope: PackScope): DocTarget<Pack> {
   const id = packScopeId(scope);
   return { store: ctx.wiring.packs, kind: packKind, id, label: `pack ${id}`, scope: scopeRole(scope) };
 }
@@ -62,6 +66,28 @@ export async function loadAncestor(ctx: Ctx, scope: PackScope): Promise<Pack | u
   return got?.doc;
 }
 
+/** The active pack layers of one tenant and app, general to specific: global, app, and tenant scope (section 5 §7.4). */
+export async function activeLayers(ctx: Ctx, tenant: string, app: string): Promise<PackLayer[]> {
+  const scopes: PackScope[] = [{ level: "global" }, { level: "app", app }, { level: "tenant", tenant, app }];
+  const layers: PackLayer[] = [];
+  for (const scope of scopes) {
+    const found = await loadAncestor(ctx, scope);
+    if (found !== undefined) layers.push({ scope, revision: found.revision, pack: found });
+  }
+  return layers;
+}
+
+/** Reads `<scope>@<rev>` (`app:kvfcu@5`) as a candidate layer: a sealed or approved revision, hash-checked. */
+export async function readCandidateLayer(ctx: Ctx, text: string | undefined): Promise<{ layer: PackLayer; label: string }> {
+  const at = (text ?? "").lastIndexOf("@");
+  const rev = at < 0 ? "" : (text ?? "").slice(at + 1);
+  if (at < 0 || !/^[1-9]\d*$/.test(rev)) throw new CliExit(EXIT.usage, "name a pack revision like app:kvfcu@5");
+  const scope = scopeArg((text ?? "").slice(0, at));
+  const t = target(ctx, scope);
+  const got = await readSealed(t, rev);
+  return { layer: { scope, revision: got.doc.revision, pack: got.doc }, label: `${packScopeText(scope)}@${rev}` };
+}
+
 /**
  * The frozen set for one app, tenant, and app version (section 5 §7.4): global, app, and tenant
  * scope, each at its active revision, merged. No `app_version`-scope pack exists in this build
@@ -69,12 +95,7 @@ export async function loadAncestor(ctx: Ctx, scope: PackScope): Promise<Pack | u
  * `candidate adopt` uses this to check a handler exists and fires before adopting it.
  */
 export async function loadFrozenSetFor(ctx: Ctx, tenant: string, app: string, appVersion: string): Promise<FrozenSet> {
-  const scopes: PackScope[] = [{ level: "global" }, { level: "app", app }, { level: "tenant", tenant, app }];
-  const layers: PackLayer[] = [];
-  for (const scope of scopes) {
-    const found = await loadAncestor(ctx, scope);
-    if (found !== undefined) layers.push({ scope, revision: found.revision, pack: found });
-  }
+  const layers = await activeLayers(ctx, tenant, app);
   const result = buildFrozenSet(layers, { appVersion });
   if (!result.ok) throw new CliExit(EXIT.invalid, `frozen set: ${result.detail ?? result.failure}`);
   return result.value;
@@ -278,8 +299,54 @@ export const registerPack: Register = (program: Command, ctxOf) => {
     .command("approve")
     .argument("<scope>", "global, app:<app>, app_version:<app>:<pattern>, or tenant:<tenant>:<app>")
     .requiredOption("--rev <n>", "the sealed revision to approve")
-    .description("stamp a sealed revision (approver, never its sealer)")
-    .action(act(ctxOf, (ctx, args, opts) => approveDoc(ctx, target(ctx, scopeArg(args[0])), revOption(opts))));
+    .description("stamp a sealed revision (approver, never its sealer); needs a passing regression batch for each approved key it touches")
+    .action(
+      act(ctxOf, async (ctx, args, opts) => {
+        const scope = scopeArg(args[0]);
+        const rev = revOption(opts);
+        // Why the role first: a person who cannot approve should hear that, not a list of keys.
+        requireRole(ctx, scopeRole(scope), "approver");
+        const t = target(ctx, scope);
+        const sealed = await readSealed(t, rev);
+        const layer: PackLayer = { scope, revision: sealed.doc.revision, pack: sealed.doc };
+        const impact = await packImpact(scoreDeps(ctx), await driftTenants(ctx), layer, (tenant, app) => activeLayers(ctx, tenant, app));
+        const missing = uncovered(impact);
+        if (missing.length > 0) {
+          throw new CliExit(
+            EXIT.refused,
+            [
+              `${t.label} ${rev}: ${String(missing.length)} approved key(s) have no passing regression batch under the new handler set:`,
+              ...missing.map((m) => `  ${m.key.tenant} ${m.text}${m.detail === undefined ? "" : ` (${m.detail})`}`),
+              `Run: intyy certify --kind regression --pack ${packScopeText(scope)}@${rev} --all-affected  (once per tenant)`,
+            ].join("\n"),
+          );
+        }
+        return approveDoc(ctx, t, rev);
+      }),
+    );
+
+  pack
+    .command("impact")
+    .argument("<scope>", "global, app:<app>, app_version:<app>:<pattern>, or tenant:<tenant>:<app>")
+    .argument("<rev>", "the sealed revision, like 5")
+    .description("lists the approved keys whose handler set hash would change; writes nothing")
+    .action(
+      act(ctxOf, async (ctx, args) => {
+        const scope = scopeArg(args[0]);
+        const got = await readCandidateLayer(ctx, `${packScopeText(scope)}@${args[1] ?? ""}`);
+        const impact = await packImpact(scoreDeps(ctx), await driftTenants(ctx), got.layer, (tenant, app) => activeLayers(ctx, tenant, app));
+        const text =
+          impact.impacted.length === 0
+            ? `${got.label}: no approved key is touched.`
+            : impact.impacted
+                .map((i) => `${i.key.tenant}  ${i.text}  ${i.before ?? "(none)"} -> ${i.after ?? "(invalid)"}${i.detail === undefined ? "" : `  ${i.detail}`}`)
+                .join("\n");
+        return answer(
+          { pack: got.label, impacted: impact.impacted.map((i) => ({ tenant: i.key.tenant, key: i.text, before: i.before, after: i.after, ...(i.detail === undefined ? {} : { detail: i.detail }) })) },
+          text,
+        );
+      }),
+    );
 
   pack
     .command("dry-run")

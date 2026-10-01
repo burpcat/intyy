@@ -25,7 +25,9 @@ function allPass(cases: readonly GateCase[], groups: readonly CaseGroup[]): bool
 
 /**
  * The six rules of section 8 §9.5, each on its own:
- * 1 `complete`: a `full`, complete batch that is not a drill.
+ * 1 `complete`: a `full` or `regression`, complete batch that is not a drill. Section 8 §15.1 asks a
+ *   regression batch for rules 2 to 6 only; keeping the drill and complete checks on it is stricter, and a
+ *   drill must never cover a pack (docs/decisions.md, M11).
  * 2 `no_wrong`: no `wrong` verdict anywhere.
  * 3 `baseline`: at least one baseline run, every baseline and twin run `pass`, and the twin pair's traces match.
  * 4 `matrix`: every matrix run `pass`.
@@ -36,7 +38,7 @@ function allPass(cases: readonly GateCase[], groups: readonly CaseGroup[]): bool
 export function gateRules(input: GateInput): GateRules {
   const { cases } = input;
   return {
-    complete: input.kind === "full" && !input.drill && input.complete,
+    complete: (input.kind === "full" || input.kind === "regression") && !input.drill && input.complete,
     no_wrong: cases.every((c) => c.verdict !== "wrong"),
     baseline:
       cases.some((c) => c.group === "baseline") &&

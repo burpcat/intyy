@@ -131,12 +131,11 @@ describe("certify --kind quick: --plan-only", () => {
 });
 
 describe("certify --kind quick: refusals", () => {
-  test("--kind regression and --kind bogus are usage errors; nothing runs", async () => {
+  test("--kind regression with no --pack and --kind bogus are usage errors; nothing runs", async () => {
     const env = await readyEnv();
     const regression = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "regression"]);
     expect(regression.code).toBe(EXIT.usage);
-    expect(regression.stderr).toContain("regression");
-    expect(regression.stderr).toContain("M11");
+    expect(regression.stderr).toContain("--pack");
     const bogus = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "bogus"]);
     expect(bogus.code).toBe(EXIT.usage);
     expect(bogus.stderr).toContain("bogus");

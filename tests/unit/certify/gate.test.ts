@@ -48,12 +48,20 @@ describe("gate: all green", () => {
 describe("gate: each rule fails alone", () => {
   test.each([
     ["a quick batch", { ...green(), kind: "quick" as const }],
-    ["a regression batch", { ...green(), kind: "regression" as const }],
+    ["a drill regression batch", { ...green(), kind: "regression" as const, drill: true }],
+    ["an incomplete regression batch", { ...green(), kind: "regression" as const, complete: false }],
     ["a drill", { ...green(), drill: true }],
     ["an incomplete batch", { ...green(), complete: false }],
   ])("complete: %s", (_name, input) => {
     expect(failed(input)).toEqual(["complete"]);
     expect(gatePasses(gateRules(input))).toBe(false);
+  });
+
+  test("complete: a green regression batch passes (section 8 §15.1)", () => {
+    const input = { ...green(), kind: "regression" as const };
+    expect(gateRules(input).complete).toBe(true);
+    expect(failed(input)).toEqual([]);
+    expect(gatePasses(gateRules(input))).toBe(true);
   });
 
   test("no_wrong: one wrong in a drill case", () => {
