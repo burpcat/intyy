@@ -157,8 +157,9 @@ const CaseFacts = z
   })
   .loose();
 
-/** One in-process `intyy certify case` call in a fresh temp data root. */
-async function invoke(args: string[]): Promise<{
+/** One in-process `intyy certify …` call in a fresh temp data root. `tail` is everything after
+ * the global flags, like `["certify", "case", KEY, "--class", "valid", …]`. */
+async function invoke(tail: string[]): Promise<{
   code: number;
   stdout: string;
   stderr: string;
@@ -180,12 +181,7 @@ async function invoke(args: string[]): Promise<{
       "--json",
       "--models",
       "off",
-      "certify",
-      "case",
-      KEY,
-      "--class",
-      "valid",
-      ...args,
+      ...tail,
     ],
     { cwd: tmp.root, env, deps: { wire: fixedWire } },
   );
@@ -205,6 +201,11 @@ async function invoke(args: string[]): Promise<{
  */
 export async function certifyCase(profile: string, at?: string): Promise<CaseRun> {
   const r = await invoke([
+    "certify",
+    "case",
+    KEY,
+    "--class",
+    "valid",
     "--profile",
     profile,
     ...(at === undefined ? [] : ["--at", `@step:${at}`]),
@@ -274,4 +275,26 @@ export function faultSteps(): Promise<Steps> {
     return { windowStep, commitStep, replyLost };
   })();
   return stepsMemo;
+}
+
+/** A finished quick batch. */
+export type QuickRun = { code: number; report: BatchReport; plan: BatchPlan; remove: () => Promise<void> };
+
+/** A quick batch is a baseline plus every commit-step profile: give it room. */
+export const QUICK_TIMEOUT_MS = 900_000;
+
+/**
+ * Runs `certify kvfcu/open_share_subaccount@1.0.0 --kind quick` with `extra` flags, and reads back
+ * the printed plan and report (section 9 §9.1). Throws with the CLI's stderr when no batch printed.
+ */
+export async function certifyQuick(extra: string[] = []): Promise<QuickRun> {
+  const r = await invoke(["certify", KEY, "--kind", "quick", ...extra]);
+  try {
+    const raw: unknown = JSON.parse(r.stdout);
+    const parsed = z.object({ plan: BatchPlan, report: BatchReport }).parse(raw);
+    return { code: r.code, ...parsed, remove: r.remove };
+  } catch {
+    await r.remove();
+    throw new Error(`certify --kind quick printed no batch (exit ${String(r.code)}): ${r.stderr.trim()}`);
+  }
 }
