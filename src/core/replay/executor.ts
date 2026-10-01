@@ -35,9 +35,10 @@ import { OperatorSupervisor } from "../discovery/supervisor.js";
 import { BotWindows, HumanCapture } from "../handoff/capture.js";
 import { watchHumanInput } from "../handoff/human-input.js";
 import { Lease, leaseWhy } from "../handoff/lease.js";
-import { watchCommit } from "../handoff/watch.js";
+import { forwardSearch } from "../handoff/handback.js";
+import { checkCommitNow, watchCommit, type WatchDeps, type WatchVerdict } from "../handoff/watch.js";
 import { capture } from "../capture/capture.js";
-import { matchDetectors, runLadder, type LadderStep } from "./ladder.js";
+import { matchDetectors, resumeSearch, runLadder, type LadderStep } from "./ladder.js";
 import { runReconciliationCheck, type ReconciliationVerdict } from "./reconciliation.js";
 import { PRECONDITION_TIMEOUT_MS, runPrelude, runStep, type StepFailure, type StepRunnerContext } from "./prelude.js";
 import { waitForCondition } from "./wait.js";
@@ -64,6 +65,9 @@ function pathAndQuery(url: string): string {
 
 /** One `result.recoveries[]` entry (section 3 §5.10). Rung is always `1` in M06: rungs 2 and 3
  * are off (docs/decisions.md). */
+/** What a takeover ends with: the run is over, or the bot resumes at a step (section 7 §16.1). */
+type TakeoverEnd = { kind: "end"; outcome: ReplayOutcome } | { kind: "resume"; index: number };
+
 type RecoveryLine = {
   step: string;
   rung: 1 | 2 | 3 | null;
@@ -535,6 +539,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     void log.append({ event: "lease", step: null, by, why: leaseWhy(c, by), data: c });
   });
 
+  /** Every takeover a human resolved, for `interventions` (section 3 §5.11, section 7 §20). */
+  const interventions: Result["interventions"] = [];
+
   const endRun = async (
     status: Result["status"],
     code: string | null,
@@ -543,8 +550,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
   ): Promise<ReplayOutcome> => {
     leaseState.end();
     await log.append({ event: "run_end", step, by: "engine", data: { status, code } }, true);
-    await finish(folder, deps, r, input, capabilityStr, status, code, result, captureFiles);
-    return { runId, result };
+    // Why here: one place covers every ending, so no result site forgets the takeovers.
+    const final: Result = interventions.length === 0 ? result : Result.parse({ ...result, interventions: [...interventions] });
+    await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles);
+    return { runId, result: final };
   };
 
   const failEnd = async (
@@ -575,9 +584,9 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     visible: input.visible,
   };
   leaseState.start();
-  // Why a plain value: every step passes it. Handback (task 4) rebuilds the contexts with the
-  // new token after reverify; until then the first grant's token is the only bot token.
-  const lease: LeaseToken = leaseState.botToken();
+  // Why `let`: every step context reads it when it is built. A handback that passes reverify gives
+  // the bot a new token, and this changes to it (section 7 §12.3, §16.1 step 6).
+  let lease: LeaseToken = leaseState.botToken();
   // Owner decision, M05: declared paths are the union of the session and task artifacts' paths.
   const declaredPaths = [...(sessionArtifact?.runs_on.paths ?? []), ...artifact.runs_on.paths];
   const gateRun: GateRun = {
@@ -921,7 +930,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       trouble: { phase: string; detail: string } | null,
       operatorNote: string | null,
       screenshot: string | null,
-    ): Promise<ReplayOutcome> => {
+    ): Promise<TakeoverEnd> => {
       // Why: a takeover moves the lease to nobody (section 7 §12.2). Human input already did.
       leaseState.requestTakeover();
       leaseState.takePending();
@@ -978,30 +987,33 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       );
       const commitState = effect?.commit ?? "none";
       const inFlight = commitState === "uncertain";
+      const actionsBefore = humanCapture.actions;
       // Section 7 §15: while a human drives, check the commit step's checkpoint and outcomes every
       // second, if the commit is in flight. A pass settles the commit at that moment. The state
       // is read live, because a human may send the commit during the takeover (§14.4).
       const watchStop = new AbortController();
-      if (commitStepDef !== undefined) {
-        void watchCommit(
-          {
-            eyes,
-            clock: deps.clock,
-            ctx: { targets, conditions, refs },
-            step: commitStepDef.id,
-            checkpoint: commitStepDef.checkpoint,
-            outcomes: artifact.contract.outcomes
-              .filter((o) => commitStepDef.outcomes.includes(o.code))
-              .map((o) => ({ code: o.code, condition: o.condition })),
-            inFlight: () => effect?.commit === "uncertain",
-            log: (line) => void log.append(line),
-            onVerdict: (v) => {
-              if (effect !== null) effect = { ...effect, commit: v.kind === "confirmed" ? "confirmed" : "refused" };
-            },
-          },
-          watchStop.signal,
-        );
-      }
+      /** The verdict that settled the commit, so a refusal keeps its outcome code (section 7 §15). */
+      let settledBy: WatchVerdict | null = null;
+      const watchDeps: WatchDeps | null =
+        commitStepDef === undefined
+          ? null
+          : {
+              eyes,
+              clock: deps.clock,
+              ctx: { targets, conditions, refs },
+              step: commitStepDef.id,
+              checkpoint: commitStepDef.checkpoint,
+              outcomes: artifact.contract.outcomes
+                .filter((o) => commitStepDef.outcomes.includes(o.code))
+                .map((o) => ({ code: o.code, condition: o.condition })),
+              inFlight: () => effect?.commit === "uncertain",
+              log: (line) => void log.append(line),
+              onVerdict: (v) => {
+                settledBy = v;
+                if (effect !== null) effect = { ...effect, commit: v.kind === "confirmed" ? "confirmed" : "refused" };
+              },
+            };
+      if (watchDeps !== null) void watchCommit(watchDeps, watchStop.signal);
       const got = await supervisor.takeover(
         {
           reason,
@@ -1039,7 +1051,26 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ...(got.kind === "set_outcome" ? { outcome: got.code } : {}),
         },
       });
-      if (got.kind === "released") leaseState.handBack();
+      // Section 3 §5.11, §20: one entry per takeover a human resolved, with their action count.
+      const entry: Result["interventions"][number] | null =
+        "staff" in got
+          ? {
+              kind: "takeover",
+              reason,
+              step: stepId,
+              staff_id: got.staff,
+              decision: got.kind === "released" ? "handed_back" : got.kind,
+              requested_at: opening,
+              resolved_at: deps.clock.now().toISOString(),
+              human_actions: humanCapture.actions - actionsBefore,
+              resumed_at_step: null,
+            }
+          : null;
+      if (entry !== null) interventions.push(entry);
+      if (got.kind === "released") {
+        leaseState.handBack();
+        return handBack(stepId, entry, watchDeps, () => settledBy);
+      }
       // "set_outcome on a commit step in flight gives refused, decided_by: human" (section 7
       // §13.2). The human says nothing changed, so no reconciliation check runs.
       if (got.kind === "set_outcome") {
@@ -1061,7 +1092,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ...(effect === null ? {} : { effect }),
         });
         await captureOnFailure(`${stepId}_takeover_outcome`);
-        return endRun("business_outcome", got.code, result, stepId);
+        return { kind: "end", outcome: await endRun("business_outcome", got.code, result, stepId) };
       }
       // "A takeover ended while the commit is in flight first runs the reconciliation check.
       // No retry is offered. The run ends failed, ended_by_operator, with the commit state the
@@ -1086,13 +1117,114 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ...(checkRunId === null ? {} : { check: { run_id: checkRunId, decided_by: "code" as const, staff_id: null } }),
         };
       }
-      // ponytail: a release (the handback) ends the run like `end_run` until task 4 builds
-      // reverify and resume; that task replaces this line.
-      return endAfterTakeover(stepId, got.kind === "released" ? "ended_run" : got.kind);
+      return { kind: "end", outcome: await endAfterTakeover(stepId, got.kind) };
+    };
+
+    /**
+     * The handback (section 7 §16.1). Order: capture a `handback` screenshot; settle the commit
+     * (a check now, else the reconciliation check, and stop); forward search (§16.2, §16.3); else
+     * the resume rule from the stuck step (section 5 §8.6); else reverify failed (§16.4). Only a
+     * found step gives the lease back to the bot, with a new token (`reverified`). The human
+     * never types outputs, so the bot always runs the `read` steps itself (section 3 §5.12).
+     */
+    const handBack = async (
+      stepId: string,
+      entry: Result["interventions"][number] | null,
+      watchDeps: WatchDeps | null,
+      settledBy: () => WatchVerdict | null,
+    ): Promise<TakeoverEnd> => {
+      const endWith = async (o: Promise<ReplayOutcome>): Promise<TakeoverEnd> => ({ kind: "end", outcome: await o });
+      // 1. Why `handback` in the name: section 3 §7.4 lists it as a capture reason.
+      const shot = (await captureLadderStart(`${stepId}_handback`)).find((f) => f.endsWith(".png")) ?? null;
+
+      // 2. Settle the commit. Why: the human may have sent it and moved on, and the proof is the
+      // screen as it is now (section 7 §16.1 step 2).
+      if (effect?.commit === "uncertain" && watchDeps !== null) {
+        const verdict = await checkCommitNow(watchDeps, deps.signal);
+        if (verdict === null) return endWith(settleUncertainCommit(stepId));
+        watchDeps.onVerdict(verdict);
+      }
+      const refusal = settledBy();
+      if (effect?.commit === "refused" && refusal?.kind === "refused") {
+        const declared = artifact.contract.outcomes.find((o) => o.code === refusal.code);
+        const endedAt = deps.clock.now().toISOString();
+        const result = Result.parse({
+          schema: "intyy.result/1.0",
+          run_id: runId,
+          request_id: input.request.request_id,
+          capability: capabilityBlock,
+          warnings: [],
+          recoveries,
+          interventions: [],
+          timing: { started_at: startedAt, ended_at: endedAt, duration_ms: 0, human_ms: 0 },
+          evidence: `runs/${runId}`,
+          status: "business_outcome",
+          outcome: { code: refusal.code, description: declared?.description ?? refusal.code, step: commitStepDef?.id ?? stepId, decided_by: "code", set_by: null },
+          effect,
+        });
+        return endWith(endRun("business_outcome", refusal.code, result, stepId));
+      }
+
+      // 3. Forward search, then the resume rule. One look at the screen, no wait.
+      const seen = await eyes.observe(deps.signal);
+      const stuckIndex = artifact.steps.findIndex((s2) => s2.id === stepId);
+      let resume: number | null = null;
+      if (seen.ok && stuckIndex >= 0) {
+        const screen = fromObservation(seen.value);
+        const ctx: EvalCtx = { targets, conditions, refs };
+        const commitIndex = commitStepDef === undefined ? null : artifact.steps.indexOf(commitStepDef);
+        const confirmed = effect?.commit === "confirmed";
+        // Why: section 7 §16.1 and CLAUDE.md. Once the commit is anything but `not_sent`, no search
+        // may resume at or before the commit step, so it is never sent twice. A commit in any
+        // state but `confirmed` that no step qualifies for ends in reverify failed (the human can
+        // end the run); an `uncertain` one already went to the reconciliation check above.
+        const commitWasSent = commitIndex !== null && effect !== null && effect.commit !== "not_sent";
+        const forward = forwardSearch({
+          steps: artifact.steps.map((s2) => ({ id: s2.id, precondition: s2.precondition, checkpoint: s2.checkpoint, isRead: s2.action.type === "read" })),
+          stuckIndex,
+          commitIndex,
+          commitConfirmed: confirmed,
+          commitSent: commitWasSent,
+          screen,
+          ctx,
+        });
+        // Section 7 §16.3: the human moved past the outputs, so the check supplies them.
+        if (forward.kind === "past_outputs") return endWith(settleUncertainCommit(stepId));
+        if (forward.kind === "found") resume = forward.index;
+        else {
+          // Why not dispatched: a human's work on the stuck step proves nothing here, and forward
+          // search already looked for finished steps. The floor is the step after a sent commit.
+          const floor = commitWasSent ? commitIndex + 1 : 0;
+          const rule = resumeSearch(ladderSteps, stuckIndex, false, floor, screen, ctx);
+          if (rule.kind === "resume_at") resume = rule.index;
+        }
+      }
+
+      // 6 (of 16.1). A found step: the bot gets the lease back, with a new token.
+      if (resume !== null && leaseState.reverified().ok) {
+        lease = leaseState.botToken();
+        // Why: section 3 §6.4, steps from the stuck one to the one before the resume are the human's.
+        for (let i = stuckIndex; i < resume; i++) {
+          void log.append({ event: "step_end", step: artifact.steps[i]?.id ?? null, by: "engine", data: { result: "done_by_human" } });
+        }
+        if (entry !== null) entry.resumed_at_step = artifact.steps[resume]?.id ?? null;
+        if (seen.ok) lastGoodPath = pathAndQuery(seen.value.url);
+        return { kind: "resume", index: resume };
+      }
+
+      // 5. Reverify failed (section 7 §16.4): the lease stays `nobody`, and the takeover opens again.
+      leaseState.reverifyFailed();
+      await log.append({
+        event: "warning",
+        step: stepId,
+        by: "engine",
+        data: { code: "handback_check_failed", detail: "the screen showed no step to resume at" },
+      });
+      return attemptTakeover(stepId, "stuck", null, "handback check failed.", shot);
     };
 
     /** Human input stopped the bot: opens the takeover (section 7 §12.4). */
-    const humanInputTakeover = (stepId: string): Promise<ReplayOutcome> =>
+    const humanInputTakeover = (stepId: string): Promise<TakeoverEnd> =>
       attemptTakeover(stepId, "unexpected_human_input", null, null, null);
 
     /** Section 3 §5.10's `via: "reconciliation"` recovery entry (section 7 §11.1: "`recoveries`
@@ -1471,7 +1603,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       if (ladderResult.kind === "climb" || ladderResult.kind === "needs_human") {
         const reason = ladderResult.kind === "needs_human" ? "needs_human_handler" : "stuck";
         const note = ladderResult.kind === "needs_human" ? ladderResult.operatorNote : null;
-        return { kind: "end", outcome: await attemptTakeover(step.id, reason, { phase: failure.phase, detail: failure.message }, note, startFiles.find((f) => f.endsWith(".png")) ?? null) };
+        return await attemptTakeover(step.id, reason, { phase: failure.phase, detail: failure.message }, note, startFiles.find((f) => f.endsWith(".png")) ?? null);
       }
 
       // ladderResult.kind === "recovered"
@@ -1506,7 +1638,12 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       }
       currentStep = step.id;
       // Why: human input stops the engine before its next action (section 7 §12.4).
-      if (leaseState.takeoverPending()) return await humanInputTakeover(step.id);
+      if (leaseState.takeoverPending()) {
+        const t = await humanInputTakeover(step.id);
+        if (t.kind === "end") return t.outcome;
+        stepIndex = t.index;
+        continue;
+      }
 
       const isCommit = artifact.recovery?.commit_point === step.id;
       if (!isCommit) {
@@ -1527,7 +1664,12 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         const outcome = await runStep(step, stepCtx);
         if (outcome.kind === "failed") {
           // Why: a gate block from a lease lost to human input is not a real failure.
-          if (leaseState.takeoverPending()) return await humanInputTakeover(step.id);
+          if (leaseState.takeoverPending()) {
+            const t = await humanInputTakeover(step.id);
+            if (t.kind === "end") return t.outcome;
+            stepIndex = t.index;
+            continue;
+          }
           if (outcome.failure.phase !== "precondition" && outcome.failure.phase !== "target" && outcome.failure.phase !== "checkpoint") {
             // Section 5 §8.1: a gate block or an extract failure never starts the ladder.
             await captureOnFailure(`${step.id}_failed`);
@@ -1631,7 +1773,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       const committed = await commitStep(step, artifact.contract.outcomes, commitCtx);
       // Why: nothing was sent and a person touched the page, so a takeover opens (section 7 §12.4).
       if (leaseState.takeoverPending() && committed.kind === "effect" && committed.effect.commit === "not_sent") {
-        return await humanInputTakeover(step.id);
+        const t = await humanInputTakeover(step.id);
+        if (t.kind === "end") return t.outcome;
+        stepIndex = t.index;
+        continue;
       }
       if (committed.kind !== "effect") {
         await captureOnFailure(`${step.id}_failed`);
@@ -1676,7 +1821,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         );
         if (needsHuman !== undefined) {
           const startFiles = await captureLadderStart(`${step.id}_takeover`);
-          return await attemptTakeover(step.id, "needs_human_handler", null, needsHuman.operator_note, startFiles.find((f) => f.endsWith(".png")) ?? null);
+          const t = await attemptTakeover(step.id, "needs_human_handler", null, needsHuman.operator_note, startFiles.find((f) => f.endsWith(".png")) ?? null);
+          if (t.kind === "end") return t.outcome;
+          stepIndex = t.index;
+          continue;
         }
         return await settleUncertainCommit(step.id);
       }

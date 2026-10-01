@@ -155,7 +155,15 @@ export type CaptureDeps = {
  * (§14.2, section 4 §8.10): `[secret]`, a known input's reference, or `[human_text]`.
  */
 export class HumanCapture {
+  #actions = 0;
+
   constructor(private readonly d: CaptureDeps) {}
+
+  /** How many human actions were logged so far. The handback reports the count per takeover
+   * (section 7 §16, `interventions[].human_actions`). */
+  get actions(): number {
+    return this.#actions;
+  }
 
   /** True when the input is the bot's own (section 7 §14.3). */
   isBot(input: HumanInput): boolean {
@@ -208,6 +216,7 @@ export class HumanCapture {
   /** The log lines and the commit check that follow one human action. */
   #after(input: HumanInput, seen: GateResult): void {
     const step = this.d.step();
+    this.#actions += 1;
     this.d.log({ event: "action", step, by: "human", data: this.#data(input) });
     const sent = this.#sentCommit(input);
     // Why also on a commit click: section 7 §14.4 sends it to the commit state, and section 4

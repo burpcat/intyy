@@ -32,6 +32,40 @@ export type WatchDeps = {
   onVerdict: (v: WatchVerdict) => void;
 };
 
+/** Reads the screen once and answers: the checkpoint passed, a declared outcome showed, or neither
+ * (`null`). A failed look is not an answer. `check` lines follow the rule in {@link watchCommit}. */
+async function pollOnce(
+  d: WatchDeps,
+  last: Map<string, boolean>,
+  signal: AbortSignal | undefined,
+): Promise<WatchVerdict | null> {
+  const check = (condition: string, passed: boolean): void => {
+    if (last.get(condition) === passed && !passed) return;
+    last.set(condition, passed);
+    d.log({ event: "check", step: d.step, by: "engine", data: { condition, role: "watch", passed } });
+  };
+  const seen = await d.eyes.observe(signal);
+  if (!seen.ok) return null;
+  const screen = fromObservation(seen.value);
+  const holds = (condition: string): boolean =>
+    evaluate({ check: "ref", ref: condition }, screen, d.ctx) === "true";
+  const shown = d.outcomes.map((o) => ({ ...o, passed: holds(o.condition) }));
+  const passed = holds(d.checkpoint);
+  for (const o of shown) check(o.condition, o.passed);
+  check(d.checkpoint, passed);
+  const won = shown.find((o) => o.passed);
+  if (won !== undefined) return { kind: "refused", code: won.code };
+  return passed ? { kind: "confirmed" } : null;
+}
+
+/**
+ * One check now, for the handback (section 7 §16.1 step 2): "check its checkpoint and outcomes
+ * now". Same rules as the watcher, with no wait. `null` means still unknown.
+ */
+export function checkCommitNow(d: WatchDeps, signal?: AbortSignal): Promise<WatchVerdict | null> {
+  return pollOnce(d, new Map(), signal);
+}
+
 /**
  * Polls until a verdict, or until `signal` aborts. Why a declared outcome wins when both show:
  * the outcome race does the same (section 7 §5.3). A `check` line is written when a condition's
@@ -39,11 +73,6 @@ export type WatchDeps = {
  */
 export async function watchCommit(d: WatchDeps, signal: AbortSignal): Promise<void> {
   const last = new Map<string, boolean>();
-  const check = (condition: string, passed: boolean): void => {
-    if (last.get(condition) === passed && !passed) return;
-    last.set(condition, passed);
-    d.log({ event: "check", step: d.step, by: "engine", data: { condition, role: "watch", passed } });
-  };
   for (;;) {
     try {
       await d.clock.after(WATCH_INTERVAL_MS, signal);
@@ -52,19 +81,10 @@ export async function watchCommit(d: WatchDeps, signal: AbortSignal): Promise<vo
     }
     if (signal.aborted) return;
     if (!d.inFlight()) continue;
-    const seen = await d.eyes.observe(signal);
-    // Why skip: a failed look is not an answer. The next second looks again.
-    if (!seen.ok) continue;
-    const screen = fromObservation(seen.value);
-    const holds = (condition: string): boolean =>
-      evaluate({ check: "ref", ref: condition }, screen, d.ctx) === "true";
-    const shown = d.outcomes.map((o) => ({ ...o, passed: holds(o.condition) }));
-    const passed = holds(d.checkpoint);
-    for (const o of shown) check(o.condition, o.passed);
-    check(d.checkpoint, passed);
-    const won = shown.find((o) => o.passed);
-    if (won !== undefined || passed) {
-      d.onVerdict(won !== undefined ? { kind: "refused", code: won.code } : { kind: "confirmed" });
+    // Why skip a failed look: it is not an answer. The next second looks again.
+    const verdict = await pollOnce(d, last, signal);
+    if (verdict !== null) {
+      d.onVerdict(verdict);
       return;
     }
   }

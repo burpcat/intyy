@@ -14,10 +14,14 @@ export type FakeAnswer =
   | { staff: string; claimed: true; implicit?: boolean }
   | { staff: string; released: true; note?: string }
   | { staff: string; dialog: "accept" | "dismiss" }
+  /** A scripted human's hands (section 7 §21, "a scripted human takes over, acts, and hands
+   * back"): runs `act`, waits for the engine to see its page events, then plays the next answer.
+   * It makes no port event itself. Put it between a claim and a release. */
+  | { act: () => void | Promise<void> }
   | "silent";
 
 /** The port event one scripted answer stands for. */
-function toEvent(a: Exclude<FakeAnswer, "silent">): OperatorEvent {
+function toEvent(a: Exclude<FakeAnswer, "silent" | { act: unknown }>): OperatorEvent {
   if ("claimed" in a) return { kind: "claimed", staff: a.staff, implicit: a.implicit ?? false };
   if ("released" in a)
     return { kind: "released", staff: a.staff, ...(a.note === undefined ? {} : { note: a.note }) };
@@ -47,10 +51,17 @@ export class FakeOperator implements OperatorPort {
     return Promise.resolve(ok(String(this.requests.length - 1) as unknown as Handle));
   }
 
-  next(h: Handle, signal?: AbortSignal): Promise<Outcome<OperatorEvent, "closed">> {
-    const a = this.answers[this.#next] ?? this.#fallback(h);
+  async next(h: Handle, signal?: AbortSignal): Promise<Outcome<OperatorEvent, "closed">> {
+    let a = this.answers[this.#next] ?? this.#fallback(h);
     this.#next += 1;
-    if (a !== "silent") return Promise.resolve(ok(toEvent(a)));
+    while (typeof a === "object" && "act" in a) {
+      await a.act();
+      // Why a yield: the page events the hands made reach the engine through async iterators.
+      await new Promise<void>((r) => setImmediate(r));
+      a = this.answers[this.#next] ?? this.#fallback(h);
+      this.#next += 1;
+    }
+    if (a !== "silent") return ok(toEvent(a));
     return new Promise((resolve) => {
       signal?.addEventListener(
         "abort",

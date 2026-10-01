@@ -111,6 +111,10 @@ describe("claim and handback (section 7 §12.2)", () => {
       "takeover_requested",
       "claimed",
       "handed_back",
+      // Handback now reverifies (section 7 §16.1): the human changed nothing, so the resume rule
+      // finds the stuck step again, the bot resumes, hits the same trouble, and a new takeover opens.
+      "reverified",
+      "takeover_requested",
       "run_end",
     ]);
     const lease = lines.filter((l) => l.event === "lease");
