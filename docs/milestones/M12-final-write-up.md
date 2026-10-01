@@ -41,7 +41,7 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 
 ## Tasks, in order
 
-- [ ] 1. List what was built, per milestone, from the specs' ticked boxes. List every cut item from build plan §12 that was not built.
+- [x] 1. List what was built, per milestone, from the specs' ticked boxes. List every cut item from build plan §12 that was not built.
 - [ ] 2. Update `REPORT.md` from the outline. Keep the brief's seven headings, exactly, in order.
 - [ ] 3. Check each REPORT claim links to code, a design section, or an evidence item. Remove any claim without one.
 - [ ] 4. Check the stretch goals claimed match what was built. Claim at most two. Name the rung 3 overlap.
