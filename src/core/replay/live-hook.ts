@@ -12,7 +12,7 @@ import { recordLive, type ScoreDeps } from "../trust/scores.js";
 import type { ReplayDeps, ReplayInput } from "./executor.js";
 
 /** The key an artifact's runs score under, or `null` when it has no version or the tenant has no app version. */
-function keyOf(a: Artifact | null, input: ReplayInput): ScoreKey | null {
+export function keyOf(a: Artifact | null, input: ReplayInput): ScoreKey | null {
   if (a?.identity.version == null || input.appVersion === undefined) return null;
   return {
     capability: `${a.identity.app}/${a.identity.capability}@${a.identity.version}`,
@@ -22,8 +22,20 @@ function keyOf(a: Artifact | null, input: ReplayInput): ScoreKey | null {
   };
 }
 
+/** The score ports of a replay's deps, or `null` when it has no score store or locks. */
+export function scoreDepsOf(deps: ReplayDeps): ScoreDeps | null {
+  if (deps.scores === undefined || deps.locks === undefined) return null;
+  return {
+    scores: deps.scores,
+    locks: deps.locks,
+    artifacts: deps.artifacts,
+    ...(deps.alerts === undefined ? {} : { alerts: deps.alerts }),
+    ...(deps.afterScoreWrite === undefined ? {} : { afterWrite: deps.afterScoreWrite }),
+  };
+}
+
 /** Tells `onLiveFailure`. Why the catch: a failing alert write must not change the run's result (section 8 §5.6). */
-async function tell(deps: ReplayDeps, failure: { key: string; runId: string; reason: string }): Promise<void> {
+export async function tell(deps: ReplayDeps, failure: { key: string; runId: string; reason: string }): Promise<void> {
   try {
     await deps.onLiveFailure?.(failure);
   } catch {
@@ -62,13 +74,8 @@ export async function writeLiveLines(
       ...(Object.keys(run.handlerPacks).length === 0 ? {} : { packs: { ...run.handlerPacks } }),
     },
   });
-  const trust: ScoreDeps = {
-    scores: deps.scores,
-    locks: deps.locks,
-    artifacts: deps.artifacts,
-    ...(deps.alerts === undefined ? {} : { alerts: deps.alerts }),
-    ...(deps.afterScoreWrite === undefined ? {} : { afterWrite: deps.afterScoreWrite }),
-  };
+  const trust = scoreDepsOf(deps);
+  if (trust === null) return;
   const who = { owner: run.runId, command: "replay", staff: input.staffId ?? null };
   const writes: [ScoreKey | null, LiveLine | null][] = [
     [taskKey, lines.main],

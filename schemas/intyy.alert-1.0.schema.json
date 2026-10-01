@@ -40,7 +40,8 @@
         "one_tenant",
         "outage",
         "change_point",
-        "live_write_failed"
+        "live_write_failed",
+        "autonomy_revoked"
       ]
     },
     "detail": {

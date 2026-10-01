@@ -57,8 +57,10 @@ import { wireBytes } from "../safety/redaction/compose.js";
 import type { Cutoffs } from "./jev-verdict.js";
 import { matchDetectors, resumeSearch, runLadder, type LadderStep } from "./ladder.js";
 import { screenOf, type RungDeps, type StepFacts } from "./rung-input.js";
-import { reconcileInput, reconcileWithModels, runReconciliationCheck, type CheckFacts, type ReconciliationVerdict } from "./reconciliation.js";
+import { reconcileInput, reconcileWithModels, runReconciliationCheck, type CheckFacts, type ReconcileSeen, type ReconciliationVerdict } from "./reconciliation.js";
 import { writeLiveLines } from "./live-hook.js";
+import { revokeFromRun, runScope } from "./run-autonomy.js";
+import { grantedFor, spotChecked } from "../trust/autonomy.js";
 import { PRECONDITION_TIMEOUT_MS, runPrelude, runStep, type StepFailure, type StepRunnerContext } from "./prelude.js";
 import { waitForCondition } from "./wait.js";
 import type { EvalCtx } from "../targets/evaluate.js";
@@ -194,6 +196,8 @@ export type ReplayDeps = {
    */
   models?: {
     classifier?: Classifier;
+    /** The jev version, like `jev@1.4.2`. Reconciliation autonomy covers one jev version (section 8 §14.2). */
+    jevVersion?: string;
     reviewer?: Reviewer;
     /** The app's jev cutoffs; omitted means the starting values (section 5 §10.4). */
     cutoffs?: Pick<Cutoffs, "handler_min" | "outcome_min" | "reconciliation_min">;
@@ -280,6 +284,7 @@ function frozenFacts(
   session: Artifact | null,
   models: ReplayDeps["models"],
   record: ScoreRecord | null,
+  autonomy: boolean,
 ): unknown {
   const flags = rungFlags(input.policy, models);
   const cutoffs = models?.cutoffs ?? DEFAULT_CUTOFFS;
@@ -335,7 +340,13 @@ function frozenFacts(
       ladder: {
         ...flags,
         ...(flags.jev
-          ? { handler_min: cutoffs.handler_min, outcome_min: cutoffs.outcome_min, reconciliation_min: cutoffs.reconciliation_min }
+          ? {
+              handler_min: cutoffs.handler_min,
+              outcome_min: cutoffs.outcome_min,
+              reconciliation_min: cutoffs.reconciliation_min,
+              // Why: section 8 §14.2, "granted: frozen per run as `reconciliation_autonomy: true`", only for the run's own scope.
+              reconciliation_autonomy: autonomy,
+            }
           : {}),
       },
     },
@@ -343,6 +354,9 @@ function frozenFacts(
     outputs_revealed: input.outputsRevealed,
   };
 }
+
+/** The scope of a run with no autonomy record to compare with. */
+const NO_SCOPE = { check: null, check_patch: null, jev: null } as const;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -407,6 +421,7 @@ async function finish(
   artifact: Artifact | null = null,
   session: Artifact | null = null,
   record: ScoreRecord | null = null,
+  autonomy = false,
 ): Promise<void> {
   const at = deps.clock.now().toISOString();
   const nowMs = deps.clock.now().getTime();
@@ -425,7 +440,7 @@ async function finish(
     result: { ...(result as unknown as Record<string, unknown>), run_id: fact(result.run_id), request_id: protectId(result.request_id) },
     // Why not masked here: `r.value(raw)` below masks it once, and keeps each `fact(...)` whole. A
     // second pass over the unwrapped text read `kvfcu/open_sub@1.0.0` as an email.
-    frozen: frozenFacts(input, artifact, session, deps.models, record) as Record<string, unknown>,
+    frozen: frozenFacts(input, artifact, session, deps.models, record, autonomy) as Record<string, unknown>,
     files: fileEntries.map((f) => ({
       path: isCapturePath(f.path) ? fact(f.path) : f.path,
       sha256: fact(f.sha256),
@@ -568,6 +583,11 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
   // Why an effect this early: section 3 §5.8, present on every non-rejected result of a
   // `commits` capability. `null` when the artifact never resolved (a precheck-stage failure).
   const earlyEffect = artifactForFacts?.contract.effect === "commits" ? notSentEffect() : null;
+  // Why here: section 8 §14.2. Autonomy is frozen per run, and only for the scope (check key, jev version) the run really has.
+  const heldAutonomy = recordForFacts?.autonomy ?? null;
+  const autonomyScope =
+    heldAutonomy === null || artifactForFacts === null ? NO_SCOPE : await runScope(deps, input, artifactForFacts);
+  const autonomyGranted = rungFlags(input.policy, deps.models).jev && grantedFor(heldAutonomy, autonomyScope);
 
   const created = await deps.evidence.createRun(input.tenant, runId, deps.signal);
   if (!created.ok) {
@@ -616,7 +636,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     deps.signal,
   );
   await log.append(
-    { event: "run_start", step: null, by: "engine", data: frozenFacts(input, artifactForFacts, sessionForFacts, deps.models, recordForFacts) },
+    { event: "run_start", step: null, by: "engine", data: frozenFacts(input, artifactForFacts, sessionForFacts, deps.models, recordForFacts, autonomyGranted) },
     true,
   );
   await log.append({ event: "precheck", step: null, by: "engine", data: { checks: pre.results } });
@@ -703,7 +723,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         : Result.parse({ ...result, interventions: [...interventions], warnings: [...result.warnings, ...notes] });
     // Why the artifact and session: section 3 §7.3, `run.json.frozen` is a copy of `run_start`'s
     // frozen facts, so it names the artifacts the run used (evidence publish copies them).
-    await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles, artifactForFacts, sessionForFacts, recordForFacts);
+    await finish(folder, deps, r, input, capabilityStr, status, code, final, captureFiles, artifactForFacts, sessionForFacts, recordForFacts, autonomyGranted);
     // Why after `finish`: section 8 §5.6, "replay, after `run_end`". A failed write never changes the result.
     await writeLiveLines(deps, input, {
       runId,
@@ -1435,6 +1455,17 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       void log.append(typeof data.input === "string" && data.input.startsWith("llm/") ? { ...line, data: { ...data, input: fact(data.input) } } : line);
     };
 
+    /** What jev said about this run's check, and how the live spot check came out (section 8 §14.2). */
+    const modelSaid: ReconcileSeen = { jev: null, spot: null };
+    /** Takes autonomy away, from this run (section 8 §14.2). At most once per run; never changes the run's result. */
+    let autonomyRevoked = false;
+    const revokeAutonomyHere = async (reason: string): Promise<void> => {
+      if (autonomyRevoked) return;
+      autonomyRevoked = true;
+      const done = await revokeFromRun(deps, input, { runId, artifact, scope: autonomyScope, held: heldAutonomy }, reason);
+      if (done) await log.append({ event: "warning", step: null, by: "engine", data: { code: "autonomy_revoked", detail: reason } });
+    };
+
     /** Anything else the check said, ask jev and then the reviewer (section 5 §10.5, §10.6).
      * `found` only when both agree; every other case, or a rung that is off, is a human's. */
     const modelReconciliation = async (stepId: string, check: CheckFacts): Promise<"found" | "human"> => {
@@ -1455,7 +1486,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         },
         check,
       );
-      return reconcileWithModels({
+      const answer = await reconcileWithModels({
         jev: deps.models?.classifier ?? null,
         reviewer: flags.reviewer ? (deps.models?.reviewer ?? null) : null,
         min: (deps.models?.cutoffs ?? DEFAULT_CUTOFFS).reconciliation_min,
@@ -1463,8 +1494,16 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         step: stepId,
         recorder: llmRecorder,
         log: appendModelLine,
+        // Why: section 8 §14.2, section 5 §10.6. A granted run lets jev's `found` stand; the run-ID hash picks the 1 in 20 that asks the reviewer anyway.
+        ...(autonomyGranted ? { autonomous: { spotCheck: spotChecked(runId) } } : {}),
+        observe: (o) => {
+          modelSaid.jev = o.jev;
+          modelSaid.spot = o.spot;
+        },
         ...(deps.signal === undefined ? {} : { signal: deps.signal }),
       });
+      if (modelSaid.spot === "disagreed") await revokeAutonomyHere(`live spot check: the reviewer disagreed with jev on run ${runId}`);
+      return answer;
     };
 
     /** Section 3 §5.10's `via: "reconciliation"` recovery entry (section 7 §11.1: "`recoveries`
@@ -1708,6 +1747,11 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ...(decidedByHuman ? { staff_id: got.staff } : {}),
         },
       });
+      // Why: section 8 §14.2, "a human decides a reconciliation differently from jev's answer" revokes autonomy.
+      // Only a counted jev answer (found or not_found) can be differed from; `unclear` and no answer give nothing to compare.
+      if (decidedByHuman && (modelSaid.jev === "found" || modelSaid.jev === "not_found") && got.kind !== modelSaid.jev) {
+        await revokeAutonomyHere(`staff ${got.staff} decided ${got.kind} on run ${runId}; jev said ${modelSaid.jev}`);
+      }
       if (got.kind === "found") return endFoundNoOutputs(stepId, checkRunId, "human", got.staff);
       if (got.kind === "not_found") return settleAbsent(stepId, checkRunId, "human", got.staff);
       // Unanswered (section 7 §13.3, "the worst case in section 3 §5.12"): commit stays

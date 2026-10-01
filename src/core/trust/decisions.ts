@@ -6,6 +6,10 @@ import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreKey, ScoreRecord } from "../model/score.js";
 import type { Role } from "../model/staff.js";
+import type { BatchReport } from "../model/batch-report.js";
+import type { Autonomy, AutonomyScope } from "../model/score.js";
+import { raiseAutonomyRevoked, type DriftDeps } from "./alerts.js";
+import { evidenceLine, foldAutonomy, stateFor } from "./autonomy.js";
 import { keyPath, keyText } from "./keys.js";
 import { evaluateRules } from "./live-rules.js";
 import { appendHistory, type ScoreDeps, type ScoreFailure, type ScoreWriter } from "./scores.js";
@@ -22,7 +26,11 @@ export type DecisionFailure =
   /** `restore --after-exclusion`: no live rule degraded the key, or none of its runs was excluded. */
   | "no_exclusion"
   /** `restore --after-exclusion`: a rule still fires with the exclusions applied. */
-  | "rule_still_fires";
+  | "rule_still_fires"
+  /** `trust autonomy grant`: the autonomy record is not `ready` for this scope. */
+  | "not_ready"
+  /** `trust autonomy revoke`: no autonomy record, or it is already `revoked`. */
+  | "no_autonomy";
 
 /** Who decides, when, and under which lock identity. */
 export type Decider = { at: Date; staff: string; roles: readonly Role[]; who: ScoreWriter };
@@ -260,4 +268,94 @@ export function retireKey(
     reason,
     newer_key: null,
   });
+}
+
+/** The key's autonomy record now: its `autonomy` history lines folded in order. A line that breaks the rules is skipped here; `rebuild` reports it. */
+export async function readAutonomy(deps: ScoreDeps, key: ScoreKey): Promise<Outcome<Autonomy | null, "invalid">> {
+  const history = await deps.scores.history(keyPath(key));
+  if (!history.ok) return fail("invalid", history.detail);
+  let cur: Autonomy | null = null;
+  for (const line of history.value) {
+    if (line.event !== "autonomy") continue;
+    const next = foldAutonomy(cur, line);
+    if (next.ok) cur = next.value;
+  }
+  return ok(cur);
+}
+
+/**
+ * Writes what a certify batch's jev drill labels make (section 8 §14.2): an `earned` line, or a
+ * `revoked` line (with an alert) when jev answered one wrong. Writes nothing when the batch makes
+ * no evidence. Returns the line's action, or `null` for none.
+ */
+export async function recordAutonomyEvidence(
+  deps: ScoreDeps,
+  key: ScoreKey,
+  report: BatchReport,
+  at: Date,
+  who: ScoreWriter,
+  alert?: DriftDeps,
+): Promise<Outcome<"earned" | "revoked" | null, DecisionFailure>> {
+  const line = evidenceLine(report, at.toISOString());
+  if (line === null) return ok(null);
+  const before = await readAutonomy(deps, key);
+  if (!before.ok) return before;
+  const done = await appendHistory(deps, key, line, who);
+  if (!done.ok) return done;
+  // Why only after a real revocation: with no evidence yet, a wrong answer has nothing to take away, so no alert (section 8 §14.2).
+  if (line.action === "revoked" && before.value !== null && before.value.state !== "revoked" && alert !== undefined) {
+    const runs = (report.jev?.calls ?? []).filter((c) => c.label === "wrong").map((c) => c.run_id);
+    await raiseAutonomyRevoked(alert, { tenant: key.tenant, key: keyText(key), runs, reason: line.reason, at: line.at });
+  }
+  return ok(line.action === "revoked" ? "revoked" : "earned");
+}
+
+/** Grants autonomy (section 8 §14.2: "a human grants it"). An approver only; the record must be `ready` for `scope`, the check key and jev version a run would use now. */
+export async function grantAutonomy(
+  deps: ScoreDeps,
+  record: ScoreRecord,
+  d: Decider,
+  o: { scope: AutonomyScope; reason: string },
+): Promise<Outcome<ScoreRecord, DecisionFailure>> {
+  if (!d.roles.includes("approver")) return fail("role", `${d.staff} needs the approver role to grant autonomy`);
+  const a = record.autonomy;
+  const state = stateFor(a, o.scope);
+  if (a === null || state !== "ready") {
+    return fail("not_ready", `autonomy is ${state}, not ready; a full batch with jev on must earn the evidence first`);
+  }
+  return appendHistory(
+    deps,
+    record.key,
+    { event: "autonomy", at: d.at.toISOString(), by: d.staff, reason: o.reason, action: "granted", evidence: a.evidence.batches },
+    d.who,
+  );
+}
+
+/**
+ * Takes autonomy away and zeroes the evidence (section 8 §14.2). `by` is a staff ID for a person
+ * (an operator or an approver), or `system` for a live path. Alerts an operator when `alert` is given.
+ * Nothing to revoke (no record, or already `revoked`) is `no_autonomy`.
+ */
+export async function revokeAutonomy(
+  deps: ScoreDeps,
+  key: ScoreKey,
+  o: { by: string; reason: string; runs: readonly string[]; at: Date; who: ScoreWriter; alert?: DriftDeps; roles?: readonly Role[] },
+): Promise<Outcome<ScoreRecord, DecisionFailure>> {
+  if (o.roles !== undefined && !o.roles.includes("operator") && !o.roles.includes("approver")) {
+    return fail("role", `${o.by} needs the operator or approver role to revoke autonomy`);
+  }
+  const cur = await readAutonomy(deps, key);
+  if (!cur.ok) return cur;
+  if (cur.value === null || cur.value.state === "revoked") return fail("no_autonomy", "there is no autonomy to revoke");
+  const at = o.at.toISOString();
+  const done = await appendHistory(
+    deps,
+    key,
+    { event: "autonomy", at, by: o.by, reason: o.reason, action: "revoked", evidence: cur.value.evidence.batches },
+    o.who,
+  );
+  if (done.ok && o.alert !== undefined) {
+    await raiseAutonomyRevoked(o.alert, { tenant: key.tenant, key: keyText(key), runs: [...o.runs], reason: o.reason, at });
+  }
+  return done;
 }

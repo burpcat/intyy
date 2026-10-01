@@ -1,6 +1,6 @@
 // The certify batch report (`intyy.batch_report/1.0`), written after the last run.
 // Follows design section 8 §7.8, §8.1 to §8.3, §9.3 (stability curve). A quick batch leaves the
-// full batch's optional fields out; no jev table yet.
+// full batch's optional fields out. A full batch labels each jev reconcile answer from its drills (§14.2).
 import { z } from "zod";
 import { AppId, TenantId } from "./common.js";
 import { CaseGroup } from "./batch-plan.js";
@@ -35,6 +35,24 @@ export const Verdict = z.enum(["pass", "explained", "assisted", "unexplained", "
 
 /** A verdict. */
 export type Verdict = z.infer<typeof Verdict>;
+
+/**
+ * One jev reconcile answer in a drill, labelled by the drill's known truth (section 8 §8.5, §14.2).
+ * `unclear` never counts either way, so it is labelled `below_threshold`: no usable answer.
+ */
+export const JevCall = z
+  .object({
+    case_id: z.string().min(1),
+    run_id: z.string().min(1),
+    answer: z.enum(["found", "not_found", "unclear"]),
+    /** What the drill's fault profile says happened to the commit. */
+    truth: z.enum(["found", "not_found"]),
+    label: z.enum(["right", "wrong", "below_threshold"]),
+  })
+  .strict();
+
+/** A labelled jev call. */
+export type JevCall = z.infer<typeof JevCall>;
 
 /** One case's judged result. */
 export const BatchReportCase = z
@@ -185,6 +203,8 @@ export const BatchReport = z
     /** `true` for a drill batch (section 8 §7.1): the plan's instance facts differ from the test
      * data set's. */
     drill: z.literal(true).optional(),
+    /** The jev version and its labelled reconcile answers from the drills. Absent: jev was off, or no drill ran. */
+    jev: z.object({ version: z.string().min(1), calls: z.array(JevCall) }).strict().optional(),
     /** The candidate pack revision a regression batch ran under, like `app:kvfcu@5` (section 8 §15.1). */
     pack: z.string().min(1).optional(),
   })

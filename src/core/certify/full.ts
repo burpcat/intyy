@@ -5,11 +5,12 @@
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import { resolveMajor } from "../catalog/capabilities.js";
 import type { BatchPlan, BatchPlanCase, CaseGroup } from "../model/batch-plan.js";
-import type { BatchReport, BatchReportCase } from "../model/batch-report.js";
+import type { BatchReport, BatchReportCase, JevCall } from "../model/batch-report.js";
 import type { ExtraCase, SuiteClass } from "../model/suite.js";
 import type { ExplainedEnding, FaultProfile } from "../model/faults.js";
 import type { BatchScores, Under } from "../model/score.js";
 import { gatePasses, gateRules, type GateCase } from "./gate.js";
+import { jevCallsOf } from "./jev-table.js";
 import { isDrill } from "./quick.js";
 import {
   BASELINE_CASE_ID,
@@ -376,6 +377,7 @@ export async function runCertifyFull(
 
   // Drills: the commit-step faults that need reconciliation, judged on truth only (section 8 §7.2).
   const reconciling = input.profiles.filter((pr) => pr.expect_commit.startsWith("reconciles_"));
+  const jevCalls: JevCall[] = [];
   const drillCount = regression ? 0 : input.drills;
   if (drillCount > 0 && reconciling.length === 0) gaps.push("drills: no fault profile ends in a reconciliation, so none could run");
   for (let i = 0; reconciling.length > 0 && i < drillCount; i += 1) {
@@ -384,9 +386,13 @@ export async function runCertifyFull(
     const caseId = `drill_${String(i + 1)}`;
     const seed = `${input.batchId}:${caseId}`;
     const at = profile.at === "@commit_point" ? undefined : `@step:${p.commitStepId}`;
-    add(await withVoidReruns(base, p, matrixClass, caseId, "drill", profile.id, seed, () =>
+    const ran = await withVoidReruns(base, p, matrixClass, caseId, "drill", profile.id, seed, () =>
       runFaultCase(base, deps, p, { kind: "profile", profile }, at, caseId, seed, { group: "drill", truthOnly: true }),
-    ));
+    );
+    add(ran);
+    // Why: the profile's own expectation is the drill's known truth (section 8 §14.2, the drill table).
+    const truth = profile.expect_commit === "reconciles_found" ? "found" : "not_found";
+    if (ran.reportCase.run_id !== "none") jevCalls.push(...jevCallsOf({ case_id: caseId, run_id: ran.reportCase.run_id, truth }, ran.lines));
   }
 
   // Stability: random faults at each entropy level, seeds from the batch ID, each run twice (section 8 §9.3).
@@ -482,6 +488,8 @@ export async function runCertifyFull(
     margin,
     fragile,
     coverage_gaps: gaps,
+    // Why: section 8 §14.2. Every jev reconcile answer in a drill is labelled by the drill's known truth.
+    ...(under.jev === null || regression ? {} : { jev: { version: under.jev, calls: jevCalls } }),
     ...(regression ? {} : { timeouts: timeoutsReport(timed, stepKinds, input.timeouts ?? { values: {}, from: null }) }),
     stability: stab === null ? null : stabilityCurve(stabilityRuns),
     ...(input.pack === undefined ? {} : { pack: input.pack }),

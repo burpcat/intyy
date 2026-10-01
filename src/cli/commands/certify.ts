@@ -18,6 +18,7 @@ import { isDrill, matrixProfiles, runCertifyQuick } from "../../core/certify/qui
 import { runCertifyCase, type CertifySelection } from "../../core/certify/runner.js";
 import type { FrozenSet } from "../../core/packs/merge.js";
 import type { BatchScores, Under } from "../../core/model/score.js";
+import { recordAutonomyEvidence } from "../../core/trust/decisions.js";
 import { appendHistory, batchLine } from "../../core/trust/scores.js";
 import type { LockHold } from "../../ports/locks.js";
 import { requireRole, requireStaff, takeLock, type Ctx } from "../context.js";
@@ -30,7 +31,7 @@ import { keyPath } from "../../core/trust/keys.js";
 import { buildFrozenSet, type PackLayer } from "../../core/packs/merge.js";
 import { layersWith, packImpact } from "../../core/trust/pack-impact.js";
 import { activeLayers, loadFrozenSetFor, readCandidateLayer } from "./pack.js";
-import { driftTenants, scoreDeps } from "./trust-shared.js";
+import { driftDeps, driftTenants, scoreDeps } from "./trust-shared.js";
 import { effectivePolicy } from "./policy.js";
 import { replayModels } from "./replay.js";
 import { settingsTarget } from "./settings.js";
@@ -241,6 +242,12 @@ async function recordBatch(
       who,
     );
     if (!degraded.ok) progress(ctx.io, `warning: the key was not marked degraded (${degraded.failure}). Run intyy trust demote.`);
+  }
+  // Section 8 §14.2: the drills' jev labels earn autonomy evidence, or revoke it on a wrong answer. A failed write is told, never fatal.
+  if (written.ok && kind === "full") {
+    const evidence = await recordAutonomyEvidence(deps, key, report, ctx.wiring.clock.now(), who, driftDeps(ctx));
+    if (!evidence.ok) progress(ctx.io, `warning: the jev evidence was not saved (${evidence.failure}). Run intyy trust rebuild after you fix it.`);
+    else if (evidence.value === "revoked") progress(ctx.io, "jev answered a reconciliation drill wrong: autonomy is revoked and its evidence is zero.");
   }
   if (!written.ok) {
     progress(

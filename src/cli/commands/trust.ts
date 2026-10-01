@@ -10,6 +10,7 @@ import { CliExit, EXIT } from "../exit-codes.js";
 import { answer } from "../output.js";
 import { act, type Register } from "../program.js";
 import { registerApproval } from "./trust-approval.js";
+import { registerAutonomy } from "./trust-autonomy.js";
 import { exitFor, keyFromText, scoreDeps } from "./trust-shared.js";
 
 /** One line per rebuilt key. */
@@ -29,6 +30,7 @@ function describe(r: Rebuilt): string {
 export const registerTrust: Register = (program: Command, ctxOf) => {
   const trust = program.command("trust").description("trust state per key: scores and approval");
   registerApproval(trust, ctxOf);
+  registerAutonomy(trust, ctxOf);
 
   trust
     .command("rebuild")

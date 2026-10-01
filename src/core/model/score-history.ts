@@ -2,7 +2,7 @@
 // Follows design section 8 §5.4 (history lines) and §4.2 (every transition is a line).
 import { z } from "zod";
 import { Sha256Hash } from "./canonical.js";
-import { BatchScores, Timeouts, Under } from "./score.js";
+import { AutonomyCounts, AutonomyScope, BatchScores, Timeouts, Under } from "./score.js";
 
 /** What every history line holds: when, by whom, and why (section 8 §5.4). `by` is a staff ID, or `live_score`, `certify`, or `system`. */
 const common = {
@@ -84,8 +84,14 @@ export const HistoryLine = z.discriminatedUnion("event", [
     .object({
       event: z.literal("autonomy"),
       ...common,
-      action: z.enum(["ready", "granted", "revoked"]),
+      /** `earned`: a certify batch added evidence. `ready` is a marker only; the record derives it from the counts. */
+      action: z.enum(["earned", "ready", "granted", "revoked"]),
+      /** Batch IDs: the batch an `earned` line counts, or the batches a grant or revocation stands on. */
       evidence: z.array(z.string().min(1)),
+      /** What the evidence covers. Present on `earned`; on `revoked` it keeps the scope. */
+      scope: AutonomyScope.optional(),
+      /** What an `earned` line adds. */
+      counts: AutonomyCounts.optional(),
     })
     .strict(),
   z.object({ event: z.literal("thresholds"), ...common, batch: z.string().min(1), values: Cutoffs }).strict(),

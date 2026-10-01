@@ -154,6 +154,24 @@ describe("the approval screen", () => {
     expect(codesOf(f)).toEqual(["stale"]);
   });
 
+  test("the jev and autonomy lines show the batch's labelled calls and the record's autonomy (section 8 §14.2)", () => {
+    const calls = [
+      { case_id: "drill_1", run_id: "run_1", answer: "found", truth: "found", label: "right" },
+      { case_id: "drill_2", run_id: "run_2", answer: "not_found", truth: "not_found", label: "right" },
+      { case_id: "drill_3", run_id: "run_3", answer: "unclear", truth: "found", label: "below_threshold" },
+    ];
+    const scope = { check: "kvfcu/find_account_by_reference@1.0.0", check_patch: null, jev: "jev@fake" };
+    const earned: HistoryLine = {
+      event: "autonomy", at: "2026-01-15T09:10:00.000Z", by: "certify", reason: "batch_a", action: "earned", evidence: ["batch_a"], scope,
+      counts: { correct: 10, found: 5, not_found: 5, wrong: 0, unclear: 1 },
+    };
+    const f = facts({ lines: [earned] });
+    const text = renderReview(buildReview({ ...f, report: BatchReport.parse({ ...report(), jev: { version: "jev@fake", calls } }) }));
+    expect(text).toContain("jev@fake: 3 labelled calls, 2 right, 0 wrong, 1 unclear");
+    expect(text).toContain("autonomy: earning (10/20 correct, 5/5 found, 5/5 not_found, 0 wrong)");
+    expect(renderReview(buildReview(f))).toContain("no labelled calls yet   autonomy: earning");
+  });
+
   test("the screens match the golden file", () => {
     if (process.env.UPDATE_GOLDEN === "1") writeFileSync(GOLDEN, screens());
     expect(screens()).toBe(readFileSync(GOLDEN, "utf8"));

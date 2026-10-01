@@ -113,6 +113,45 @@ export const LiveBlock = z
 /** One live block. */
 export type LiveBlock = z.infer<typeof LiveBlock>;
 
+/** Who changed the autonomy record, when, and why (a grant or a revocation). */
+const AutonomyEvent = z.object({ by: z.string().min(1), at: z.iso.datetime(), reason: z.string() }).strict();
+
+/** What autonomy covers: the check key, its patch, and the jev version. Any change starts over (section 8 §14.2). */
+export const AutonomyScope = z
+  .object({ check: z.string().min(1).nullable(), check_patch: z.number().int().positive().nullable(), jev: z.string().min(1).nullable() })
+  .strict();
+
+/** The scope of an autonomy record. */
+export type AutonomyScope = z.infer<typeof AutonomyScope>;
+
+/** The counts one batch adds to the evidence, or the totals so far (section 8 §14.2). `unclear` never counts as correct or wrong. */
+export const AutonomyCounts = z
+  .object({
+    correct: z.number().int().nonnegative(),
+    found: z.number().int().nonnegative(),
+    not_found: z.number().int().nonnegative(),
+    wrong: z.number().int().nonnegative(),
+    unclear: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/** Evidence counts. */
+export type AutonomyCounts = z.infer<typeof AutonomyCounts>;
+
+/** The reconciliation autonomy record (section 8 §14.2). */
+export const Autonomy = z
+  .object({
+    state: z.enum(["earning", "ready", "granted", "revoked"]),
+    ...AutonomyScope.shape,
+    evidence: AutonomyCounts.extend({ batches: z.array(z.string().min(1)) }).strict(),
+    granted: AutonomyEvent.nullable(),
+    revoked: AutonomyEvent.nullable(),
+  })
+  .strict();
+
+/** The autonomy record. */
+export type Autonomy = z.infer<typeof Autonomy>;
+
 /** The score record (section 8 §5.3). */
 export const ScoreRecord = z
   .object({
@@ -157,17 +196,8 @@ export const ScoreRecord = z
       })
       .strict()
       .nullable(),
-    /** The reconciliation autonomy record (M11). */
-    autonomy: z
-      .object({
-        state: z.enum(["earning", "ready", "granted", "revoked"]),
-        correct: z.number().int().nonnegative(),
-        found: z.number().int().nonnegative(),
-        not_found: z.number().int().nonnegative(),
-        wrong: z.number().int().nonnegative(),
-      })
-      .strict()
-      .nullable(),
+    /** The reconciliation autonomy record (section 8 §14.2). `null`: no jev reconciliation evidence yet. */
+    autonomy: Autonomy.nullable(),
     /** The rolling live score for the current handler set and the one before it (section 8 §5.3, §15.3). */
     live: z
       .object({ current: LiveBlock, previous: LiveBlock.nullable() })

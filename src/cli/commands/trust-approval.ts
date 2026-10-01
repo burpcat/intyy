@@ -49,7 +49,7 @@ export async function stdinText(ctx: Ctx, prompt: string | null): Promise<string
 }
 
 /** A required reason, from standard input. */
-async function reasonText(ctx: Ctx): Promise<string> {
+export async function reasonText(ctx: Ctx): Promise<string> {
   const reason = await stdinText(ctx, "Reason: ");
   if (reason === "") throw new CliExit(EXIT.usage, "give a reason: pipe it on standard input");
   return reason;
@@ -63,7 +63,7 @@ function needed(opts: Record<string, unknown>, name: string, flag: string): stri
 }
 
 /** The deciding person: the role this command needs, the clock, and a lock identity. */
-function decider(ctx: Ctx, command: string, staff: string, roles: Decider["roles"]): Decider {
+export function decider(ctx: Ctx, command: string, staff: string, roles: Decider["roles"]): Decider {
   return {
     at: ctx.wiring.clock.now(),
     staff,
@@ -73,13 +73,13 @@ function decider(ctx: Ctx, command: string, staff: string, roles: Decider["roles
 }
 
 /** Unwraps a decision, or ends the command with the failure's exit code. */
-function done<T>(command: string, r: Outcome<T, DecisionFailure>): T {
+export function done<T>(command: string, r: Outcome<T, DecisionFailure>): T {
   if (!r.ok) throw new CliExit(exitFor(r.failure), `trust ${command}: ${r.detail ?? r.failure}`);
   return r.value;
 }
 
 /** Taking trust away needs an operator or an approver (section 8 §10.1). Returns the staff ID and the role that qualified. */
-function requireOperatorOrApprover(ctx: Ctx): { staff: string; role: "operator" | "approver" } {
+export function requireOperatorOrApprover(ctx: Ctx): { staff: string; role: "operator" | "approver" } {
   try {
     return { staff: requireRole(ctx, ctx.tenant, "operator"), role: "operator" };
   } catch (e) {

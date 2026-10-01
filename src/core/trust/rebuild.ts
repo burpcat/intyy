@@ -5,6 +5,7 @@ import { hashJson } from "../model/canonical.js";
 import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreKey, ScoreRecord, TrustState } from "../model/score.js";
+import { foldAutonomy } from "./autonomy.js";
 import { excludedRuns, liveField } from "./live-rules.js";
 import { transition, type Move } from "./state.js";
 
@@ -119,7 +120,12 @@ function applyLine(
       });
     case "thresholds":
       return ok({ ...next, thresholds: { ...line.values, batch: line.batch } });
-    // Why: `excluded` feeds the live block (rebuild, below). `autonomy` feeds the autonomy record (M11, later).
+    case "autonomy": {
+      // Why: section 8 §14.2. The autonomy record is a pure fold of its history lines, like every other field.
+      const folded = foldAutonomy(next.autonomy, line);
+      return folded.ok ? ok({ ...next, autonomy: folded.value }) : folded;
+    }
+    // Why: `excluded` feeds the live block (rebuild, below).
     default:
       return ok(next);
   }

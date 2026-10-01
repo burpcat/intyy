@@ -85,8 +85,8 @@ export function renderReview(r: Review, full = false): string {
   out.push(`  ${col("coverage gaps")}${r.gaps.length === 0 ? "none" : r.gaps.join("; ")}`);
   out.push(`  ${col("stability")}${r.stability}`);
   out.push(`  ${col("timeouts")}${r.timeouts}`);
-  // Why: the jev table, autonomy, burn-in runs, and sealing warnings have no data source before M11.
-  out.push(`  ${col("jev")}no labelled calls yet   autonomy: M11`);
+  // Why: section 8 §14.2. The jev line and the autonomy state come from the batch report and the record. Burn-in runs and sealing warnings still have no data source.
+  out.push(`  ${col("jev")}${r.jev}   autonomy: ${r.autonomy}`);
   out.push(`  ${col("burn-in")}not tracked yet (M11)`);
   out.push(`  ${col("sealing")}no open warnings recorded`);
   out.push(`RECORD ${r.record}`);

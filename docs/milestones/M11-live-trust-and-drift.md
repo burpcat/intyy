@@ -57,7 +57,7 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 - [x] 3. Write early warnings, the drift reader, and alerts. Test the handler set tie-in with fixtures.
 - [x] 4. Write major records and `major_retired`.
 - [x] 5. Write `pack impact`, regression batches, and the coverage check.
-- [ ] 6. Write reconciliation autonomy. Test the balance rule and each revocation path.
+- [x] 6. Write reconciliation autonomy. Test the balance rule and each revocation path.
 - [ ] 7. Only if time allows: draft the lakeshore files. Stop. Ask the owner to run the probe below.
 
 **The lakeshore probe (B5), for the owner:**
@@ -75,7 +75,7 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 
 - [x] Live classes; window and streak rules; exclusion and restore (section 8 §18).
 - [x] Handler set tie-in: a drop after a hash change names the pack revision.
-- [ ] Autonomy: the balance rule; each revocation path resets the evidence.
+- [x] Autonomy: the balance rule; each revocation path resets the evidence.
 - [x] `pack approve` refuses without regression coverage, once a key is approved.
 - [x] A retired major gives `capability_not_found`, reason `major_retired`, naming the successor.
 

@@ -29,7 +29,7 @@ type Check = z.infer<typeof ReconciliationCheck>;
 
 /** Splits `app/capability@major`. The recovery block's own schema already enforces this shape,
  * so a mismatch here is a bug (only bugs throw, per CLAUDE.md). */
-function splitCapabilityLink(link: string): { app: string; capability: string; major: number } {
+export function splitCapabilityLink(link: string): { app: string; capability: string; major: number } {
   const m = /^([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_]*)@([1-9]\d*)$/.exec(link);
   if (m?.[1] === undefined || m[2] === undefined || m[3] === undefined) {
     throw new Error(`splitCapabilityLink: ${link} does not fit app/capability@major`);
@@ -271,12 +271,22 @@ export function reconcileInput(
   });
 }
 
+/** What `reconcileWithModels` saw, for the caller's own bookkeeping: jev's counted answer (`null`: no usable answer) and the spot check's result. */
+export type ReconcileSeen = {
+  jev: "found" | "not_found" | "unclear" | null;
+  spot: "agreed" | "disagreed" | null;
+};
+
 /**
  * Anything else the check said: jev, then the reviewer's second opinion (section 5 §10.5, §10.6;
  * section 7 §11.1). Answers `found` only when both are sure (at `reconciliation_min` or more) and
  * agree. Everything else, including a missing or failed model, is `human`.
  * Why `not_found` is never accepted: only plain code may say nothing changed (CLAUDE.md); jev's
  * `not_found` asks for a person, who then decides any retry (section 5 §10.5).
+ * `autonomous` is set when the run froze `reconciliation_autonomy` (section 8 §14.2): jev's `found`
+ * then stands alone, and the reviewer only runs when `spotCheck` is true (about 1 run in 20, section 5
+ * §10.6). A reviewer that answers anything but `found` is a disagreement: `found` is withheld and `observe`
+ * hears `disagreed`, so the caller can revoke. A reviewer with no usable answer is not a disagreement.
  */
 export async function reconcileWithModels(a: {
   jev: Classifier | null;
@@ -286,6 +296,8 @@ export async function reconcileWithModels(a: {
   step: string;
   recorder: (who: "jev" | "reviewer") => { record: CallRecorder; request: string };
   log: (line: LogLine) => void;
+  autonomous?: { spotCheck: boolean };
+  observe?: (seen: ReconcileSeen) => void;
   signal?: AbortSignal;
 }): Promise<"found" | "human"> {
   const cutoffs = { reconciliation_min: a.min };
@@ -309,8 +321,14 @@ export async function reconcileWithModels(a: {
   };
   if (a.jev === null) return "human";
   const first = await ask("jev", a.jev);
+  a.observe?.({ jev: first.warning === undefined ? first.verdict : null, spot: null });
   // Why only `found` goes on: it is the only answer a model may settle (see above).
-  if (first.verdict !== "found" || a.reviewer === null) return "human";
+  if (first.verdict !== "found") return "human";
+  if (a.autonomous !== undefined && !a.autonomous.spotCheck) return "found";
+  if (a.reviewer === null) return a.autonomous === undefined ? "human" : "found";
   const second = await ask("reviewer", a.reviewer);
-  return second.verdict === "found" ? "found" : "human";
+  if (a.autonomous === undefined) return second.verdict === "found" ? "found" : "human";
+  const spot = second.verdict === "found" ? "agreed" : second.warning === undefined ? "disagreed" : null;
+  a.observe?.({ jev: "found", spot });
+  return spot === "disagreed" ? "human" : "found";
 }

@@ -11,7 +11,8 @@ export const AlertId = z.string().regex(/^alert_\d{4}-\d{2}-\d{2}_[0-9a-hjkmnp-t
  * What the alert is about. The first six are the early warnings of section 8 §12.4 (`clue_drift`
  * waits for patch drafting, so nothing writes it yet). `one_tenant` and `outage` are the §13.2
  * patterns. `change_point` ties a drop to an engine, jev, or handler set change (§13.3).
- * `live_write_failed` is the failed score write of §5.6.
+ * `live_write_failed` is the failed score write of §5.6. `autonomy_revoked` tells an operator that
+ * reconciliation autonomy was taken away (§14.2, section 5 §10.6).
  */
 export const AlertPattern = z.enum([
   "margin_drop",
@@ -25,6 +26,7 @@ export const AlertPattern = z.enum([
   "outage",
   "change_point",
   "live_write_failed",
+  "autonomy_revoked",
 ]);
 
 /** An alert pattern. */

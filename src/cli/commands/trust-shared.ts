@@ -25,6 +25,8 @@ export function exitFor(failure: DecisionFailure): ExitCode {
     case "needs_staff":
     case "no_exclusion":
     case "rule_still_fires":
+    case "not_ready":
+    case "no_autonomy":
       return EXIT.refused;
     default:
       return EXIT.invalid;

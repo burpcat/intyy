@@ -8,6 +8,7 @@ import type { BatchReport } from "../model/batch-report.js";
 import type { ScoreKey, ScoreRecord, TrustState } from "../model/score.js";
 import { IndexLine } from "../model/store-index.js";
 import type { Role } from "../model/staff.js";
+import { READY_RULE } from "./autonomy.js";
 import { capabilityParts, keyText } from "./keys.js";
 import { recordHash } from "./rebuild.js";
 import { decide } from "./state.js";
@@ -292,6 +293,10 @@ export type Review = {
   stability: string;
   timeouts: string;
   lowered: string[];
+  /** The batch's labelled jev calls, in one line (section 8 §8.5). */
+  jev: string;
+  /** The reconciliation autonomy state and its evidence, in one line (section 8 §14.2). */
+  autonomy: string;
   /** The record hash `trust approve` must quote. */
   record: string;
 };
@@ -356,6 +361,20 @@ function stabilityLine(curve: BatchReport["stability"]): string {
   return `${levels.join("   ")}   twins ${String(worst.twin_mismatch)}${worst.twin_mismatch > 0 ? ` at ${worst.entropy.toFixed(2)}` : ""}`;
 }
 
+/** The jev line: how many labelled calls the batch made, and how they came out. */
+function jevLine(jev: BatchReport["jev"]): string {
+  if (jev === undefined || jev.calls.length === 0) return "no labelled calls yet";
+  const n = (label: string) => jev.calls.filter((c) => c.label === label).length;
+  return `${jev.version}: ${String(jev.calls.length)} labelled calls, ${String(n("right"))} right, ${String(n("wrong"))} wrong, ${String(n("below_threshold"))} unclear`;
+}
+
+/** The autonomy line: `none`, or the state with its evidence against the ready rule. */
+function autonomyLine(a: ScoreRecord["autonomy"]): string {
+  if (a === null) return "none";
+  const e = a.evidence;
+  return `${a.state} (${String(e.correct)}/${String(READY_RULE.correct)} correct, ${String(e.found)}/${String(READY_RULE.found)} found, ${String(e.not_found)}/${String(READY_RULE.not_found)} not_found, ${String(e.wrong)} wrong)`;
+}
+
 /** Builds the screen's data from the facts. `batchId` falls back to the record's latest full batch. */
 export function buildReview(f: ReviewFacts): Review {
   const move = moveFor(f.record.state);
@@ -400,6 +419,8 @@ export function buildReview(f: ReviewFacts): Review {
     stability: stabilityLine(report?.stability),
     timeouts: timeoutsLine(report?.timeouts),
     lowered: loweredFlags(f.decisions),
+    jev: jevLine(report?.jev),
+    autonomy: autonomyLine(f.record.autonomy),
     record: recordHash(f.record),
   };
 }

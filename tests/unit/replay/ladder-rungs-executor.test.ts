@@ -258,6 +258,8 @@ describe("frozen ladder facts (section 5 §10.8)", () => {
       handler_min: 0.8,
       outcome_min: 0.95,
       reconciliation_min: 0.9,
+      // No autonomy record, so the run is not autonomous (section 8 §14.2).
+      reconciliation_autonomy: false,
     });
   });
 

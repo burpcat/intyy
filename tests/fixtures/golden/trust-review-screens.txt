@@ -19,7 +19,7 @@ READ BEFORE YOU APPROVE
   coverage gaps  hang with the window closed; logout with the window closed
   stability      not run
   timeouts       installs defaults; no candidates
-  jev            no labelled calls yet   autonomy: M11
+  jev            no labelled calls yet   autonomy: none
   burn-in        not tracked yet (M11)
   sealing        no open warnings recorded
 RECORD sha256:98e62a26a96b139c83cb0923196157ce9b4fcb159de4646aa1aaa3382c6e6f24
@@ -51,7 +51,7 @@ READ BEFORE YOU APPROVE
   coverage gaps  hang with the window closed; logout with the window closed
   stability      not run
   timeouts       installs defaults; no candidates
-  jev            no labelled calls yet   autonomy: M11
+  jev            no labelled calls yet   autonomy: none
   burn-in        not tracked yet (M11)
   sealing        no open warnings recorded
 RECORD sha256:98e62a26a96b139c83cb0923196157ce9b4fcb159de4646aa1aaa3382c6e6f24
@@ -79,7 +79,7 @@ READ BEFORE YOU APPROVE
   coverage gaps  hang with the window closed; logout with the window closed
   stability      not run
   timeouts       installs defaults; no candidates
-  jev            no labelled calls yet   autonomy: M11
+  jev            no labelled calls yet   autonomy: none
   burn-in        not tracked yet (M11)
   sealing        no open warnings recorded
 RECORD sha256:c565905acbbfbd832373596019e71e4c409e1a1547f787ab315736aea6e41a82
@@ -113,7 +113,7 @@ READ BEFORE YOU APPROVE
   coverage gaps  hang with the window closed; logout with the window closed
   stability      not run
   timeouts       installs defaults; no candidates
-  jev            no labelled calls yet   autonomy: M11
+  jev            no labelled calls yet   autonomy: none
   burn-in        not tracked yet (M11)
   sealing        no open warnings recorded
 RECORD sha256:c565905acbbfbd832373596019e71e4c409e1a1547f787ab315736aea6e41a82
@@ -139,7 +139,7 @@ READ BEFORE YOU APPROVE
   coverage gaps  hang with the window closed; logout with the window closed
   stability      not run
   timeouts       installs defaults; no candidates
-  jev            no labelled calls yet   autonomy: M11
+  jev            no labelled calls yet   autonomy: none
   burn-in        not tracked yet (M11)
   sealing        no open warnings recorded
 RECORD sha256:48dc6cd6e0f159ad047cd7796e7e841732c61ed48cb6018b07961dcae34946f2
@@ -171,7 +171,7 @@ READ BEFORE YOU APPROVE
   coverage gaps  hang with the window closed; logout with the window closed
   stability      not run
   timeouts       installs defaults; no candidates
-  jev            no labelled calls yet   autonomy: M11
+  jev            no labelled calls yet   autonomy: none
   burn-in        not tracked yet (M11)
   sealing        no open warnings recorded
 RECORD sha256:48dc6cd6e0f159ad047cd7796e7e841732c61ed48cb6018b07961dcae34946f2

@@ -127,6 +127,25 @@ export async function raiseLiveWriteFailed(
   });
 }
 
+/**
+ * The alert for a revoked reconciliation autonomy (section 8 §14.2: "revoked automatically, with an
+ * alert"; section 5 §10.6: "notifies an operator"). `runs` are the runs that showed the disagreement.
+ */
+export async function raiseAutonomyRevoked(
+  deps: DriftDeps,
+  from: { tenant: string; key: string; runs: string[]; reason: string; at: string },
+): Promise<Outcome<Alert, "write_failed">> {
+  return raise(deps, {
+    tenant: from.tenant,
+    keys: [from.key],
+    pattern: "autonomy_revoked",
+    runs: from.runs,
+    detail: `Reconciliation autonomy of ${from.key} was revoked: ${from.reason}`,
+    fix: `Run: intyy trust autonomy ${from.key}. Earn new evidence with a full batch, then grant again.`,
+    fingerprint: `autonomy_revoked:${from.key}:${from.at}`,
+  });
+}
+
 /** Why closing an alert failed. */
 export type CloseFailure = "not_found" | "invalid" | "not_open" | "write_failed";
 

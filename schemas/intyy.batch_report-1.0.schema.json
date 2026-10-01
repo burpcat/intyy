@@ -639,6 +639,67 @@
       "type": "boolean",
       "const": true
     },
+    "jev": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "case_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "run_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "answer": {
+                "type": "string",
+                "enum": [
+                  "found",
+                  "not_found",
+                  "unclear"
+                ]
+              },
+              "truth": {
+                "type": "string",
+                "enum": [
+                  "found",
+                  "not_found"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "enum": [
+                  "right",
+                  "wrong",
+                  "below_threshold"
+                ]
+              }
+            },
+            "required": [
+              "case_id",
+              "run_id",
+              "answer",
+              "truth",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "version",
+        "calls"
+      ],
+      "additionalProperties": false
+    },
     "pack": {
       "type": "string",
       "minLength": 1
