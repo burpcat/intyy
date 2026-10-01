@@ -44,5 +44,67 @@
       "at": "@commit_point",
       "expect_commit": "reconciles_found"
     }
+  ],
+  "explained_endings": [
+    {
+      "styles": [
+        "maintenance"
+      ],
+      "status": "failed",
+      "endings": [
+        "app_error"
+      ]
+    },
+    {
+      "styles": [
+        "error_page",
+        "blank",
+        "unavailable"
+      ],
+      "status": "failed",
+      "endings": [
+        "app_error"
+      ]
+    },
+    {
+      "styles": [
+        "logout"
+      ],
+      "status": "failed",
+      "endings": [
+        "app_error",
+        "session_lost"
+      ]
+    },
+    {
+      "styles": [
+        "hang"
+      ],
+      "status": "failed",
+      "endings": [
+        "checkpoint_timeout",
+        "action_failed"
+      ]
+    },
+    {
+      "styles": [
+        "*"
+      ],
+      "min_faults": 3,
+      "status": "escalated",
+      "endings": [
+        "takeover/stuck"
+      ]
+    },
+    {
+      "styles": [
+        "*"
+      ],
+      "status": "failed",
+      "endings": [
+        "outputs_unavailable"
+      ],
+      "commit": "found_by_check"
+    }
   ]
 }
