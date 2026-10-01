@@ -2134,18 +2134,46 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         continue;
       }
 
+      // Why the escalation and index lines: as for the start confirmation, `operator list` finds
+      // an open approval only by the index's `escalated` status, and the log records who decided.
       const approval: CommitApproval = {
-        ask: async (ask, signal) =>
-          (await whileWaiting(
-            (sig) =>
-              new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
-                runId,
-                tenant: input.tenant,
-                capability: capabilityStr,
-                deadlineMinutes: input.policy.effective.escalation.approval_minutes ?? 5,
-              }).commitApproval(ask, sig),
-            signal,
-          )) ?? { kind: "run_ended" as const },
+        ask: async (ask, signal) => {
+          await log.append({ event: "escalation", step: step.id, by: "engine", data: { kind: "approval", reason: "no_authorization", state: "open" } });
+          await deps.evidence.appendIndex(
+            input.tenant,
+            r.value({ run_id: fact(runId), at: fact(deps.clock.now().toISOString()), status: "escalated", code: null, kind: "replay", capability: capabilityStr }),
+            deps.signal,
+          );
+          const answered =
+            (await whileWaiting(
+              (sig) =>
+                new OperatorSupervisor(deps.operator({ runId, tenant: input.tenant }), deps.clock, r, {
+                  runId,
+                  tenant: input.tenant,
+                  capability: capabilityStr,
+                  deadlineMinutes: input.policy.effective.escalation.approval_minutes ?? 5,
+                }).commitApproval(ask, sig),
+              signal,
+            )) ?? { kind: "run_ended" as const };
+          await log.append({
+            event: "escalation",
+            step: step.id,
+            by: answered.kind === "approved" || answered.kind === "declined" ? "human" : "engine",
+            data: {
+              kind: "approval",
+              reason: "no_authorization",
+              state: answered.kind === "timed_out" ? "timed_out" : answered.kind === "run_ended" ? "run_ended" : "resolved",
+              decision: answered.kind === "approved" ? "approved" : answered.kind === "declined" ? "declined" : null,
+              ...("staff" in answered ? { staff_id: answered.staff } : {}),
+            },
+          });
+          await deps.evidence.appendIndex(
+            input.tenant,
+            r.value({ run_id: fact(runId), at: fact(deps.clock.now().toISOString()), status: "running", code: null, kind: "replay", capability: capabilityStr }),
+            deps.signal,
+          );
+          return answered;
+        },
       };
       const commitCtx: CommitContext = {
         observation: observed.value,

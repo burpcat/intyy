@@ -122,6 +122,14 @@ describe("a commit retry after the authorization expired (section 7 §11.3)", ()
     expect(lines?.find((l) => l.event === "precheck")?.data).toBeDefined();
     expect(JSON.stringify(lines?.find((l) => l.event === "precheck")?.data)).not.toContain('"passed":false');
     expect(commitGates(lines)).toEqual(["needs_approval", "allowed"]);
+    // The approval opens and closes in the log, and the index marks the run escalated while it
+    // waits, so `operator list` shows it.
+    const approvals = (lines ?? []).filter((l) => l.event === "escalation" && l.data.kind === "approval");
+    expect(approvals.map((l) => [l.data.state, l.data.decision ?? null])).toEqual([["open", null], ["resolved", "approved"]]);
+    const index = await h.deps.evidence.index(TENANT);
+    if (!index.ok) throw new Error("index missing");
+    const childRows = (index.value as { run_id: string; status: string }[]).filter((row) => row.run_id !== runId);
+    expect(childRows.map((row) => row.status)).toContain("escalated");
   });
 
   test("the person declines the commit-point approval: the retry sends nothing, and the parent does not end success", async () => {
