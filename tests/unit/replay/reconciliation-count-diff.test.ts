@@ -200,6 +200,22 @@ describe("count_diff: plain code decides from two counts (M05 gate rows)", () =>
   });
 });
 
+describe("count_diff: a readable baseline", () => {
+  test("the baseline line logs status and check_run_id only; the count (a pii-labelled output) never reaches the log", async () => {
+    const { site } = siteCounting([2, 3]);
+    const h = await harnessFor(site, { operator: () => new FakeOperator([{ staff: "op_017", decision: "approved" }]) });
+    const { runId } = await runReplay(inputFor(h), h.deps);
+
+    const baseline = baselineOf(await eventsOf(h, runId));
+    expect(baseline).toHaveLength(1);
+    expect(baseline[0]?.data.status).toBe("read");
+    expect(baseline[0]?.data.check_run_id).toEqual(expect.any(String));
+    expect(Object.keys(baseline[0]?.data ?? {}).sort()).toEqual(["check_run_id", "status"]);
+    expect(baseline[0]?.data).not.toHaveProperty("count");
+    expect(JSON.stringify(baseline[0])).not.toContain('"count"');
+  });
+});
+
 describe("count_diff: an unreadable baseline", () => {
   test("the baseline line says unavailable, no second child runs, and a human decides", async () => {
     const { site, visited } = siteCounting(["N/A", 3]);
@@ -210,7 +226,10 @@ describe("count_diff: an unreadable baseline", () => {
 
     const baseline = baselineOf(await eventsOf(h, runId));
     expect(baseline).toHaveLength(1);
-    expect(baseline[0]?.data).toMatchObject({ status: "unavailable", count: null });
+    expect(baseline[0]?.data).toEqual({ status: "unavailable", check_run_id: expect.any(String) as unknown });
+    expect(baseline[0]?.data).not.toHaveProperty("count");
+    // Why a non-null id: the baseline child did run (it read "N/A"); only its count is unreadable.
+    expect(await h.deps.evidence.listRuns(TENANT)).toContain(baseline[0]?.data.check_run_id);
     // Why one visit: with no baseline, no later count can decide, so no check child is started.
     expect(visited()).toBe(1);
     expect(await h.deps.evidence.listRuns(TENANT)).toHaveLength(2);

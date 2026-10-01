@@ -205,8 +205,10 @@ export async function takeCheckBaseline(
 }
 
 /**
- * The parent's `reconciliation_baseline` log line. The count goes as text, so the log writer's
- * redactor masks it like any other value (section 3 §6.7).
+ * The parent's `reconciliation_baseline` log line: whether the count was read, and the child run
+ * that read it. The count itself stays out. Why: the recorder labels an integer output `pii` by
+ * default, and no raw sensitive value goes to a log (CLAUDE.md, Data). The child's own log holds
+ * its masked read.
  */
 export function baselineLine(b: CheckBaseline): LogLine {
   return {
@@ -215,7 +217,6 @@ export function baselineLine(b: CheckBaseline): LogLine {
     by: "engine",
     data: {
       status: b.count === null ? "unavailable" : "read",
-      count: b.count === null ? null : String(b.count),
       check_run_id: b.childRunId === null ? null : fact(b.childRunId),
     },
   };
