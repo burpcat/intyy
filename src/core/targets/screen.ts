@@ -70,7 +70,10 @@ export function fromObservation(o: Observation): ScreenView {
     // Why: the same rule discovery records a target's label with (section 6 §13.2): layout
     // first, else markup. Markup alone can drop text the layout label holds ("Member No." vs
     // "Member No. *"), and a differing label sinks the vote under 0.70.
-    const label = visibleLabel(el, o.elements) ?? el.clues.label;
+    // A plain-text element (a read's value) with no markup label takes the text beside it too,
+    // the label the recorder gives a read target (`readLabel`, src/core/recorder/targets.ts).
+    const label =
+      visibleLabel(el, o.elements) ?? el.clues.label ?? visibleLabel(el, o.elements, ["container"]);
     if (label !== undefined) out.label = label;
     if (el.clues.text !== undefined) out.text = el.clues.text;
     if (el.box !== null) {

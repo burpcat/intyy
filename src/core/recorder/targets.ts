@@ -62,6 +62,18 @@ function cleanClue(raw: string | null): string | null {
   return stripMaskTokens(raw);
 }
 
+/** The words beside a read value: its container's name with the value's `{output.*}` reference
+ * taken out, like `Account No.` from `row "Account No. {output.account_number}"`. Replay finds
+ * the same words by layout (`src/core/targets/screen.ts`). `null` unless the container holds the
+ * reference, or when nothing stable is left. Why: with its own words dropped, a read value keeps
+ * only region and path, under the vote's evidence floor (section 7 §6.5), so it is never found.
+ * ponytail: assumes a "label, value" row; a label above the value needs the layout rule here too. */
+function readLabel(withinRaw: string | null): string | null {
+  const name = withinRaw === null ? undefined : parseWithin(withinRaw)?.name;
+  if (name === undefined || !name.includes("{output.")) return null;
+  return stripMaskTokens(name.replace(/\{output\.[a-z0-9_]+\}/g, ""));
+}
+
 /** One kept action's control, as the fingerprint alone can describe it (section 6 §13.1). */
 type ActionControl = {
   role: string;
@@ -80,11 +92,14 @@ type ActionControl = {
 function controlOf(a: TaggedAction): ActionControl | null {
   const fp = a.fingerprint;
   if (fp === null) return null;
+  const name = cleanClue(fp.name);
+  const text = cleanClue(fp.text);
+  const label = cleanClue(fp.label) ?? (name === null && text === null ? readLabel(fp.within) : null);
   return {
     role: fp.role,
-    name: cleanClue(fp.name),
-    label: cleanClue(fp.label),
-    text: cleanClue(fp.text),
+    name,
+    label,
+    text,
     region: fp.region ?? undefined,
     crop: fp.crop,
     path: fp.path,
@@ -208,7 +223,13 @@ export function buildTargets(actions: readonly TaggedAction[]): TargetsResult {
     usedIds.add(id);
     byKey.set(key, id);
     const target: Target = { id, description: describe(c), clues: cluesOf(c, id) };
-    if (c.uniqueness > 1 && c.withinRaw !== null) target.within = containerId(c.withinRaw, screenName);
+    // Why no `within` for a masked container name: the live name holds the real value, never the
+    // token, so the container is never found and neither is the control (section 6 §14.4: "Clues
+    // with mask tokens are dropped"). The control keeps its own clues.
+    // ponytail: two same-named controls then rest on region and path; add a stable-text container
+    // clue if a layout shift makes them tie.
+    const masked = c.withinRaw !== null && c.withinRaw.replace(MASK_TOKEN, "") !== c.withinRaw;
+    if (c.uniqueness > 1 && c.withinRaw !== null && !masked) target.within = containerId(c.withinRaw, screenName);
     targets.push(target);
     if (c.crop !== null) crops.set(id, c.crop);
     targetIdOf.set(a, id);

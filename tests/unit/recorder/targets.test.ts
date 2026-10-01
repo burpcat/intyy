@@ -38,6 +38,38 @@ describe("buildTargets", () => {
     expect(containers.map((t) => t.id)).toEqual(["member_a_row", "member_b_row"]);
     expect(crops.get("edit_button")).toBe("crops/00002_e5.png");
   });
+
+  test("a container named with a mask token gives no `within`: the live name never holds the token", () => {
+    const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004").map((a, i) =>
+      i === 0 && a.fingerprint !== null ? { ...a, fingerprint: { ...a.fingerprint, within: 'row "Member A [money#1]"' } } : a,
+    );
+    const { targets } = buildTargets(kept);
+    const buttons = targets.filter((t) => t.clues.role === "button");
+    expect(buttons[0]?.within).toBeUndefined();
+    expect(buttons[1]?.within).toBe("member_b_row");
+    expect(targets.filter((t) => t.clues.role === "row").map((t) => t.id)).toEqual(["member_b_row"]);
+  });
+
+  test("a read value with no words of its own takes its row's other words as its label", () => {
+    const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004").map((a, i) =>
+      i === 0 && a.fingerprint !== null
+        ? {
+            ...a,
+            fingerprint: {
+              ...a.fingerprint,
+              role: "generic",
+              name: "{output.account_number}",
+              text: "{output.account_number}",
+              within: 'row "Account No. {output.account_number}"',
+              uniqueness: 1,
+            },
+          }
+        : a,
+    );
+    const { targets } = buildTargets(kept);
+    expect(targets[0]).toMatchObject({ id: "account_no_generic", clues: { role: "generic", label: "Account No." } });
+    expect(targets[0]?.clues).not.toHaveProperty("name");
+  });
 });
 
 describe("stripMaskTokens", () => {

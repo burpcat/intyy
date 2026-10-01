@@ -82,7 +82,9 @@ export function textVisibleCheck(text: string, within?: string): NestedLeaf {
 /** One `role\u0000words` key for a landmark candidate: a heading or a plain text element with
  * words (section 6 §14.5, "a heading or text"). `null` for anything else. */
 function landmarkKey(e: ScreenElement): string | null {
-  if (e.role !== "heading" && e.role !== "text") return null;
+  // Why `columnheader`: a table's own heading (section 6 §14.5's "a heading"); a page built of
+  // tables may have no other.
+  if (e.role !== "heading" && e.role !== "text" && e.role !== "columnheader") return null;
   const words = e.text ?? e.name;
   return words === undefined || words.trim() === "" ? null : `${e.role}\u0000${words}`;
 }

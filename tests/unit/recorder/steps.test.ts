@@ -109,6 +109,23 @@ describe("buildSteps", () => {
     expect(JSON.stringify(checkpoint)).toContain("Edit Member A");
   });
 
+  test("a landmark already shown in another role is skipped; a new column header is used", () => {
+    const kept = keptActions(applyTags(collectActions("run_2026-09-24_0000000004", loadLog("within_container.jsonl")), []));
+    const snapshots: Snapshots = {
+      a11yByTurn: new Map([
+        [1, '- link "Member A"\n- button "Edit"\n- button "Edit"'],
+        [2, '- text "Member A"\n- columnheader "[money#1]"\n- columnheader "Customer Information"\n- button "Edit"'],
+      ]),
+      proof: null,
+      proofElementListText: null,
+    };
+    const { steps, conditions } = buildSteps(kept, snapshots);
+    const checkpoint = JSON.stringify(conditions.find((c) => c.id === steps[0]?.checkpoint));
+    expect(checkpoint).toContain("Customer Information");
+    expect(checkpoint).not.toContain("Member A");
+    expect(checkpoint).not.toContain('"text":"*"');
+  });
+
   test("the last step's checkpoint uses done.proof's text when the snapshots supply it", () => {
     const { steps: base } = stepsFor("sign_in_basic.jsonl", "run_2026-09-24_0000000001");
     const actions = collectActions(

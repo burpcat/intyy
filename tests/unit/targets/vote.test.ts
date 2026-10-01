@@ -168,4 +168,20 @@ describe("replay reads a field's label by the discovery rule (section 6 §13.2)"
     expect(v.kind).toBe("winner");
     if (v.kind === "winner") expect(v.elementId).toBe("1");
   });
+
+  test("a read value with no markup label is found by the words beside it", () => {
+    const t = target("account_no_generic", {
+      role: "generic",
+      label: "Account No.",
+      region: { x: 0.32, y: 0.24, w: 0.07, h: 0.017 },
+      path: "tr[3] > td[1] > b[0]",
+    });
+    const today = screen([
+      el("cell", { clues: { path: "tr[3] > td[0]", text: "Account No." }, box: { x: 250, y: 192, width: 150, height: 14 } }),
+      el("value", { clues: { path: "tr[3] > td[1] > b[0]", text: "100245-S02" }, box: { x: 410, y: 192, width: 94, height: 14 } }),
+    ]);
+    const v = vote(t, fromObservation(today), byId(t));
+    expect(v.kind).toBe("winner");
+    if (v.kind === "winner") expect(v.elementId).toBe("1");
+  });
 });

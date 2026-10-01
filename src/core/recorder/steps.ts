@@ -17,6 +17,7 @@ import {
   locationCheck,
   newLandmarks,
   proofChecks,
+  stabilize,
   textVisibleCheck,
   type NestedLeaf,
 } from "./conditions.js";
@@ -192,7 +193,15 @@ function landmarkFor(a: TaggedAction, afterLocation: string, snapshots: Snapshot
   if (before === undefined || after === undefined) return null;
   const bv = fromA11ySnapshot(before, a.beforeLocation);
   const av = fromA11ySnapshot(after, afterLocation);
-  return newLandmarks(bv, av)[0] ?? null;
+  // Why both filters: a landmark is new by role and words, but its words may already show in
+  // another role (a link that becomes plain text), so its `text_visible` is true before too; and
+  // one that stabilizes to only `*` (a masked value) proves nothing.
+  const none: EvalCtx = { targets: new Map() };
+  return (
+    newLandmarks(bv, av).find(
+      (w) => /[\p{L}\p{N}]/u.test(stabilize(w).replace(/\*/g, "")) && evaluate(textVisibleCheck(w), bv, none) === "false",
+    ) ?? null
+  );
 }
 
 /**

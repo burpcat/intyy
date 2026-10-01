@@ -30,9 +30,9 @@ function labelText(e: SurfaceElement): string | undefined {
 export function visibleLabel(
   el: SurfaceElement,
   elements: readonly SurfaceElement[],
+  groups: readonly string[] = ["text_entry", "choice", "check"],
 ): string | undefined {
-  if (!["text_entry", "choice", "check"].includes(el.roleGroup) || el.box === null)
-    return undefined;
+  if (!groups.includes(el.roleGroup) || el.box === null) return undefined;
   const box = el.box;
   let left: { gap: number; text: string } | undefined;
   let above: { gap: number; text: string } | undefined;
