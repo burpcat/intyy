@@ -223,6 +223,11 @@ export async function runStep(step: Step, ctx: StepRunnerContext): Promise<StepO
   // acted.outcome.kind === "acted": a gated action.
   if (!acted.outcome.gate.ok) {
     const failure = acted.outcome.gate.failure;
+    // Why: a frame that reloads between the vote and the gate's own look leaves the voted ref
+    // gone. Nothing was sent, so it is a target miss the ladder's retry re-votes, not a lost session.
+    if (failure === "stale_element") {
+      return { kind: "failed", failure: { code: "target_not_found", phase: "target", message: `step ${step.id}: its target changed before acting` } };
+    }
     return { kind: "failed", failure: { code: failure === "evidence_write_failed" ? "evidence_write_failed" : failure === "secret_unavailable" ? "secret_unavailable" : "session_lost", phase: "gate", message: `step ${step.id}: ${failure}` } };
   }
   if (acted.outcome.gate.value.decision !== "allowed") {
