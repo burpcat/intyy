@@ -1,6 +1,6 @@
 # M12 — Final write-up and evidence
 
-> **Phase:** C · **Size:** S · **Depends on:** M07, plus whatever phase B finished · **Status:** not started
+> **Phase:** C · **Size:** S · **Depends on:** M07, plus whatever phase B finished · **Status:** in progress
 
 ## Read first
 
@@ -45,10 +45,10 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 - [ ] 2. Update `REPORT.md` from the outline. Keep the brief's seven headings, exactly, in order.
 - [ ] 3. Check each REPORT claim links to code, a design section, or an evidence item. Remove any claim without one.
 - [ ] 4. Check the stretch goals claimed match what was built. Claim at most two. Name the rung 3 overlap.
-- [ ] 5. Update `README.md`: exact commands, the short and full demo paths, the handoff demo, running without live services.
+- [x] 5. Update `README.md`: exact commands, the short and full demo paths, the handoff demo, running without live services.
 - [ ] 6. Update `evidence/README.md`. Stop. Ask the owner to publish set B items that exist.
 - [ ] 7. Run `intyy evidence verify`. Fix any problem it reports by republishing, never by editing evidence.
-- [ ] 8. Write the repo audit as a script in `scripts/`. Run it.
+- [x] 8. Write the repo audit as a script in `scripts/`. Run it.
 - [ ] 9. Stop. Ask the owner to run the fresh-clone test and read the final REPORT aloud once.
 
 ## Test gate
@@ -57,7 +57,7 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 
 - [ ] `npm run check` is green on `main`.
 - [ ] `intyy evidence verify` is clean.
-- [ ] The repo audit script passes.
+- [x] The repo audit script passes.
 
 ### Live (`npm run test:live`)
 
