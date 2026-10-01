@@ -88,6 +88,19 @@ function toElement(
   return out;
 }
 
+/** A stand-in for a frame that cannot be read or found. Its ref resolves to nothing. */
+function unreadableFrame(tag: string, fi: number): SurfaceElement {
+  return {
+    ref: `${tag}:unreadable` as unknown as ElementRef,
+    role: "iframe",
+    roleGroup: "container",
+    clues: { path: `frame[${String(fi - 1)}]` },
+    enabled: false,
+    box: null,
+    unreadable: true,
+  };
+}
+
 /** The eyes over one Playwright session. */
 export class PlaywrightEyes implements Eyes {
   constructor(private readonly s: BrowserState) {}
@@ -114,19 +127,35 @@ export class PlaywrightEyes implements Eyes {
       const popup = this.s.inPopup ? "window[popup] > " : "";
       for (const [fi, frame] of this.s.frames(page).entries()) {
         if (foreign(page, frame)) continue;
-        const at = await frameOffset(page, frame);
-        const raws = await frame.evaluate(collectElements, {
-          tag: this.s.tag(fi),
-          offsetX: at.x,
-          offsetY: at.y,
-          secretKey: SECRET_KEY,
-        });
-        const prefix = `${popup}${fi === 0 ? "" : `frame[${String(fi - 1)}] > `}`;
-        const holder =
-          fi === 0
-            ? undefined
-            : ((await (await frame.frameElement()).getAttribute("data-intyy-ref")) ?? undefined);
-        for (const raw of raws) elements.push(toElement(prefix, raw, holder));
+        try {
+          const at = await frameOffset(page, frame);
+          const raws = await frame.evaluate(collectElements, {
+            tag: this.s.tag(fi),
+            offsetX: at.x,
+            offsetY: at.y,
+            secretKey: SECRET_KEY,
+          });
+          const prefix = `${popup}${fi === 0 ? "" : `frame[${String(fi - 1)}] > `}`;
+          const holder =
+            fi === 0
+              ? undefined
+              : ((await (await frame.frameElement()).getAttribute("data-intyy-ref")) ?? undefined);
+          for (const raw of raws) elements.push(toElement(prefix, raw, holder));
+        } catch (e) {
+          // Why: a sub-frame that is mid-navigation or detached is not a lost page. It shows
+          // no elements, so a ref into it is stale. Only the main frame failing is page_gone.
+          if (fi === 0) throw e;
+          // Why: section 4 §9.11 rule 4, mask what you cannot read. The frame may still paint
+          // data, so its iframe element is boxed whole. If that element cannot be found, a
+          // placeholder with a ref nothing resolves makes the screenshot fail closed.
+          const holder = await frame
+            .frameElement()
+            .then((h) => h.getAttribute("data-intyy-ref"))
+            .catch(() => null);
+          const held = elements.find((el) => (el.ref as unknown as string) === holder);
+          if (held !== undefined) held.unreadable = true;
+          else elements.push(unreadableFrame(this.s.tag(fi), fi));
+        }
       }
       const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
       return ok({ ...base, title: await page.title(), scroll, dialog: null, elements });
