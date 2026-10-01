@@ -172,6 +172,8 @@ async function runCheckChild(
     kind: "reconciliation",
     purpose,
     isChildRun: true,
+    // Why: a baseline child must never wait on a person or a model; it ends on its first failure.
+    ...(purpose === "commit_baseline" ? { endOnFirstFailure: true } : {}),
   };
   const childOutcome = await runReplay(childInput, deps);
   return { childRunId, result: childOutcome.result };

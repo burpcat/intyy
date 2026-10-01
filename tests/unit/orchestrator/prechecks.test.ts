@@ -31,6 +31,9 @@ function baseArtifact(): Artifact {
   return parsed.data;
 }
 
+/** The reconciliation check capability `baseArtifact()` links, if any. */
+const CHECK_LINK = baseArtifact().recovery?.reconciliation?.check?.capability;
+
 const globalLayer = GlobalPolicy.parse(
   JSON.parse(
     readFileSync(new URL("../../../library/policy/global/1.json", import.meta.url), "utf8"),
@@ -56,7 +59,9 @@ function basePolicy(paths = baseArtifact().runs_on.paths): EffectivePolicy {
     scope: { level: "tenant", tenant: "keystone" },
     revision: 1,
     reason: "Test policy.",
-    capabilities: { allow: [CAP_LINK] },
+    // Why the check's link too: check 9 also requires the tenant to list the linked reconciliation
+    // check capability, because the replay runs it as a child run (section 3 §4.8).
+    capabilities: { allow: [CAP_LINK, ...(CHECK_LINK === undefined ? [] : [CHECK_LINK])] },
   });
   const merged = mergePolicy({ global: globalLayer, app, tenant, appName: APP });
   if (!merged.ok) throw new Error(`test policy does not merge: ${merged.detail ?? ""}`);
@@ -330,5 +335,84 @@ describe("runPrechecks", () => {
     expect(outcome).toMatchObject({ status: "failed", code: "secret_unavailable" });
     expect(results.map((r) => r.check)).toEqual(CHECK_ORDER);
     expect(results.at(-1)).toMatchObject({ check: "secrets", passed: false });
+  });
+});
+
+describe("the checks run in order, and the first failing check is the one reported (section 3 §4.8; M05 gate row)", () => {
+  /** Inputs that fail check 6. */
+  const badInputs = { deposit: "999999.00" };
+  /** An authorization that fails check 8 (the wrong capability, and fields missing). */
+  const badAuthorization = {
+    consent_ref: "consent_1",
+    granted_by: "staff",
+    granted_at: "2026-09-24T09:00:00Z",
+    expires_at: "2026-09-24T09:05:00Z",
+    capability: "kvfcu/other_capability@1",
+  };
+  /** A policy that fails check 9 (a path the artifact needs is gone). */
+  const narrowed = basePolicy(["/login", "/home", "/members/search", "/members/*"]);
+  const narrowedSources = baseSecretSources(narrowed);
+
+  // Each row fails its own check AND every later one it can, so only an ordered pipeline passes.
+  const rows: { name: string; code: string; last: string; input: () => PrecheckInput }[] = [
+    {
+      name: "check 1",
+      code: "invalid_request",
+      last: "format",
+      input: () => baseInput({ raw: { ...baseRequest(), extra: true, inputs: badInputs, authorization: badAuthorization, mode: "unattended" }, lookupRequest: () => Promise.resolve(ok({ status: "reused" })), resolve: resolverFrom({}) }),
+    },
+    {
+      name: "check 3",
+      code: "request_id_reused",
+      last: "request_id",
+      input: () => baseInput({ raw: { ...baseRequest(), inputs: badInputs }, lookupRequest: () => Promise.resolve(ok({ status: "reused" })), resolve: resolverFrom({}), appVersion: "5.0" }),
+    },
+    {
+      name: "check 4",
+      code: "capability_not_found",
+      last: "capability",
+      input: () => baseInput({ raw: { ...baseRequest(), inputs: badInputs, authorization: badAuthorization }, resolve: resolverFrom({}), appVersion: "5.0" }),
+    },
+    {
+      name: "check 5",
+      code: "no_version_for_context",
+      last: "version",
+      input: () => baseInput({ raw: { ...baseRequest(), inputs: badInputs, authorization: badAuthorization, mode: "unattended" }, appVersion: "5.0", policy: narrowed, secretSources: narrowedSources }),
+    },
+    {
+      name: "check 6",
+      code: "invalid_input",
+      last: "inputs",
+      input: () => baseInput({ raw: { ...baseRequest(), inputs: badInputs, authorization: badAuthorization, mode: "unattended" }, policy: narrowed, secretSources: narrowedSources }),
+    },
+    {
+      name: "check 7",
+      code: "context_not_approved",
+      last: "approval",
+      input: () => baseInput({ raw: { ...baseRequest(), authorization: badAuthorization, mode: "unattended" }, policy: narrowed, secretSources: narrowedSources }),
+    },
+    {
+      name: "check 8",
+      code: "authorization_invalid",
+      last: "authorization",
+      input: () => baseInput({ raw: { ...baseRequest(), authorization: badAuthorization }, policy: narrowed, secretSources: narrowedSources }),
+    },
+    {
+      name: "check 9",
+      code: "policy_denied",
+      last: "policy",
+      input: () => baseInput({ policy: narrowed, secretSources: narrowedSources }),
+    },
+  ];
+
+  test.each(rows)("$name fails first: only $code is reported, and no later check runs", async ({ code, last, input }) => {
+    const { results, outcome } = await runPrechecks(input());
+    expect(outcome).toMatchObject({ status: "rejected", code });
+    if (outcome.status !== "rejected") throw new Error("expected rejected");
+    // Every error belongs to the one failing check, not to a later one.
+    expect(outcome.errors.every((e) => e.code === code)).toBe(true);
+    expect(results.at(-1)).toMatchObject({ check: last, passed: false });
+    expect(results.map((r) => r.check)).toEqual(CHECK_ORDER.slice(0, CHECK_ORDER.indexOf(last) + 1));
+    expect(results.slice(0, -1).every((r) => r.passed)).toBe(true);
   });
 });

@@ -138,6 +138,11 @@ export type ReplayInput = {
    * docs/decisions.md, M06: "Child runs ask no start confirmation"). Skips the supervised-mode
    * start confirmation outright, whatever `request.mode` says. */
   isChildRun?: boolean;
+  /** True on a `count_diff` baseline child (docs/decisions.md, M05, 2026-10-01): the run ends on its
+   * first step failure, with no ladder rung, no model, and no escalation of any kind. Why: the
+   * baseline runs before the parent signs in, and nobody waits for it. Plain code decides; the
+   * parent only learns the baseline is `unavailable`. */
+  endOnFirstFailure?: boolean;
   /** True on a commit-retry child (section 7 §11.3): "At most one commit retry per request."
    * If this child's own commit also ends `absent_by_check`, it ends the request instead of
    * asking for another retry. */
@@ -560,6 +565,8 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         : { major: (a: string, c: string, m: number) => majorStatus(majorDeps, input.tenant, input.appVersion, a, c, m) }),
       // Why: a pin (an operator's, or certify's) names the exact key, so no key is chosen and check 7 is skipped.
       ...(input.pin === undefined || input.pin === null ? {} : { pinned: true }),
+      // Why: section 7 §11.3 and section 3 §4.6. A commit-retry child starts after a human approved the retry; an expired authorization pauses it at the commit point instead of rejecting it.
+      ...(input.purpose === "commit_retry" ? { allowExpiredAuthorization: true } : {}),
       ...catalogRequestIndex(deps.requestIndex),
       secretSources: sources,
     },
@@ -1643,8 +1650,24 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         return endRun("failed", rr.failure.code, folded, stepId);
       }
       if (rr.status === "rejected") {
-        const folded = Result.parse({ ...base, status: "rejected", rejection: rr.rejection });
-        return endRun("rejected", null, folded, stepId);
+        // Why `failed`, not `rejected`: this request already tried the commit, so the result must keep
+        // its effect (attempts, commit state). A `rejected` result says "nothing ran" (section 3 §5.6).
+        // Nothing was sent by the retry, so it stays safe to retry.
+        const code = rr.rejection.errors.map((e) => (e.reason === undefined ? e.code : `${e.code}: ${e.reason}`)).join(", ");
+        const folded = failedResult(
+          runId,
+          capabilityBlock,
+          stepId,
+          { code: "action_failed", phase: "start", message: `the approved retry was rejected before it started (${code})` },
+          await currentLocation(eyes),
+          true,
+          captureFiles,
+          startedAt,
+          endedAt,
+          effect,
+        );
+        if (folded.status === "failed") folded.recoveries = base.recoveries;
+        return endRun("failed", "action_failed", folded, stepId);
       }
       // A child's own `runReplay` call always ends `finish()`ed at one of the four statuses
       // above; only bugs throw (per CLAUDE.md).
@@ -2024,6 +2047,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         };
         const outcome = await runStep(step, stepCtx);
         if (outcome.kind === "failed") {
+          if (input.endOnFirstFailure === true) {
+            await captureOnFailure(`${step.id}_failed`);
+            return await failEnd(step.id, outcome.failure, await currentLocation(eyes), true);
+          }
           // Why: a gate block from a lease lost to human input is not a real failure.
           if (leaseState.takeoverPending()) {
             const t = await humanInputTakeover(step.id);

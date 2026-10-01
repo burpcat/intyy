@@ -155,6 +155,13 @@ export type PrecheckInput = {
   /** True when the run names its exact key: an operator pin, or certify (section 8 §11.5, §11.6).
    * The key is not chosen and check 7 does not apply (section 3 §4.8). */
   pinned?: boolean;
+  /**
+   * True for a commit-retry child (section 7 §11.3). Check 8 then does not reject an authorization that
+   * has expired by the retry's start. Why: a human just approved the retry, and section 3 §4.6 says an
+   * expired authorization at the commit point pauses the run for a human, never fails it. The gate
+   * still checks the expiry just before the commit action.
+   */
+  allowExpiredAuthorization?: boolean;
   /** Check 10's secret sources: the app's declared secrets and settings' bindings. */
   secretSources: SecretSources;
 };
@@ -308,7 +315,13 @@ async function checkApproval(
 
 /** Check 8: authorization is well formed and valid (section 3 §4.6). Missing authorization
  * never fails this check; the run pauses for approval at the commit point instead. */
-function checkAuthorization(request: Request, effect: Contract["effect"], maxLifetimeMinutes: number | null, now: Date): PrecheckError[] {
+function checkAuthorization(
+  request: Request,
+  effect: Contract["effect"],
+  maxLifetimeMinutes: number | null,
+  now: Date,
+  allowExpired: boolean,
+): PrecheckError[] {
   const auth = request.authorization;
   if (auth === undefined) return [];
   const errors: PrecheckError[] = [];
@@ -331,7 +344,7 @@ function checkAuthorization(request: Request, effect: Contract["effect"], maxLif
     } else if (maxLifetimeMinutes !== null && expires - granted > maxLifetimeMinutes * 60_000) {
       errors.push({ code: "authorization_invalid", reason: "lifetime_too_long", message: `the consent's lifetime is over ${String(maxLifetimeMinutes)} minutes` });
     }
-    if (expires <= now.getTime()) {
+    if (!allowExpired && expires <= now.getTime()) {
       errors.push({ code: "authorization_invalid", reason: "expired", message: "authorization already expired" });
     }
   }
@@ -370,6 +383,19 @@ function checkPolicy(
   }
   if (policy.capabilities.deny.some((p) => patternNames(p, app, capability, major))) {
     errors.push({ code: "policy_denied", reason: "capability_denied", message: `a deny rule names ${app}/${capability}@${String(major)}` });
+  }
+  // Why: the replay runs the linked check capability as a child run, and that child meets this same
+  // check. A check the policy does not allow would fail there and send every lost reply to a human,
+  // quietly. Refuse the parent up front instead (section 3 §4.8; same link check 7 reads).
+  const link = artifact.recovery?.reconciliation?.check?.capability;
+  if (link !== undefined) {
+    const c = splitCapabilityLink(link);
+    if (!policy.capabilities.allow.some((p) => patternNames(p, c.app, c.capability, c.major))) {
+      errors.push({ code: "policy_denied", reason: "capability_not_allowed", message: `the tenant does not list the reconciliation check capability ${link}` });
+    }
+    if (policy.capabilities.deny.some((p) => patternNames(p, c.app, c.capability, c.major))) {
+      errors.push({ code: "policy_denied", reason: "capability_denied", message: `a deny rule names the reconciliation check capability ${link}` });
+    }
   }
   errors.push(...pathsAndSecretsProblems(policy, artifact));
   if (sessionArtifact !== null) errors.push(...pathsAndSecretsProblems(policy, sessionArtifact));
@@ -512,7 +538,7 @@ export async function runPrechecks(input: PrecheckInput, signal?: AbortSignal): 
   results.push({ check: "approval", passed: true, errors: [] });
 
   // Check 8: authorization is well formed and valid.
-  const authErrors = checkAuthorization(request, versioned.contract.effect, input.policy.authorization.max_lifetime_minutes, input.now);
+  const authErrors = checkAuthorization(request, versioned.contract.effect, input.policy.authorization.max_lifetime_minutes, input.now, input.allowExpiredAuthorization === true);
   if (authErrors.length > 0) return { results, outcome: stop("authorization", "authorization_invalid", authErrors) };
   results.push({ check: "authorization", passed: true, errors: [] });
 

@@ -47,6 +47,8 @@ const globalLayer = GlobalPolicy.parse(
 /** A merged policy that allows exactly what `baseArtifact()` needs: its paths, its two
  * secrets, and the capability itself, at major 1. */
 function basePolicy(paths = baseArtifact().runs_on.paths): EffectivePolicy {
+  const check = baseArtifact().recovery?.reconciliation?.check;
+  const checkLink = check === undefined ? [] : [check.capability];
   const app = AppPolicy.parse({
     schema: "intyy.policy/1.0",
     scope: { level: "app", app: APP },
@@ -63,7 +65,8 @@ function basePolicy(paths = baseArtifact().runs_on.paths): EffectivePolicy {
     scope: { level: "tenant", tenant: "keystone" },
     revision: 1,
     reason: "Test policy.",
-    capabilities: { allow: [CAP_LINK] },
+    // Why the check link too: check 9 requires the tenant to list the linked reconciliation check (section 3 §4.8).
+    capabilities: { allow: [CAP_LINK, ...checkLink] },
   });
   const merged = mergePolicy({ global: globalLayer, app, tenant, appName: APP });
   if (!merged.ok) throw new Error(`test policy does not merge: ${merged.detail ?? ""}`);
@@ -346,5 +349,97 @@ describe("with no trust view (the old thin check)", () => {
     const { outcome } = await runPrechecks(i);
     expect(outcome.status).toBe("ok");
     if (outcome.status === "ok") expect(outcome.record).toBeNull();
+  });
+});
+
+// Check 9 and the reconciliation check capability (section 3 §4.8; owner decision 2026-10-01): the
+// replay runs the linked check as a child run, so the policy must allow it, in either mode.
+describe("check 9: the linked reconciliation check capability meets the policy", () => {
+  /** The base policy, but the tenant lists exactly `allow` and denies `deny`. */
+  function policyWith(allow: string[], deny: string[] = []): EffectivePolicy {
+    const app = AppPolicy.parse({
+      schema: "intyy.policy/1.0",
+      scope: { level: "app", app: APP },
+      revision: 1,
+      reason: "Test policy.",
+      paths: { allow: baseArtifact().runs_on.paths, case_sensitive: true },
+      secrets: {
+        operator_username: { kind: "username", paths: ["/login"] },
+        operator_password: { kind: "password", paths: ["/login"] },
+      },
+    });
+    const tenant = TenantPolicy.parse({
+      schema: "intyy.policy/1.0",
+      scope: { level: "tenant", tenant: "keystone" },
+      revision: 1,
+      reason: "Test policy.",
+      capabilities: { allow, ...(deny.length > 0 ? { deny } : {}) },
+    });
+    const merged = mergePolicy({ global: globalLayer, app, tenant, appName: APP });
+    if (!merged.ok) throw new Error(`test policy does not merge: ${merged.detail ?? ""}`);
+    return merged.value.effective;
+  }
+
+  const bothApproved = (): World => world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", APPROVED)] });
+
+  /** Check 9's errors, or `null` when the run was not rejected. */
+  async function policyErrors(mode: "supervised" | "unattended", policy: EffectivePolicy, w = bothApproved()) {
+    const { outcome } = await runPrechecks(input(w, { policy, secretSources: baseSecretSources(policy) }, mode));
+    return outcome.status === "rejected" ? outcome.errors.map((e) => ({ code: outcome.code, reason: e.reason, message: e.message })) : null;
+  }
+
+  test.each(["supervised", "unattended"] as const)("%s: a check capability the tenant does not list is policy_denied, capability_not_allowed", async (mode) => {
+    const errors = await policyErrors(mode, policyWith([CAP_LINK]));
+    expect(errors).toHaveLength(1);
+    expect(errors?.[0]).toMatchObject({ code: "policy_denied", reason: "capability_not_allowed" });
+    // The message names the CHECK capability, not the task.
+    expect(errors?.[0]?.message).toContain(CHECK_LINK);
+    expect(errors?.[0]?.message).not.toContain(CAP_LINK);
+  });
+
+  test.each(["supervised", "unattended"] as const)("%s: a deny rule that names the check capability is policy_denied, capability_denied", async (mode) => {
+    const errors = await policyErrors(mode, policyWith([CAP_LINK, CHECK_LINK], [CHECK_LINK]));
+    expect(errors).toHaveLength(1);
+    expect(errors?.[0]).toMatchObject({ code: "policy_denied", reason: "capability_denied" });
+    expect(errors?.[0]?.message).toContain(CHECK_LINK);
+  });
+
+  test("a wildcard allow covers the check, and a wildcard deny on the check's name denies it", async () => {
+    expect(await policyErrors("supervised", policyWith(["kvfcu/*@1"]))).toBeNull();
+    const denied = await policyErrors("supervised", policyWith(["kvfcu/*@1"], [`${CHECK}@*`]));
+    expect(denied?.map((e) => e.reason)).toEqual(["capability_denied"]);
+  });
+
+  test.each(["supervised", "unattended"] as const)("%s: a check capability the policy allows adds no error", async (mode) => {
+    const { outcome } = await runPrechecks(input(bothApproved(), {}, mode));
+    expect(outcome.status).toBe("ok");
+  });
+
+  test.each(["supervised", "unattended"] as const)("%s: a waiver has no check, so a policy that omits the check capability adds no error", async (mode) => {
+    const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
+    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withWaiver)];
+    const policy = policyWith([CAP_LINK]);
+    const { outcome } = await runPrechecks(input(w, { policy, secretSources: baseSecretSources(policy) }, mode));
+    expect(outcome.status).toBe("ok");
+  });
+
+  test("the task's own missing allow and the check's missing allow are both reported at once", async () => {
+    const errors = await policyErrors("supervised", policyWith([]));
+    expect(errors?.map((e) => e.reason)).toEqual(["capability_not_allowed", "capability_not_allowed"]);
+    expect(errors?.[1]?.message).toContain(CHECK_LINK);
+  });
+
+  test("a count_diff check capability is tested the same way", async () => {
+    const w = bothApproved();
+    w.sealed[CAP_LINK] = [
+      art(CAPABILITY, "1.0.0", (doc) => {
+        const recon = (doc.recovery as Record<string, unknown>).reconciliation as { check: Record<string, unknown> };
+        recon.check = { capability: "kvfcu/count_sub@1", mode: "count_diff", count_output: "n", inputs: {}, not_found_outcomes: [], outputs: {} };
+      }),
+    ];
+    // Only the task is listed: the count capability is the one that is missing. Supervised needs no key.
+    const errors = await policyErrors("supervised", policyWith([CAP_LINK]), w);
+    expect(errors?.[0]).toMatchObject({ code: "policy_denied", reason: "capability_not_allowed" });
+    expect(errors?.[0]?.message).toContain("kvfcu/count_sub@1");
   });
 });

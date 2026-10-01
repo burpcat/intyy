@@ -20,6 +20,8 @@ import { artifactExample } from "../../fixtures/design-examples.js";
 const CAPABILITY = "open_share_subaccount";
 const CAP_LINK = `kvfcu/${CAPABILITY}@1`;
 const artifact = ArtifactSchema.parse(artifactExample());
+/** The artifact's linked reconciliation check, as a list of zero or one capability links. */
+const checkLink = artifact.recovery?.reconciliation?.check === undefined ? [] : [artifact.recovery.reconciliation.check.capability];
 
 const globalLayer = GlobalPolicy.parse(
   JSON.parse(readFileSync(new URL("../../../library/policy/global/1.json", import.meta.url), "utf8")),
@@ -42,7 +44,8 @@ function policy() {
     scope: { level: "tenant", tenant: "keystone" },
     revision: 1,
     reason: "Test policy.",
-    capabilities: { allow: [CAP_LINK] },
+    // Why the check link too: check 9 requires the tenant to list the linked reconciliation check (section 3 §4.8).
+    capabilities: { allow: [CAP_LINK, ...checkLink] },
   });
   const merged = mergePolicy({ global: globalLayer, app, tenant, appName: "kvfcu" });
   if (!merged.ok) throw new Error("test policy does not merge");

@@ -11,8 +11,9 @@ import type { Handler } from "../../../src/core/model/pack.js";
 import { sha256Hex } from "../../../src/core/model/canonical.js";
 import { FakeOperator } from "../../../src/fakes/operator.js";
 import type { FakeElement, FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
-import { TableClassifier } from "../../../src/fakes/table-classifier.js";
-import { TableReviewer } from "../../../src/fakes/table-reviewer.js";
+import type { ReviewerInput } from "../../../src/ports/models.js";
+import { TableClassifier, type ClassifierScript } from "../../../src/fakes/table-classifier.js";
+import { TableReviewer, type ReviewerScript } from "../../../src/fakes/table-reviewer.js";
 import {
   CHECK_SUB,
   ORIGIN,
@@ -334,5 +335,165 @@ describe("count_diff: a takeover ended while the commit is in flight", () => {
 
     expect(result.status).toBe("failed");
     expect(result.effect).toMatchObject({ commit: "absent_by_check" });
+  });
+});
+
+// The baseline child ends on its first failure (owner decisions, 2026-10-01; F2): nobody waits for
+// it before the parent signs in, so no ladder rung, no model, and no operator request may start.
+// The post-reply `commit_check` child keeps the full ladder. Models are ON here and would answer.
+
+/** The n-th load of `/check` shows `loads[n]` (the last one repeats). A Close click reloads it. */
+function siteChecking(loads: readonly FakeElement[][]): { site: FakeSite; loaded: () => number } {
+  let n = 0;
+  const site: FakeSite = {
+    origin: ORIGIN,
+    screens: {
+      "/": { elements: [LOGIN] },
+      "/home": { elements: [MEMBER_ID_BOX, SEARCH] },
+      "/result": { elements: [CONFIRM_STUCK] },
+      "/done": { elements: [] },
+      get "/check"() {
+        const els = loads[Math.min(n, loads.length - 1)];
+        n += 1;
+        return { elements: els ?? [] };
+      },
+    },
+  };
+  return { site, loaded: () => n };
+}
+
+/** A notice that hides the count, with a Close button that reloads `/check`. */
+const NOTICE: FakeElement[] = [
+  { id: "notice", role: "generic", roleGroup: "container", text: "Branch profile review is pending." },
+  { id: "close", role: "button", roleGroup: "button_like", name: "Close", text: "Close", onClick: { go: "/check" } },
+];
+
+/** Jev says "needs review" (so rung 3 runs); the reviewer clicks `closeId`. Both would recover the step. */
+const jevNeedsReview: ClassifierScript = {
+  trouble: [{ when: {}, reply: { answer: { bucket: "needs_review", handler: null, outcome: null, confidence: 0.5 } } }],
+};
+const clickClose = (id: string): ReviewerScript => ({
+  fixStep: [{ when: {}, reply: { answer: { action: { type: "click", element: id }, reason: "A notice covers the page.", expected: "The count shows." } } }],
+});
+const GIVE_UP: ReviewerScript = { fixStep: [{ when: {}, reply: { answer: { give_up: true, reason: "no" } } }] };
+
+/** The ID the reviewer sees for Close on `NOTICE`, read from a probe run whose check child meets it. */
+async function closeId(): Promise<string> {
+  const probe = new TableReviewer(GIVE_UP);
+  const { site } = siteChecking([countScreen(2), NOTICE]);
+  const h = await harnessFor(site, {
+    operator: () => new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "not_found" }]),
+    models: { classifier: new TableClassifier(jevNeedsReview), reviewer: probe },
+  });
+  await runReplay(inputFor(h), h.deps);
+  const seen = probe.seen[0]?.input as ReviewerInput | undefined;
+  const id = seen?.screen.elements.find((e) => e.name === "Close")?.id ?? "";
+  expect(id).toMatch(/^e\d+$/);
+  return id;
+}
+
+/** The lines of every run in the tenant, by run: the parent has no `parent_run_id` in its start line. */
+async function allRuns(h: Harness): Promise<{ id: string; lines: Line[] }[]> {
+  const out: { id: string; lines: Line[] }[] = [];
+  for (const id of await h.deps.evidence.listRuns(TENANT)) out.push({ id, lines: await eventsOf(h, id) });
+  return out;
+}
+
+const LADDER_EVENTS = new Set(["ladder", "escalation", "llm"]);
+
+/**
+ * True when every request is one the parent itself raises on this stuck-Confirm flow, and the first
+ * is its start confirmation. A baseline child that escalated would add an earlier or other kind
+ * (such as a takeover), because the baseline runs before the parent's start confirmation.
+ */
+function onlyParentRequests(operator: FakeOperator): boolean {
+  const kinds = operator.requests.map((r) => (r as { kind?: string }).kind);
+  return kinds[0] === "start_confirmation" && kinds.every((k) => k === "start_confirmation" || k === "reconciliation_decision" || k === "retry_decision");
+}
+
+describe("count_diff: the baseline child ends on its first failure (F2)", () => {
+  test.each([
+    ["the count element is missing", [[]] as FakeElement[][]],
+    ["an unexpected notice covers the count, and the reviewer could close it", [NOTICE, countScreen(2)] as FakeElement[][]],
+  ])("%s: baseline unavailable, no ladder, no escalation, no model, no operator request, and the parent goes on", async (_name, loads) => {
+    const id = await closeId();
+    const { site } = siteChecking(loads);
+    const classifier = new TableClassifier(jevNeedsReview);
+    const reviewer = new TableReviewer(clickClose(id));
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "not_found" }]);
+    const h = await harnessFor(site, { operator: () => operator, models: { classifier, reviewer } });
+    const { runId } = await runReplay(inputFor(h), h.deps);
+
+    const parent = await eventsOf(h, runId);
+    const baseline = baselineOf(parent);
+    expect(baseline).toHaveLength(1);
+    expect(baseline[0]?.data).toEqual({ status: "unavailable", check_run_id: expect.any(String) as unknown });
+
+    // The baseline child's own log: a failed run that took no ladder and raised no escalation.
+    const childId = String(baseline[0]?.data.check_run_id);
+    const child = await eventsOf(h, childId);
+    expect(child.filter((l) => LADDER_EVENTS.has(l.event))).toEqual([]);
+    expect(child.at(-1)).toMatchObject({ event: "run_end", data: { status: "failed" } });
+    // The failure was captured at once: no recoveries, and no second try at the step.
+    expect(child.filter((l) => l.event === "action")).toHaveLength(0);
+
+    // No model was asked, anywhere in the tenant, and no request reached a person on the baseline's behalf.
+    expect(classifier.seen).toEqual([]);
+    expect(reviewer.seen).toEqual([]);
+    // Only the parent's own commit approval and its later reconciliation decision, in that order.
+    expect(onlyParentRequests(operator)).toBe(true);
+
+    // The parent went on: it reached its commit, which stayed stuck, so it asked a person once.
+    expect(parent.some((l) => l.event === "commit_intent")).toBe(true);
+    expect(parent.filter((l) => l.event === "escalation" && l.data.kind === "reconciliation_decision").length).toBeGreaterThanOrEqual(1);
+    // The baseline child is the only child: with no baseline, no check child starts.
+    expect((await allRuns(h)).filter((r) => r.id !== runId && r.id !== childId)).toEqual([]);
+  });
+
+  test("a notice with no model on (a baseline child is not special without models either): still unavailable and no ladder", async () => {
+    const { site } = siteChecking([NOTICE, countScreen(2)]);
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "not_found" }]);
+    const h = await harnessFor(site, { operator: () => operator });
+    const { runId } = await runReplay(inputFor(h), h.deps);
+    const baseline = baselineOf(await eventsOf(h, runId));
+    expect(baseline[0]?.data).toMatchObject({ status: "unavailable" });
+    const child = await eventsOf(h, String(baseline[0]?.data.check_run_id));
+    expect(child.filter((l) => LADDER_EVENTS.has(l.event))).toEqual([]);
+    expect(onlyParentRequests(operator)).toBe(true);
+  });
+});
+
+describe("count_diff: the post-reply commit_check child keeps the ladder (F2 regression)", () => {
+  test("a notice on the check page: the check child climbs rungs 1, 2 and 3 and asks the models, as before", async () => {
+    const id = await closeId();
+    // Load 1 is the baseline (count 2). Load 2 is the check child: the notice. The Close click is load 3.
+    const { site, loaded } = siteChecking([countScreen(2), NOTICE, countScreen(3)]);
+    const classifier = new TableClassifier(jevNeedsReview);
+    const reviewer = new TableReviewer(clickClose(id));
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "not_found" }]);
+    const h = await harnessFor(site, { operator: () => operator, models: { classifier, reviewer } });
+    const { runId } = await runReplay(inputFor(h), h.deps);
+
+    // The baseline read cleanly, so the ladder below belongs to the commit_check child alone.
+    expect(baselineOf(await eventsOf(h, runId))[0]?.data).toMatchObject({ status: "read" });
+    expect(classifier.seen.length).toBeGreaterThan(0);
+    expect(reviewer.seen.length).toBeGreaterThan(0);
+    expect(loaded()).toBe(3);
+    const checkChild = (await allRuns(h)).find((r) => r.lines[0]?.data.purpose === "commit_check");
+    const rungs = (checkChild?.lines ?? []).filter((l) => l.event === "ladder").map((l) => l.data.rung);
+    expect(rungs).toEqual(expect.arrayContaining([1, 2, 3]));
+  });
+
+  test("a missing count on the check page: the ladder runs there, and the parent still cannot call it found", async () => {
+    const { site } = siteChecking([countScreen(2), []]);
+    const classifier = new TableClassifier(jevNeedsReview);
+    const reviewer = new TableReviewer(GIVE_UP);
+    const operator = new FakeOperator([{ staff: "op_017", decision: "approved" }, { staff: "op_017", decision: "not_found" }]);
+    const h = await harnessFor(site, { operator: () => operator, models: { classifier, reviewer } });
+    const { runId, result } = await runReplay(inputFor(h), h.deps);
+
+    expect(baselineOf(await eventsOf(h, runId))[0]?.data).toMatchObject({ status: "read" });
+    expect(classifier.seen.length).toBeGreaterThan(0);
+    expect(result.effect?.commit).not.toBe("found_by_check");
   });
 });
