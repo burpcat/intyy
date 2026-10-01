@@ -274,7 +274,7 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
     .option("--mode <mode>", "supervised or unattended")
     .option("--inputs <file>", "the input values as JSON, from a file, or - for standard input")
     .option("--authorization <file>", "a file holding the authorization block, if any")
-    .option("--request-id <id>", "the caller's own idempotency key (default: cli-<staff>-<time>)")
+    .option("--request-id <id>", "the caller's own idempotency key (default: this run's own run ID)")
     .option("--agent <id>", "the calling agent's ID (default: INTYY_AGENT, or cli:<staff>)")
     .option("--request <file>", "a whole intyy.request/1.0 file, instead of a capability and flags")
     .option("--pin <key>", "supervised only: run this exact key, like kvfcu/open_share_subaccount@1.0.0")

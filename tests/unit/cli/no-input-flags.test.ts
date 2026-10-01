@@ -26,7 +26,7 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--inputs": "a file path, or - for standard input; the values live in that file, never on the flag",
   "--authorization": "a file path holding the authorization block; not a value itself",
   "--request": "a file path holding a whole intyy.request/1.0 file; not a value itself",
-  "--request-id": "the caller's own idempotency key, not member data (default: cli-<staff>-<time>)",
+  "--request-id": "the caller's own idempotency key, not member data (default: this run's own run ID)",
   "--agent": "the calling agent's own ID, not member data",
   "--pin": "a trust key's name, refused until M10; not member data",
   "--wait": "a poll ceiling in milliseconds, not member data",

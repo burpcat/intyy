@@ -576,7 +576,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
   const certify = program
     .command("certify")
     .description("certify a capability: a full or quick batch, or one fault case on demand")
-    .argument("[key]", "app/capability@major, for a batch")
+    .argument("[key]", "app/capability@major, or @major.minor.patch for one exact version, for a batch")
     .option("--kind <kind>", "full (default), quick, or regression")
     .option("--pack <pack>", "with --kind regression: the candidate pack revision, like app:kvfcu@5")
     .option("--all-affected", "with --kind regression: one batch per approved key the pack revision touches")
@@ -592,7 +592,7 @@ export const registerCertify: Register = (program: Command, ctxOf) => {
 
   certify
     .command("case")
-    .argument("<key>", "app/capability@major")
+    .argument("<key>", "app/capability@major, or app/capability@major.minor.patch for one exact version")
     .option("--class <id>", "the suite class to run; defaults to the extra case's own class")
     .requiredOption("--profile <id>", "a standard fault profile ID, or a suite extra case ID")
     .option("--at <anchor>", "@step:<id>, required only for an @each_request_step profile")
