@@ -7,7 +7,8 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { RunSpec } from "../../../src/core/model/runspec.js";
 import type { FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
-import { ORIGIN, SIGN_IN, SIGN_IN_STEPS, run, type Ran } from "./run-kit.js";
+import { ScriptedPlanner } from "../../../src/fakes/scripted-planner.js";
+import { ORIGIN, SIGN_IN, SIGN_IN_STEPS, SITE, run, type Ran } from "./run-kit.js";
 
 const done: Ran[] = [];
 afterEach(async () => {
@@ -120,5 +121,65 @@ describe("the spec name in run.json", () => {
   test("is the name the caller gives, variant suffix and all", async () => {
     const r = await go({ steps: SIGN_IN_STEPS, specName: "kvfcu/sign_in.missing" });
     expect(runJsonOf(r).spec).toBe("kvfcu/sign_in.missing");
+  });
+});
+
+describe("an output named output.<name> after the commit (section 6 §9.3)", () => {
+  // Why: a real run listed {output.account_number} in the prompt, and the model sent
+  // output.account_number. The loop must record the bare name, so `done` finds the read.
+  const SPEC_COMMITS = RunSpec.parse({
+    ...SIGN_IN,
+    capability: "transfer",
+    goal: "Sign in, submit the transfer, read the account.",
+    outputs: [{ name: "account_number", type: "string", description: "The account" }],
+    expected_effect: "commits",
+    correlation: "none",
+  });
+  const site: FakeSite = {
+    ...SITE,
+    screens: {
+      ...SITE.screens,
+      "/done": {
+        title: "Done",
+        elements: [
+          ...(SITE.screens["/done"]?.elements ?? []),
+          { id: "acct", role: "cell", roleGroup: "container", text: RAW, box: { x: 20, y: 60, width: 160, height: 24 } },
+        ],
+      },
+    },
+  };
+  const flow = [
+    ...SIGN_IN_STEPS.slice(0, 3),
+    { name: "click", input: { element: "e2", ...why } },
+    { name: "click", input: { element: "e1", ...why } },
+  ];
+  const readStep = (output: string) => ({
+    name: "read",
+    input: { element: "e2", output, source: "text", ...why },
+  });
+  const finish = { name: "done", input: { summary: "Posted.", proof: ["e1"] } };
+
+  test("is read under the bare name, and done is accepted", async () => {
+    const r = await go({
+      spec: SPEC_COMMITS,
+      site,
+      steps: [...flow, readStep("output.account_number"), finish],
+      answers: [{ staff: "op_017", decision: "approve_irreversible" }],
+    });
+    expect(r.result.status).toBe("success");
+    const seen = (r.planner as ScriptedPlanner).seen;
+    // The ref in the reply, and no rejection of the read or of done.
+    expect(seen[6]?.message).toContain("read ok: {output.account_number}");
+    expect(seen.map((t) => t.message).join("\n")).not.toContain("is not an output of this task");
+    expect(seen.map((t) => t.message).join("\n")).not.toContain("done rejected");
+    const action = r.events.find(
+      (e) => e.event === "action" && (e.data as { type: string }).type === "read",
+    ) as { data: Record<string, unknown> };
+    expect(action.data).toMatchObject({ output: "account_number", result: "ok" });
+    const extract = r.events.find((e) => e.event === "extract") as { data: { output: string } };
+    expect(extract.data.output).toBe("account_number");
+    expect(textOf(r.files.find((f) => f.path === "events.jsonl")?.bytes ?? new Uint8Array())).not.toContain(
+      "output.output.",
+    );
   });
 });

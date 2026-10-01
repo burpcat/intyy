@@ -236,7 +236,34 @@ describe("read (section 6 §9.3)", () => {
   test("an unknown output is a bad call", () => {
     expect(
       badText(ctx(), "read", { element: "e3", output: "balance", source: "text", ...why }),
-    ).toBe("balance is not an output of this task.");
+    ).toBe("balance is not an output of this task. Outputs: account_number.");
+  });
+
+  const read = (output: string) => checkCall(ctx(), "read", { element: "e3", output, source: "text", ...why });
+
+  test.each(["account_number", "output.account_number", "{output.account_number}"])(
+    "the output may be given as %s, and the call carries the bare name",
+    (given) => {
+      const r = read(given);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value).toMatchObject({ tool: "read", output: "account_number" });
+    },
+  );
+
+  test("an unknown name in the {output.x} form is a bad call that lists the outputs", () => {
+    expect(badText(ctx(), "read", { element: "e3", output: "{output.nope}", source: "text", ...why })).toBe(
+      "{output.nope} is not an output of this task. Outputs: account_number.",
+    );
+  });
+
+  test("a spec with two outputs lists both, joined by a comma", () => {
+    const two = {
+      ...SPEC,
+      outputs: [...SPEC.outputs, { name: "opened_on", type: "date" as const, description: "Opened" }],
+    };
+    expect(
+      badText(ctx({ spec: two }), "read", { element: "e3", output: "nope", source: "text", ...why }),
+    ).toBe("nope is not an output of this task. Outputs: account_number, opened_on.");
   });
 
   test("a listed output passes; a bad pattern does not", () => {

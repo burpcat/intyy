@@ -262,8 +262,14 @@ function typeValue(
 function checkRead(ctx: CallContext, c: z.infer<typeof TOOL_SCHEMAS.read>): Checked1<Checked> {
   const target = refOf(ctx, c.element);
   if (!target.ok) return target;
-  const out = ctx.spec.outputs.find((o) => o.name === c.output);
-  if (out === undefined) return bad(`${c.output} is not an output of this task.`);
+  // Why: section 6 §9.3. The prompt lists outputs as {output.name}; accept that form and
+  // output.name too, so the recorder and the done check only ever see the bare name.
+  const name = c.output.replace(/^\{(.*)\}$/, "$1").replace(/^output\./, "");
+  const out = ctx.spec.outputs.find((o) => o.name === name);
+  if (out === undefined) {
+    const names = ctx.spec.outputs.map((o) => o.name).join(", ");
+    return bad(`${c.output} is not an output of this task. Outputs: ${names}.`);
+  }
   if (c.pattern !== undefined) {
     try {
       new RegExp(c.pattern);
@@ -281,7 +287,7 @@ function checkRead(ctx: CallContext, c: z.infer<typeof TOOL_SCHEMAS.read>): Chec
     tool: "read",
     element: c.element,
     target: target.value,
-    output: c.output,
+    output: name,
     source: c.source,
     meta: m.value,
   };
