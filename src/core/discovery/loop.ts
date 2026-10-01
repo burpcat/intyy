@@ -201,6 +201,11 @@ export async function runLoop(d: LoopDeps): Promise<LoopEnd> {
   };
 }
 
+/** True once the operator pressed Ctrl-C. A function, so TypeScript does not freeze the answer. */
+function stopped(d: LoopDeps): boolean {
+  return d.signal?.aborted === true;
+}
+
 /** Turns until one ends the run. */
 async function turns(
   d: LoopDeps,
@@ -216,7 +221,16 @@ async function turns(
       return { status: "failed", code: "discovery_limit" };
     s.turn += 1;
     if (d.handoff !== undefined) d.handoff.step.current = `t${String(s.turn)}`;
-    const ended = await oneTurn(d, s, tools);
+    let ended: End | null;
+    try {
+      ended = await oneTurn(d, s, tools);
+    } catch (e) {
+      // Why: the Clock port rejects an `after` wait when its signal aborts (section 9 §5.7), so
+      // Ctrl-C mid-settle or mid-wait throws. That is an operator end, not a bug (section 6
+      // §10.4). Any other throw is a real bug and still propagates.
+      if (stopped(d)) return { status: "failed", code: "ended_by_operator" };
+      throw e;
+    }
     if (ended !== null) return ended;
     if (d.log.failed) return { status: "failed", code: "evidence_write_failed" };
   }
@@ -323,6 +337,9 @@ async function ask(
     }
     if (reply.failure === "write_failed")
       return { status: "failed", code: "evidence_write_failed" };
+    // Why: section 6 §10.4, Ctrl-C ends the run as ended_by_operator. The adapter reports an
+    // aborted call as a timeout; that is not the model failing, so it is not counted or retried.
+    if (d.signal?.aborted === true) return { status: "failed", code: "ended_by_operator" };
     s.failuresInRow += 1;
     // Why no warning line: section 3's warning codes are fixed. The request file in llm/, with no
     // reply beside it, records the failed call.
@@ -665,8 +682,15 @@ async function act(
     }
     // Why: section 6 §10.1 step 1 and section 7 §5.1, wait for the page the action loads before
     // the next look. Without it, the look may see the old page, unchanged, before the server answers.
-    if (result.value.decision === "allowed" && result.value.act?.dispatched !== false)
-      await settleAfterAction(tap.events, d.clock, SETTLE_CAP_MS, d.signal);
+    if (result.value.decision === "allowed" && result.value.act?.dispatched !== false) {
+      try {
+        await settleAfterAction(tap.events, d.clock, SETTLE_CAP_MS, d.signal);
+      } catch (e) {
+        // Why: the action is already sent. Ctrl-C during this wait must not skip `afterGate`,
+        // or run.json would under-report a sent commit. The next turn's abort check ends the run.
+        if (!stopped(d)) throw e;
+      }
+    }
     return await afterGate(d, s, c, result.value, { fp, shown, hint, tag, step });
   } finally {
     tap.stop();

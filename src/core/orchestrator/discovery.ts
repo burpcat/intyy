@@ -463,11 +463,20 @@ export async function runDiscovery(
         clock: deps.clock,
         ...(deps.signal === undefined ? {} : { signal: deps.signal }),
       };
-      const preluded = await runPrelude(pre.sessionArtifact, preludeCtx);
-      if (preluded.kind === "failed") preludeCode = preluded.failure.code;
+      let preluded: Awaited<ReturnType<typeof runPrelude>> | null = null;
+      try {
+        preluded = await runPrelude(pre.sessionArtifact, preludeCtx);
+      } catch (e) {
+        // Why: the Clock port rejects a wait when its signal aborts, so Ctrl-C mid-prelude throws.
+        // That is an operator end (section 6 §10.4), not a bug. Any other throw propagates.
+        if (deps.signal?.aborted !== true) throw e;
+        preludeCode = "ended_by_operator";
+      }
+      // `null` means Ctrl-C ended it above; the failed branch below writes run_end and run.json.
+      if (preluded?.kind === "failed") preludeCode = preluded.failure.code;
       // Why "internal_error": never expected. `sign_in`-style sessions are read_only and
       // declare no outcomes, so a prelude "outcome" here is a bug in the sealed session itself.
-      else if (preluded.kind === "outcome") preludeCode = "internal_error";
+      else if (preluded?.kind === "outcome") preludeCode = "internal_error";
     }
     // Why: a run that already stands on the entry (the prelude's last click landed there) must not
     // reload it. A reloaded frameset shows an empty screen (docs/decisions.md, M05).
