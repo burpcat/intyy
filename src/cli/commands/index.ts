@@ -19,6 +19,7 @@ import { registerSettings } from "./settings.js";
 import { registerSpec } from "./spec.js";
 import { registerStaff } from "./staff.js";
 import { registerSuite } from "./suite.js";
+import { registerTags } from "./tags.js";
 import { registerTestdata } from "./testdata.js";
 import { registerTrust } from "./trust.js";
 import { registerJev, registerThresholds } from "./thresholds.js";
@@ -44,6 +45,7 @@ export const commands: readonly Register[] = [
   registerSpec,
   registerStaff,
   registerSuite,
+  registerTags,
   registerTestdata,
   registerThresholds,
   registerTrust,
