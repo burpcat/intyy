@@ -42,8 +42,8 @@ import { act, readVersion } from "../program.js";
 import { loadFrozenSetFor } from "./pack.js";
 import { currentRecord, exitFor, keyFromText, scoreDeps, tenantRecords, whoIs } from "./trust-shared.js";
 
-/** Standard input as text: piped, or one question on a terminal. A terminal with no prompt gives "". */
-async function stdinText(ctx: Ctx, prompt: string | null): Promise<string> {
+/** Standard input as text (the alert commands read their notes the same way): piped, or one question on a terminal. A terminal with no prompt gives "". */
+export async function stdinText(ctx: Ctx, prompt: string | null): Promise<string> {
   if (ctx.io.stdin.isTTY === true) return prompt === null ? "" : (await ctx.io.stdin.question(prompt)).trim();
   return (await ctx.io.stdin.readAll()).trim();
 }

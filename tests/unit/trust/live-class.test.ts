@@ -5,8 +5,8 @@
 // whatever else happened; a success with a rung 3 line or a takeover for `stuck` or `unsafe_state`
 // is `assisted`, while rung 2, a takeover for `needs_human_handler`, an approval, and a start
 // confirmation stay `clean`; a prelude failure blames the session key and leaves the task line
-// `not_counted`; margins keep the lowest per target; `step_ms` skips a laddered step. Pure: no
-// files, no clock. M11 task 1.
+// `not_counted`; margins keep the lowest per target; `step_ms` skips a laddered step; warnings become `flags` for
+// the drift reader (section 8 §12.4, M11 task 3). Pure: no files, no clock. M11 task 1.
 import { describe, expect, test } from "vitest";
 import { classOfCode, liveLinesOf, readEvents, type RunForLive } from "../../../src/core/trust/live-class.js";
 import type { Result } from "../../../src/core/model/result.js";
@@ -214,5 +214,39 @@ describe("margins, differing clues, and step times", () => {
   test("a log line it cannot read is skipped, not fatal", () => {
     const facts = readEvents([null, 5, "x", { event: 3 }, vote("a", "t", 0.7)]);
     expect(facts.task.margins).toEqual({ t: 0.7 });
+  });
+});
+
+describe("flags for the drift reader (section 8 §12.4)", () => {
+  const warn = (code: string, handler?: string, step = "click_search") => ev("warning", step, { code, detail: "d", ...(handler === undefined ? {} : { handler }) });
+
+  test("a detector_missed warning with a handler gives a flag per handler; repeats give one flag", () => {
+    const main = linesOf(success(), [warn("detector_missed", "notice"), warn("detector_missed", "notice"), warn("detector_missed", "banner")]).main;
+    expect(main.flags).toEqual(["detector_missed:banner", "detector_missed:notice"]);
+  });
+  test("a detector_missed warning with no handler gives none", () => {
+    expect(linesOf(success(), [warn("detector_missed")]).main.flags).toBeUndefined();
+  });
+  test("a reconciliation_contradiction warning gives its flag", () => {
+    expect(linesOf(success(), [warn("reconciliation_contradiction")]).main.flags).toEqual(["reconciliation_contradiction"]);
+  });
+  test("a warning the design does not count gives no flag", () => {
+    expect(linesOf(success(), [warn("outputs_masked")]).main.flags).toBeUndefined();
+  });
+  test("an uncertain commit gives the commit_uncertain flag, whatever the status", () => {
+    expect(linesOf(success({ effect: { commit: "uncertain" } }), [runEnd("click_confirm", "success")]).main.flags).toEqual(["commit_uncertain"]);
+    expect(linesOf(failed("action_failed", "click_confirm", { effect: { commit: "uncertain" } })).main.flags).toEqual(["commit_uncertain"]);
+  });
+  test("a clean run has no flags field at all", () => {
+    expect(linesOf(success()).main).not.toHaveProperty("flags");
+  });
+  test("a prelude failure with an uncertain commit does not flag the task line", () => {
+    const lines = linesOf(failed("target_not_found", "click_login", { effect: { commit: "uncertain" } }), [runEnd("session:click_login", "failed", "target_not_found")]);
+    expect(lines.main.flags).toBeUndefined();
+  });
+  test("a prelude warning goes on the session line, not the task line", () => {
+    const lines = linesOf(success(), [warn("detector_missed", "notice", "session:click_login"), stepEnd("click_search", 10)]);
+    expect(lines.prelude?.flags).toEqual(["detector_missed:notice"]);
+    expect(lines.main.flags).toBeUndefined();
   });
 });

@@ -392,8 +392,9 @@ function logLadder(deps: LadderDeps, step: string, data: LadderLogData, why: { k
 }
 
 /** A `warning` line (section 3 §6.4): something to review, not fatal. */
-function logWarning(deps: LadderDeps, step: string, code: string, detail: string): void {
-  deps.log({ event: "warning", step, by: "engine", data: { code, detail } });
+function logWarning(deps: LadderDeps, step: string, code: string, detail: string, handler?: string): void {
+  // Why `handler`: section 8 §12.4 counts `detector_missed` per handler, so the drift reader reads the ID here.
+  deps.log({ event: "warning", step, by: "engine", data: { code, detail, ...(handler === undefined ? {} : { handler }) } });
 }
 
 function logCheck(
@@ -734,7 +735,7 @@ async function higherRungs(
       const handler = deps.frozen.handlers.find((h) => h.id === verdict.handler);
       if (handler === undefined) throw new Error(`runLadder: jev's handler ${verdict.handler} is not in the frozen set`);
       // Why: section 5 §8.7, "jev may pick a handler whose detector did not match."
-      if (!tied.includes(handler.id)) logWarning(deps, input.stepId, "detector_missed", `jev picked ${handler.id}, but its detector did not match`);
+      if (!tied.includes(handler.id)) logWarning(deps, input.stepId, "detector_missed", `jev picked ${handler.id}, but its detector did not match`, handler.id);
       return await applyHandler(handler, tied, window, input, deps, mark("handler", rungs.cutoffs.handler_min));
     }
     if (verdict.kind === "unsafe") {

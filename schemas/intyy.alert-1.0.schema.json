@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "intyy.alert/1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^alert_\\d{4}-\\d{2}-\\d{2}_[0-9a-hjkmnp-tv-z]{10}$"
+    },
+    "tenant": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    },
+    "keys": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pattern": {
+      "type": "string",
+      "enum": [
+        "margin_drop",
+        "clue_drift",
+        "detector_drift",
+        "app_health",
+        "timeout_pressure",
+        "commit_uncertain",
+        "contradiction",
+        "one_tenant",
+        "outage",
+        "change_point",
+        "live_write_failed"
+      ]
+    },
+    "detail": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_runs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^run_\\d{4}-\\d{2}-\\d{2}_[0-9a-hjkmnp-tv-z]{10}$"
+      }
+    },
+    "suggested_fix": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "open",
+        "acted",
+        "dismissed"
+      ]
+    },
+    "closed": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "by": {
+              "type": "string",
+              "minLength": 1
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "note": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "by",
+            "at",
+            "note"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "tenant",
+    "at",
+    "keys",
+    "pattern",
+    "detail",
+    "fingerprint",
+    "evidence_runs",
+    "suggested_fix",
+    "state",
+    "closed"
+  ],
+  "additionalProperties": false
+}

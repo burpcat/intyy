@@ -40,6 +40,8 @@ type Scope = {
   stepMs: Record<string, number>;
   /** Any log line carried this scope's steps. */
   seen: boolean;
+  /** Early-warning flags: warnings the drift reader counts (section 8 §12.4). */
+  flags: Set<string>;
 };
 
 /** What the run log tells the classifier. */
@@ -57,7 +59,7 @@ export type EventFacts = {
 const PRELUDE = "session:";
 
 function emptyScope(): Scope {
-  return { margins: {}, differing: {}, rung3: false, stepMs: {}, seen: false };
+  return { margins: {}, differing: {}, rung3: false, stepMs: {}, seen: false, flags: new Set() };
 }
 
 /** A plain object, or `null`. Events are masked JSON, so narrow before use. */
@@ -67,7 +69,7 @@ function obj(v: unknown): Record<string, unknown> | null {
 
 /**
  * Reads the log lines the classifier needs: `target_vote` (margins, differing clues), `step_end`
- * (clean time), `ladder` and `action` (rung 3), `run_start` (mode), `run_end` (the last step).
+ * (clean time), `ladder` and `action` (rung 3), `warning` (early-warning flags), `run_start` (mode), `run_end` (the last step).
  * A line it cannot read is skipped: a bad log line never stops a live line (section 8 §5.6).
  */
 export function readEvents(events: readonly unknown[]): EventFacts {
@@ -108,6 +110,11 @@ export function readEvents(events: readonly unknown[]): EventFacts {
       case "action":
         if (line.by === "reviewer") scope.rung3 = true;
         break;
+      case "warning":
+        // Why these two codes only: they are the warnings section 8 §12.4 counts (`detector_drift`, `contradiction`).
+        if (data?.code === "detector_missed" && typeof data.handler === "string") scope.flags.add(`detector_missed:${data.handler}`);
+        if (data?.code === "reconciliation_contradiction") scope.flags.add("reconciliation_contradiction");
+        break;
       case "step_end":
         // Why: section 8 §9.6 and docs/decisions.md (M10): a clean sample is a step's first pass, with no ladder line.
         if (step !== null && data?.result === "passed" && typeof data.observed_ms === "number" && !laddered.has(step) && !taken.has(step)) {
@@ -135,22 +142,31 @@ function wasAssisted(result: Result, facts: EventFacts): boolean {
 }
 
 /** The class, code, and step of a run for the key that owns the task (or the check). */
-function classify(result: Result, facts: EventFacts): { cls: LiveClass; code: string | null; step: string | null } {
+function classify(
+  result: Result,
+  facts: EventFacts,
+): { cls: LiveClass; code: string | null; step: string | null; uncertain: boolean } {
   // Why: section 8 §12.1. A run that ends with the commit `uncertain` is a recipe failure: when unsure, assume the worst.
   const uncertain = result.status !== "rejected" && result.effect?.commit === "uncertain";
   switch (result.status) {
     case "failed": {
       const { code, step } = result.failure;
-      return { cls: uncertain ? "recipe_failure" : classOfCode(code), code, step };
+      return { cls: uncertain ? "recipe_failure" : classOfCode(code), code, step, uncertain };
     }
     case "success":
     case "business_outcome":
-      if (uncertain) return { cls: "recipe_failure", code: "commit_uncertain", step: facts.endStep };
-      return { cls: wasAssisted(result, facts) ? "assisted" : "clean", code: null, step: null };
+      if (uncertain) return { cls: "recipe_failure", code: "commit_uncertain", step: facts.endStep, uncertain };
+      return { cls: wasAssisted(result, facts) ? "assisted" : "clean", code: null, step: null, uncertain: false };
     default:
       // Rejected, running, escalated: nothing ran to a verdict, so nothing counts.
-      return { cls: "not_counted", code: null, step: null };
+      return { cls: "not_counted", code: null, step: null, uncertain: false };
   }
+}
+
+/** The `flags` field: the scope's warning flags, plus `commit_uncertain`; empty means the field is left out. */
+function flagsOf(flags: ReadonlySet<string>, uncertain: boolean): { flags?: string[] } {
+  const all = [...flags, ...(uncertain ? ["commit_uncertain"] : [])].sort();
+  return all.length === 0 ? {} : { flags: all };
 }
 
 /** What one run needs to become live lines. */
@@ -190,6 +206,7 @@ export function liveLinesOf(run: RunForLive): LiveLines {
     margins: facts.task.margins,
     differing: facts.task.differing,
     step_ms: facts.task.stepMs,
+    ...flagsOf(facts.task.flags, !preludeFailed && whole.uncertain),
   };
   if (!facts.prelude.seen && !preludeFailed) return { main, prelude: null };
 
@@ -203,6 +220,7 @@ export function liveLinesOf(run: RunForLive): LiveLines {
     margins: facts.prelude.margins,
     differing: facts.prelude.differing,
     step_ms: {},
+    ...flagsOf(facts.prelude.flags, false),
   };
   return { main, prelude };
 }

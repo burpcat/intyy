@@ -19,6 +19,11 @@ export const LiveUnder = z
     engine: z.string().min(1),
     handler_set: Sha256Hash.nullable(),
     jev: z.string().min(1).nullable(),
+    /**
+     * The pack revision behind the handler set, by scope label, like `{"app:kvfcu": 5}` (section 5 §7.5).
+     * Absent on a line written before M11 chunk B. Lets a change point name the pack revision (section 8 §13.3).
+     */
+    packs: z.record(z.string().min(1), z.number().int().nonnegative()).optional(),
   })
   .strict();
 
@@ -44,6 +49,11 @@ export const LiveLine = z
     differing: z.record(z.string().min(1), z.array(z.string().min(1))),
     /** Clean time in ms per step, for the `timeout_pressure` alert (section 8 §12.4). */
     step_ms: z.record(z.string().min(1), z.number().int().nonnegative()),
+    /**
+     * Early-warning facts from the run log, for the drift reader (section 8 §12.4): `detector_missed:<handler>`,
+     * `reconciliation_contradiction`, `commit_uncertain`. Absent when there are none.
+     */
+    flags: z.array(z.string().min(1)).optional(),
   })
   .strict();
 

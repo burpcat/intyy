@@ -7,6 +7,7 @@ import { FileDocumentStore } from "../adapters/files/document-store.js";
 import { FsFileTree } from "../adapters/files/file-tree.js";
 import { FileLockSlots, systemLockEnv } from "../adapters/files/locks.js";
 import { FileDraftStore, FileEvidenceStore, FileLogStore } from "../adapters/files/other-stores.js";
+import { FileAlertStore } from "../adapters/files/alert-store.js";
 import { FileScoreStore } from "../adapters/files/score-store.js";
 import { ClaudePlanner } from "../adapters/claude/planner.js";
 import { ClaudeReviewer } from "../adapters/claude/reviewer.js";
@@ -17,6 +18,7 @@ import { playwrightFactory } from "../adapters/playwright/session.js";
 import { SystemClock } from "../adapters/system/clock.js";
 import { SystemIds } from "../adapters/system/ids.js";
 import { FileCandidateStore } from "../adapters/files/other-stores.js";
+import { Alert } from "../core/model/alert.js";
 import { Artifact } from "../core/model/artifact.js";
 import { CandidateDecision } from "../core/model/candidate-decision.js";
 import { CandidateIssues } from "../core/model/candidate-issues.js";
@@ -51,6 +53,7 @@ import type { Marker } from "../ports/marker.js";
 import type { Planner, Reviewer } from "../ports/models.js";
 import type { InterventionDesk, OperatorPort } from "../ports/operator.js";
 import type { SurfaceFactory } from "../ports/surface.js";
+import type { AlertStore } from "../ports/alerts.js";
 import type { ScoreStore } from "../ports/scores.js";
 import type { Secrets } from "../ports/secrets.js";
 import type { FileTree } from "../ports/tree.js";
@@ -95,6 +98,8 @@ export type Wiring = {
   requestIndexStore: LogStore<RequestIndexLine, never>;
   /** Trust state per key: history lines and the rebuilt record, in `state/trust/scores/` (section 8 §5.2). */
   scores: ScoreStore<HistoryLine, ScoreRecord, LiveLine>;
+  /** Alerts from the drift reader, in `state/trust/alerts/` (section 8 §13.1). */
+  alerts: AlertStore<Alert>;
   /** The bank app's test-mode controls, for one app's settings (section 8 §6.5). Only certify uses it. */
   harness: (app: KvfcuHarnessConfig) => KvfcuHarness;
   /** The folders evidence publish reads and writes (section 9 §6.6): `state/evidence`, `state/trust/scores`,
@@ -161,6 +166,7 @@ export function wire(
       { line: HistoryLine, record: ScoreRecord },
       { dir: join(state, "trust", "scores"), tmpDir },
     ),
+    alerts: new FileAlertStore(Alert, { dir: join(state, "trust", "alerts"), tmpDir }),
     harness: (app) => new KvfcuHarness(app),
     publish: {
       source: new FsFileTree(join(state, "evidence"), tmpDir),

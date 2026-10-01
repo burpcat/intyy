@@ -136,6 +136,7 @@ export function rebuild(
   hashes: ScoreHashes,
   history: readonly HistoryLine[],
   live: readonly LiveLine[] = [],
+  alerts: readonly string[] = [],
 ): Outcome<ScoreRecord, "bad_history"> {
   let rec = draftRecord(key, hashes);
   for (const [i, line] of history.entries()) {
@@ -145,7 +146,8 @@ export function rebuild(
     }
     rec = next.value;
   }
-  return ok({ ...rec, live: liveField(live, excludedRuns(history)) });
+  // Why `alerts` is a parameter: alert files are not a log of the key, so the caller reads the open ones (section 8 §5.3).
+  return ok({ ...rec, live: liveField(live, excludedRuns(history)), alerts: [...alerts].sort() });
 }
 
 /**

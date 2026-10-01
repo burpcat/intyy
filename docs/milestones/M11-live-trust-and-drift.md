@@ -54,7 +54,7 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 
 - [x] 1. Write live lines and the live score. Test that each failure code lands in its class.
 - [x] 2. Write the window and streak rules. Test degrading at the edges, exclusion, and restore.
-- [ ] 3. Write early warnings, the drift reader, and alerts. Test the handler set tie-in with fixtures.
+- [x] 3. Write early warnings, the drift reader, and alerts. Test the handler set tie-in with fixtures.
 - [ ] 4. Write major records and `major_retired`.
 - [ ] 5. Write `pack impact`, regression batches, and the coverage check.
 - [ ] 6. Write reconciliation autonomy. Test the balance rule and each revocation path.
@@ -74,14 +74,14 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 ### Automated (CI `check` job)
 
 - [x] Live classes; window and streak rules; exclusion and restore (section 8 §18).
-- [ ] Handler set tie-in: a drop after a hash change names the pack revision.
+- [x] Handler set tie-in: a drop after a hash change names the pack revision.
 - [ ] Autonomy: the balance rule; each revocation path resets the evidence.
 - [ ] `pack approve` refuses without regression coverage, once a key is approved.
 - [ ] A retired major gives `capability_not_found`, reason `major_retired`, naming the successor.
 
 ### Live (`npm run test:live`)
 
-- [ ] In a temporary data root: replays write live lines, and three recipe failures in a row at one step degrade the key.
+- [x] In a temporary data root: replays write live lines, and three recipe failures in a row at one step degrade the key.
 
 ### Owner checks
 

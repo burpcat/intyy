@@ -24,6 +24,8 @@ import { act, readVersion, type Register } from "../program.js";
 import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
+import { driftDeps, driftTenants } from "./trust-shared.js";
+import { raiseLiveWriteFailed, scanDrift } from "../../core/trust/alerts.js";
 
 /** Splits `app/capability@major`. Only called once the request has passed `Request`'s schema
  * (the `MajorCapabilityLink` regex), so a mismatch here is a bug (CLAUDE.md: only bugs throw). */
@@ -376,8 +378,16 @@ export const registerReplay: Register = (program: Command, ctxOf) => {
           locks: ctx.wiring.locks,
           // Why: section 8 §5.6. A live line that cannot be written is said once; the run's result stands.
           // `trust rebuild --from-evidence` repairs it.
-          onLiveFailure: (f) => {
+          // It also writes an alert (section 8 §5.6); a failed alert write is said, never fatal.
+          onLiveFailure: async (f) => {
             progress(ctx.io, `run ${f.runId}: could not write the live line for ${f.key}: ${f.reason}. Repair with: intyy trust rebuild ${f.key} --from-evidence`);
+            const raised = await raiseLiveWriteFailed(driftDeps(ctx), { tenant: ctx.tenant, ...f });
+            if (!raised.ok) progress(ctx.io, `run ${f.runId}: could not write the alert for ${f.key}: ${raised.detail ?? raised.failure}`);
+          },
+          alerts: ctx.wiring.alerts,
+          // Why: section 8 §13.1, the drift reader runs after every score write.
+          afterScoreWrite: async () => {
+            await scanDrift(driftDeps(ctx), await driftTenants(ctx));
           },
           operator: ctx.wiring.discovery.operator,
           models: replayModels(ctx, policy.effective.llm.replay_reviewer),

@@ -14,9 +14,10 @@ import type { ScoreKey, ScoreRecord } from "../../../src/core/model/score.js";
 import { runReplay } from "../../../src/core/replay/executor.js";
 import { keyPath } from "../../../src/core/trust/keys.js";
 import { classOfCode } from "../../../src/core/trust/live-class.js";
+import { liveFromEvidence } from "../../../src/core/trust/live-evidence.js";
 import { appendHistory } from "../../../src/core/trust/scores.js";
 import type { FakeScoreStore } from "../../../src/fakes/score-store.js";
-import { approved, batch } from "../trust/kit.js";
+import { approved, batch, h as hashOf } from "../trust/kit.js";
 import { world } from "../trust/live-kit.js";
 import { TENANT, authorizationFor, buildHarness, fixtureSite, replayInputOf, requestOf } from "./executor-harness.js";
 
@@ -182,5 +183,77 @@ describe("the rules run after a live write (section 8 §12.3)", () => {
     const session = await w.scores.getRecord(keyPath(SESSION));
     expect(session.ok && session.value.state).toBe("draft");
     expect(session.ok && session.value.live?.current).toMatchObject({ counted: 3, clean: 3, score: 1 });
+  });
+});
+
+describe("pack revisions on the line (section 8 §13.3)", () => {
+  const frozenSet = {
+    targets: [],
+    conditions: [],
+    handlers: [],
+    handlerScope: new Map(),
+    runStart: { ids: [], packs: { "app:kvfcu": 5 }, from: {}, hash: hashOf("set-5") },
+    warnings: [],
+  };
+
+  test("a run's lines carry the handler set hash and the pack revisions it froze, and a rebuild from evidence restores them", async () => {
+    const { w, h } = await setup();
+    const { runId } = await run(h, { frozenSet });
+    const [task] = await liveOf(w.scores, TASK);
+    const [session] = await liveOf(w.scores, SESSION);
+    expect(task?.under).toMatchObject({ handler_set: hashOf("set-5"), packs: { "app:kvfcu": 5 } });
+    expect(session?.under).toEqual(task?.under);
+
+    const fromEvidence = await liveFromEvidence(h.deps.evidence, TENANT);
+    const lines = fromEvidence.byKey.get(keyPath(TASK))?.lines ?? [];
+    expect(lines.map((l) => l.run_id)).toEqual([runId]);
+    expect(lines[0]?.under).toEqual(task?.under);
+    expect(fromEvidence.byKey.get(keyPath(SESSION))?.lines[0]?.under).toEqual(task?.under);
+  });
+
+  test("a run with no pack revisions leaves packs off the line", async () => {
+    const { w, h } = await setup();
+    await run(h);
+    const [task] = await liveOf(w.scores, TASK);
+    expect(task?.under).not.toHaveProperty("packs");
+  });
+});
+
+describe("the reader hook and the failure hook never change the result (section 8 §5.6, §13.1)", () => {
+  test("afterScoreWrite runs once per live write, with the key", async () => {
+    const heard: string[] = [];
+    const w = world();
+    const h = await buildHarness(fixtureSite(), {
+      scores: w.scores,
+      locks: w.locks,
+      afterScoreWrite: (k) => {
+        heard.push(k.capability);
+        return Promise.resolve();
+      },
+    });
+    expect((await run(h)).result.status).toBe("success");
+    expect(heard.sort()).toEqual(["kvfcu/open_sub@1.0.0", "kvfcu/sign_in@1.0.0"]);
+  });
+
+  test("a throwing afterScoreWrite leaves the result and the lines alone", async () => {
+    const w = world();
+    const h = await buildHarness(fixtureSite(), { scores: w.scores, locks: w.locks, afterScoreWrite: () => Promise.reject(new Error("reader broke")) });
+    expect((await run(h)).result.status).toBe("success");
+    expect(await liveOf(w.scores, TASK)).toHaveLength(1);
+  });
+
+  test("a throwing or rejecting onLiveFailure leaves the result alone", async () => {
+    const w = world();
+    w.scores.failWrites = true;
+    const h = await buildHarness(fixtureSite(), { scores: w.scores, locks: w.locks, onLiveFailure: () => Promise.reject(new Error("alert broke")) });
+    expect((await run(h)).result.status).toBe("success");
+    const h2 = await buildHarness(fixtureSite(), {
+      scores: w.scores,
+      locks: w.locks,
+      onLiveFailure: () => {
+        throw new Error("alert broke");
+      },
+    });
+    expect((await run(h2)).result.status).toBe("success");
   });
 });

@@ -3,7 +3,7 @@
 // from `run.json` files) and section 9 §9.8 (`trust rebuild --from-evidence`).
 import type { EvidenceStore } from "../../ports/stores.js";
 import { Sha256Hash } from "../model/canonical.js";
-import type { LiveLine } from "../model/live-line.js";
+import { LiveUnder, type LiveLine } from "../model/live-line.js";
 import { RunJson } from "../model/run.js";
 import type { ScoreKey } from "../model/score.js";
 import { keyPath } from "./keys.js";
@@ -69,6 +69,7 @@ export async function liveFromEvidence(
     const taskKey = keyFor(frozenId(frozen.artifact), tenant, appVersion);
     if (taskKey === null) continue;
     const handlerSet = Sha256Hash.safeParse(frozen.handler_set);
+    const packs = LiveUnder.shape.packs.safeParse(frozen.handler_packs);
     const lines = liveLinesOf({
       runId,
       at: endedAt,
@@ -80,6 +81,7 @@ export async function liveFromEvidence(
         engine: typeof frozen.engine_version === "string" ? frozen.engine_version : "unknown",
         handler_set: handlerSet.success ? handlerSet.data : null,
         jev: null,
+        ...(packs.success && packs.data !== undefined && Object.keys(packs.data).length > 0 ? { packs: packs.data } : {}),
       },
     });
     put(taskKey, lines.main);

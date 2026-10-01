@@ -31,10 +31,12 @@ import type { SecretSources } from "../safety/secrets/injector.js";
 import type { RequestIndexDeps } from "../orchestrator/request-index.js";
 import { catalogRequestIndex, catalogResolve, catalogTrust, runPrechecks } from "../orchestrator/prechecks.js";
 import type { Locks } from "../../ports/locks.js";
+import type { AlertStore } from "../../ports/alerts.js";
 import type { ScoreStore } from "../../ports/scores.js";
 import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
-import type { ScoreRecord } from "../model/score.js";
+import type { ScoreKey, ScoreRecord } from "../model/score.js";
+import type { Alert } from "../model/alert.js";
 import { recordHash } from "../trust/rebuild.js";
 import { loadRecords } from "../trust/resolve.js";
 import { RunLog, type LogLine } from "../orchestrator/run-log.js";
@@ -168,9 +170,14 @@ export type ReplayDeps = {
   locks?: Locks;
   /**
    * Hears each live-line write that failed, for a warning and, later, an alert (section 8 §5.6: "a
-   * failed score write never changes a run's result"). Never changes the run's result.
+   * failed score write never changes a run's result"). Never changes the run's result. The hook awaits a
+   * returned promise, so the CLI can write an alert here.
    */
-  onLiveFailure?: (failure: { key: string; runId: string; reason: string }) => void;
+  onLiveFailure?: (failure: { key: string; runId: string; reason: string }) => unknown;
+  /** Alert files, so a live write's record lists its open alerts (section 8 §5.3). */
+  alerts?: AlertStore<Alert>;
+  /** The drift reader, run after each live write (section 8 §13.1). Never changes the run's result. */
+  afterScoreWrite?: (key: ScoreKey) => Promise<void>;
   operator: (run: { runId: string; tenant: string }) => OperatorPort;
   /** Overrides the real reconciliation check (section 7 §11.1) with a scripted answer: mostly
    * for tests, so a case need not seal a whole second, read-only check capability. Omitted, the
@@ -304,6 +311,8 @@ function frozenFacts(
       engine_version: input.engineVersion,
       // Why: section 8 §5.5, live lines carry the handler set hash, and `trust rebuild --from-evidence` reads it back from here.
       handler_set: fact((input.frozenSet ?? EMPTY_FROZEN_SET).runStart.hash),
+      // Why: section 8 §13.3, a change point names the pack revision, and the hash alone cannot.
+      handler_packs: (input.frozenSet ?? EMPTY_FROZEN_SET).runStart.packs,
       policy: { layers: input.policy.layers, hash: fact(input.policy.hash) },
       settings: { revision: Number(input.settings.rev), hash: fact(input.settings.hash) },
       evidence_level: input.policy.effective.evidence.level,
@@ -689,6 +698,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
       artifact: artifactForFacts,
       session: sessionForFacts,
       handlerSet: (input.frozenSet ?? EMPTY_FROZEN_SET).runStart.hash,
+      handlerPacks: (input.frozenSet ?? EMPTY_FROZEN_SET).runStart.packs,
     });
     return { runId, result: final };
   };

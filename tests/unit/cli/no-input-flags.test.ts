@@ -63,7 +63,9 @@ const NON_INPUT_FLAGS: Record<string, string> = {
   "--batch": "a batch ID of intyy's own making, like batch_2026-09-26_3fk8q2m7xa; not member data",
   "--ack": "a fragile step ID of the recipe, like open_member; not member data",
   "--expect-record": "a record hash (sha256:...) read off the review screen; not member data",
-  "--state": "one trust state: draft, approved, degraded, or retired; not member data",
+  "--state": "one trust state: draft, approved, degraded, or retired; or an alert state: open, acted, dismissed; not member data",
+  // M11 chunk B: `drift report --since` names a date, never member data. Alert notes come from standard input.
+  "--since": "a date like 2026-09-30; not member data",
 };
 
 /** Every value-taking flag in the tree that is not on the allow list, as `command --flag`. */

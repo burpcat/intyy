@@ -3,13 +3,15 @@
 // and section 9 §9.8 (`trust rebuild`).
 import type { LockRequest, Locks } from "../../ports/locks.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
+import type { AlertStore } from "../../ports/alerts.js";
 import type { ScoreStore } from "../../ports/scores.js";
 import { canonicalJson, hashJson } from "../model/canonical.js";
+import type { Alert } from "../model/alert.js";
 import type { LiveLine } from "../model/live-line.js";
 import type { HistoryLine } from "../model/score-history.js";
 import type { ScoreKey, ScoreRecord } from "../model/score.js";
 import { sealHash } from "../model/sealing.js";
-import { keyPath, parseKeyPath } from "./keys.js";
+import { keyPath, keyText, parseKeyPath } from "./keys.js";
 import { mergeLive } from "./live-evidence.js";
 import { evaluateRules, type RuleHit } from "./live-rules.js";
 import { rebuild, type ScoreHashes } from "./rebuild.js";
@@ -31,7 +33,33 @@ export type ScoreDeps = {
   scores: ScoreStore<HistoryLine, ScoreRecord, LiveLine>;
   locks: Locks;
   artifacts: SealedArtifacts;
+  /** Alert files, so a rebuilt record lists its open alerts (section 8 §5.3). Omitted: no alerts. */
+  alerts?: AlertStore<Alert>;
+  /**
+   * Runs after each successful history or live write, once the score lock is released: the drift
+   * reader (section 8 §13.1, "it runs after every score write"). It never changes the write's result.
+   */
+  afterWrite?: (key: ScoreKey) => Promise<void>;
 };
+
+/** The IDs of the open alerts that name this key, sorted. Empty when there is no alert store or it cannot be read. */
+export async function openAlertIds(deps: Pick<ScoreDeps, "alerts">, key: ScoreKey): Promise<string[]> {
+  const all = await deps.alerts?.list();
+  if (all === undefined || !all.ok) return [];
+  const text = keyText(key);
+  return all.value
+    .filter((a) => a.state === "open" && a.tenant === key.tenant && a.keys.includes(text))
+    .map((a) => a.id);
+}
+
+/** Calls the after-write hook. Why swallow: advice never changes a score write (section 8 §5.6). */
+async function afterWrite(deps: ScoreDeps, key: ScoreKey): Promise<void> {
+  try {
+    await deps.afterWrite?.(key);
+  } catch {
+    // The drift reader runs again after the next write.
+  }
+}
 
 /** Who writes, for the lock file (section 9 §12.1). `owner` is a batch or run ID. */
 export type ScoreWriter = Pick<LockRequest, "owner" | "command" | "staff">;
@@ -73,7 +101,18 @@ async function locked<T>(
  * Appends one history line, then rebuilds and replaces the record. The line is checked against
  * the history first: an illegal move writes nothing (section 8 §4.2). Returns the new record.
  */
-export function appendHistory(
+export async function appendHistory(
+  deps: ScoreDeps,
+  key: ScoreKey,
+  line: HistoryLine,
+  who: ScoreWriter,
+): Promise<Outcome<ScoreRecord, ScoreFailure>> {
+  const done = await appendHistoryLocked(deps, key, line, who);
+  if (done.ok) await afterWrite(deps, key);
+  return done;
+}
+
+function appendHistoryLocked(
   deps: ScoreDeps,
   key: ScoreKey,
   line: HistoryLine,
@@ -85,7 +124,7 @@ export function appendHistory(
     if (!lines.ok) return fail("invalid", lines.detail);
     const live = await deps.scores.liveLines(path);
     if (!live.ok) return fail("invalid", live.detail);
-    const record = rebuild(key, await hashesFor(deps.artifacts, key), [...lines.value, line], live.value);
+    const record = rebuild(key, await hashesFor(deps.artifacts, key), [...lines.value, line], live.value, await openAlertIds(deps, key));
     if (!record.ok) return record;
     const written = await deps.scores.append(path, line);
     if (!written.ok) return written;
@@ -104,7 +143,19 @@ export type LiveWritten = { record: ScoreRecord; degraded: RuleHit | null };
  * Why the line goes first: if the degrade write fails, the next live run evaluates every line again
  * and degrades then, so no trust is kept by a failed write.
  */
-export function recordLive(
+export async function recordLive(
+  deps: ScoreDeps,
+  key: ScoreKey,
+  line: LiveLine,
+  who: ScoreWriter,
+  now: Date,
+): Promise<Outcome<LiveWritten, ScoreFailure>> {
+  const done = await recordLiveLocked(deps, key, line, who, now);
+  if (done.ok) await afterWrite(deps, key);
+  return done;
+}
+
+function recordLiveLocked(
   deps: ScoreDeps,
   key: ScoreKey,
   line: LiveLine,
@@ -121,7 +172,8 @@ export function recordLive(
     if (!written.ok) return written;
     const live = [...before.value, line];
     const hashes = await hashesFor(deps.artifacts, key);
-    const record = rebuild(key, hashes, history.value, live);
+    const open = await openAlertIds(deps, key);
+    const record = rebuild(key, hashes, history.value, live, open);
     if (!record.ok) return record;
     const hit = evaluateRules(record.value.state, history.value, live);
     let final = record.value;
@@ -134,7 +186,7 @@ export function recordLive(
         rule: hit.rule,
         runs: hit.runs,
       };
-      const next = rebuild(key, hashes, [...history.value, degraded], live);
+      const next = rebuild(key, hashes, [...history.value, degraded], live, open);
       if (!next.ok) return next;
       const appended = await deps.scores.append(path, degraded);
       if (!appended.ok) return appended;
@@ -199,7 +251,7 @@ export function rebuildKey(
     if (!lines.ok) return fail("invalid", lines.detail);
     const live = await deps.scores.liveLines(path);
     if (!live.ok) return fail("invalid", live.detail);
-    const after = rebuild(key, await hashesFor(deps.artifacts, key), lines.value, live.value);
+    const after = rebuild(key, await hashesFor(deps.artifacts, key), lines.value, live.value, await openAlertIds(deps, key));
     if (!after.ok) return after;
     const old = await deps.scores.getRecord(path);
     const before = old.ok ? old.value : null;
