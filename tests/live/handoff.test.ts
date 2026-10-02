@@ -53,7 +53,15 @@ test(
       // The start confirmation (supervised mode) stays open until the person's input stops the bot.
       "silent",
       { staff: STAFF, claimed: true },
-      { act: () => page().keyboard.press("Tab") },
+      // Why the wait: a person acts after the page has loaded. A key pressed the instant the claim
+      // lands can hit a frame still loading, before its input capture script runs.
+      {
+        act: async () => {
+          await page().waitForLoadState("load");
+          await page().waitForTimeout(1_000);
+          await page().keyboard.press("Tab");
+        },
+      },
       { staff: STAFF, released: true, note: "Looked at the screen." },
       // The irreversible OK box asks for approval: the request carries no authorization.
       { staff: STAFF, decision: "approved" },
