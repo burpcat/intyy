@@ -313,7 +313,9 @@ export function faultSteps(): Promise<Steps> {
           });
     if (commitStep === undefined)
       throw new Error("the reply_lost fault matches no request step in the route map");
-    const windowStep = requestStepsFor(routeMap).find((s) => s !== commitStep);
+    // Why not `session:` steps: the route map lists the prelude's requests first, and a fault
+    // there tests the sign-in, not the task's own window-open step.
+    const windowStep = requestStepsFor(routeMap).find((s) => s !== commitStep && !s.startsWith("session:"));
     if (windowStep === undefined)
       throw new Error("the baseline sent no request before the commit step");
     const placed = resolveAnchor("@each_request_step", routeMap, commitStep, `@step:${windowStep}`);

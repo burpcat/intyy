@@ -968,6 +968,22 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         ...(signal === undefined ? {} : { signal }),
       };
       const result = await runPrelude(sessionArtifact, preludeCtx);
+      // Why a warning: the handler line says only that `sign_in` failed; this says where and why.
+      if (result.kind !== "ok") {
+        await captureOnFailure("sign_in_failed");
+        await log.append({
+          event: "warning",
+          step: null,
+          by: "engine",
+          data: {
+            code: "sign_in_failed",
+            detail:
+              result.kind === "failed"
+                ? `${result.failure.code} (${result.failure.phase}): ${result.failure.message}`
+                : `outcome ${result.code}`,
+          },
+        });
+      }
       return result.kind === "ok";
     };
     if (sessionArtifact !== null) {

@@ -626,10 +626,7 @@ async function applyHandler(
     if (!done) return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
   }
 
-  const fresh = await deps.eyes.observe(deps.signal);
-  if (!fresh.ok) return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
-  const freshScreen = fromObservation(fresh.value);
-  const resumed = resumeSearch(input.steps, input.stepIndex, input.trouble.dispatched, input.floorIndex, freshScreen, deps.taskCtx);
+  const resumed = await resumeAfterResponse(input, deps);
   if (resumed.kind === "not_recovered") return applyOnExhausted(handler, matched, window, attempt, input, deps, mark);
 
   const index = landingIndex(resumed, input.stepIndex);
@@ -637,6 +634,31 @@ async function applyHandler(
   const data: LadderLogData = { rung: 1, verdict: "recovered", window, matched, handler: handler.id, attempt, next: "resume_at", resume_at: resumeAtId, files: input.captureFiles, ...mark };
   logLadder(deps, input.stepId, data, { kind: "handler", ref: handler.id });
   return { kind: "recovered", index, recovery: { via: mark === undefined ? "handler" : "jev", ref: handler.id, resumedAt: resumeAtId }, log: data };
+}
+
+/** How long the resume search keeps looking after a handler's response. */
+const RESUME_WAIT_MS = 5000;
+/** How often it looks again. */
+const RESUME_POLL_MS = 250;
+
+/**
+ * The resume search after a handler's response, looked at again until a step can resume or
+ * {@link RESUME_WAIT_MS} passes. Why: a response that loads a page (a `navigate`, a sign-in)
+ * returns when the top document loads; a frameset's frames fill in after it, so one look can see
+ * no step's precondition yet. ponytail: a fixed wait, not the step's own timeout; tune it if a
+ * slow app needs more.
+ */
+async function resumeAfterResponse(input: LadderInput, deps: LadderDeps): Promise<ReturnType<typeof resumeSearch>> {
+  const until = deps.clock.now().getTime() + RESUME_WAIT_MS;
+  for (;;) {
+    const fresh = await deps.eyes.observe(deps.signal);
+    if (fresh.ok) {
+      const resumed = resumeSearch(input.steps, input.stepIndex, input.trouble.dispatched, input.floorIndex, fromObservation(fresh.value), deps.taskCtx);
+      if (resumed.kind !== "not_recovered") return resumed;
+    }
+    if (deps.clock.now().getTime() >= until || deps.signal?.aborted === true) return { kind: "not_recovered" };
+    await deps.clock.after(RESUME_POLL_MS, deps.signal);
+  }
 }
 
 /** A `recoverable` handler's `on_exhausted` (section 5 §6.6): either a fixed hard failure, or a
