@@ -5,7 +5,7 @@
     "app": "kvfcu"
   },
   "revision": 3,
-  "reason": "Adds service_unavailable (kvfcu's 503 'Service temporarily unavailable' page) and blank_page (an empty page, status 200). The sign_in full batch's stability runs met both and stuck, since no handler matched (run_2026-10-02_fbcgxbkfvs, run_2026-10-02_cv5w4j1wqh). Both recover like app_error_page: back to the last good page (section 5 §14). blank_page sits in the app pack, not global: a global handler needs fire fixtures from two apps (§12.6).",
+  "reason": "Adds service_unavailable (kvfcu's 503 'Service temporarily unavailable' page), blank_page (an empty page, status 200), and back_at_login (the logout fault's redirect to the login page, CONTRACT §6.1). The sign_in full batch's stability runs met both and stuck, since no handler matched (run_2026-10-02_fbcgxbkfvs, run_2026-10-02_cv5w4j1wqh). Both recover like app_error_page: back to the last good page (section 5 §14). blank_page sits in the app pack, not global: a global handler needs fire fixtures from two apps (§12.6). normal_login also fires back_at_login on purpose: a logout lands on that very screen, and a handler runs only when a step is stuck.",
   "targets": [
     {
       "id": "kyc_remind_later",
@@ -101,6 +101,13 @@
         "text": "*",
         "match": "wildcard"
       }
+    },
+    {
+      "id": "login_page_shown",
+      "description": "The app's Staff Login page is showing.",
+      "check": "text_visible",
+      "text": "Staff Login",
+      "match": "contains"
     }
   ],
   "handlers": [
@@ -294,6 +301,36 @@
       "limits": {
         "per_step": 2,
         "per_run": 3
+      },
+      "on_exhausted": {
+        "class": "hard_failure",
+        "failure": "app_error"
+      }
+    },
+    {
+      "id": "back_at_login",
+      "description": "The app ended the session and shows its login page.",
+      "detector": "login_page_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_logout"
+        ],
+        "no_fire": [
+          "normal_main",
+          "normal_member_detail",
+          "normal_lastlogin"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "sign_in",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 1,
+        "per_run": 2
       },
       "on_exhausted": {
         "class": "hard_failure",
