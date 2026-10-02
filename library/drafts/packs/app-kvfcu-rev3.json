@@ -5,7 +5,7 @@
     "app": "kvfcu"
   },
   "revision": 3,
-  "reason": "Adds service_unavailable: kvfcu's 503 'Service temporarily unavailable' page. A sign_in full batch's stability run met it after Continue and stuck, since no handler matched (run_2026-10-02_fbcgxbkfvs). Recovers like app_error_page: back to the last good page.",
+  "reason": "Adds service_unavailable (kvfcu's 503 'Service temporarily unavailable' page) and blank_page (an empty page, status 200). The sign_in full batch's stability runs met both and stuck, since no handler matched (run_2026-10-02_fbcgxbkfvs, run_2026-10-02_cv5w4j1wqh). Both recover like app_error_page: back to the last good page (section 5 §14). blank_page sits in the app pack, not global: a global handler needs fire fixtures from two apps (§12.6).",
   "targets": [
     {
       "id": "kyc_remind_later",
@@ -91,6 +91,16 @@
       "check": "text_visible",
       "text": "Service temporarily unavailable",
       "match": "contains"
+    },
+    {
+      "id": "page_blank",
+      "description": "The page shows no text at all.",
+      "check": "not",
+      "of": {
+        "check": "text_visible",
+        "text": "*",
+        "match": "wildcard"
+      }
     }
   ],
   "handlers": [
@@ -258,6 +268,37 @@
         "class": "hard_failure",
         "failure": "app_error"
       }
+    },
+    {
+      "id": "blank_page",
+      "description": "The app returned an empty page.",
+      "detector": "page_blank",
+      "fixtures": {
+        "fire": [
+          "trouble_blank"
+        ],
+        "no_fire": [
+          "normal_login",
+          "normal_lastlogin",
+          "normal_main"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "navigate",
+          "location": "{system.last_good_path}",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 2,
+        "per_run": 3
+      },
+      "on_exhausted": {
+        "class": "hard_failure",
+        "failure": "app_error"
+      }
     }
   ],
   "provenance": {
@@ -288,6 +329,10 @@
       },
       {
         "run_id": "run_2026-10-02_fbcgxbkfvs",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-02_cv5w4j1wqh",
         "kind": "replay"
       }
     ],
