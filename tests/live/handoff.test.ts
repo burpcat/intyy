@@ -53,13 +53,15 @@ test(
       // The start confirmation (supervised mode) stays open until the person's input stops the bot.
       "silent",
       { staff: STAFF, claimed: true },
-      // Why the wait: a person acts after the page has loaded. A key pressed the instant the claim
-      // lands can hit a frame still loading, before its input capture script runs.
+      // Why a click on a real control, after the page loads: a Tab on a frameset page can land on
+      // no focused element, so nothing is captured. A person clicks a field, like A11 did.
       {
         act: async () => {
           await page().waitForLoadState("load");
           await page().waitForTimeout(1_000);
-          await page().keyboard.press("Tab");
+          const frame = page().frames().find((f) => f.url().includes("memberSearch"));
+          if (frame === undefined) throw new Error("the member search frame is not loaded");
+          await frame.getByRole("textbox", { name: "Member No." }).click();
         },
       },
       { staff: STAFF, released: true, note: "Looked at the screen." },
