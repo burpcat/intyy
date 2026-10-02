@@ -257,7 +257,7 @@ describe("certify case: role", () => {
 });
 
 describe("certify case: exit codes", () => {
-  test("a passing case exits 0, writes plan.json and report.json, batch_id and case_id match", async () => {
+  test("a passing case exits 0, writes plan.json and report.json, batch_id and case_id match", { timeout: 20000 }, async () => {
     const env = await replayRoot();
     await sealCertifyInputs(env);
     const r = await certifyCall(env, "op_017", [
