@@ -42,7 +42,7 @@ Published only if built and run. Remove a row for any item that was cut. Every r
 
 | ID | What it shows | Made by | Expected path | Status |
 |---|---|---|---|---|
-| B1 | Stripped-button `quick` batch, a drill: voting with no accessible name | `intyy certify kvfcu/open_share_subaccount@1.0.3 --kind quick --instance strip_semantics=1`, with the bank app restarted with `KVFCU_STRIP_SEMANTICS=1` | `keystone/batches/<batch>/` (publish with `--with-runs all`) | pending |
+| B1 | Stripped-button `quick` batch, a drill. The stripped Search button is a bare 72 px image; rule 4 masks it, so the image clue cannot vote. The run escalates `unsafe_state` at `click_search` after the gate blocks the reviewer's click: it never clicks blind | `intyy certify kvfcu/open_share_subaccount@1.0.3 --kind quick --instance strip_semantics=1`, with the bank app restarted with `KVFCU_STRIP_SEMANTICS=1` | `keystone/batches/batch_2026-10-02_s0dmedha63/`, `keystone/runs/run_2026-10-02_jdepc13cmw/` | published |
 | B2 | Unknown pop-up handled by rungs 2 and 3, with their `llm/` records | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile unknown_popup --at @step:<id>` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
 | B3 | Full batch reports and trust snapshots for the three keys | `intyy certify <key>`, then `intyy evidence publish <batch> <key>` | `keystone/batches/<batch>/`, `trust/scores/keystone/<key>/` | pending |
 | B4 | Unattended replay: rejected before approval, `success` after | `intyy replay kvfcu/open_share_subaccount@1 --mode unattended --inputs demo/valid.json --authorization demo/auth.json`, before and after `trust approve` | `keystone/runs/<run>/` (two runs) | pending |

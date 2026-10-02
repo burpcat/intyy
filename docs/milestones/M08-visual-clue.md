@@ -54,7 +54,7 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 - [x] 4. Add both clues to voting. Bump the engine version.
 - [x] 5. Write the stripped-button test on the snapshot surface: no name, label, or text; region and image carry the vote.
 - [x] 6. Check the renamed-button test still fails, and ties are still ambiguous.
-- [ ] 7. Stop. Ask the owner to run the drill below.
+- [x] 7. Stop. Ask the owner to run the drill below. (2026-10-02: batch_2026-10-02_s0dmedha63, published)
 
 **The drill (B1), for the owner:**
 
@@ -79,7 +79,7 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 
 ### Owner checks
 
-- [ ] The drill ran. You read its vote lines and know which clues won.
+- [x] The drill ran. You read its vote lines and know which clues won. (No clue won: the stripped Search image is masked by rule 4, so it escalates; docs/decisions.md 2026-10-02)
 
 ## Evidence produced
 
