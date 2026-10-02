@@ -103,6 +103,24 @@ export async function candidateLikenesses(
   return out;
 }
 
+/** A wait's `measure` (evaluate.ts `EvalCtx`): each named target's candidate likenesses on one look. */
+export function measureWith(
+  pictures: Pictures,
+  targetsById: ReadonlyMap<string, Target>,
+  redactor: Redactor,
+  signal?: AbortSignal,
+): (o: Observation, targetIds: readonly string[]) => Promise<Likenesses> {
+  return async (o, targetIds) => {
+    const out = new Map<string, ReadonlyMap<string, number>>();
+    for (const id of targetIds) {
+      const t = targetsById.get(id);
+      if (t === undefined) continue;
+      for (const [k, row] of await candidateLikenesses(pictures, o, t, targetsById, redactor, signal)) out.set(k, row);
+    }
+    return out;
+  };
+}
+
 /** The target's decoded sealed crop as the gate's `confirmed.picture` field, or nothing
  * (section 4 §7.8 check 4). Built to spread into an object. */
 export function picOf(recorded: RecordedPictures | undefined, target: Target): { picture?: Pixels } {

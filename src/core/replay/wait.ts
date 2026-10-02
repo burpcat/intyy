@@ -3,9 +3,11 @@
 // §5.3 (the outcome race).
 import type { Clock } from "../../ports/clock.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
-import type { Eyes } from "../../ports/surface.js";
+import type { Eyes, Observation } from "../../ports/surface.js";
 import { fromObservation, type ScreenView } from "../targets/screen.js";
-import { evaluate, type AnyCheck, type ConditionAnswer, type EvalCtx } from "../targets/evaluate.js";
+import type { Likenesses } from "../targets/picture.js";
+import { vote } from "../targets/vote.js";
+import { evaluate, imageTargetsOf, type AnyCheck, type ConditionAnswer, type EvalCtx } from "../targets/evaluate.js";
 
 /** How often a wait re-checks, at the slowest (section 7 §5.2: "at least every 200 ms"). */
 const POLL_MS = 200;
@@ -20,7 +22,7 @@ async function pollScreen<R>(
   eyes: Eyes,
   clock: Clock,
   timeoutMs: number,
-  step: (screen: ScreenView) => { done: boolean; value: R },
+  step: (screen: ScreenView, o: Observation) => Promise<{ done: boolean; value: R }>,
   signal?: AbortSignal,
 ): Promise<Outcome<R, "page_gone">> {
   const start = clock.now().getTime();
@@ -28,7 +30,7 @@ async function pollScreen<R>(
   for (;;) {
     const o = await eyes.observe(signal);
     if (o.ok) {
-      const r = step(fromObservation(o.value));
+      const r = await step(fromObservation(o.value), o.value);
       last = r.value;
       if (r.done) return ok(r.value);
     }
@@ -37,6 +39,28 @@ async function pollScreen<R>(
     }
     await clock.after(POLL_MS, signal);
   }
+}
+
+/**
+ * `ctx` with likenesses measured on `o`, or `ctx` itself when `check` is already `true` without
+ * them, nothing can measure, or no target it uses has an image clue. Why only then: a look is
+ * cheap and a crop is not, so a normal page pays nothing (section 7 §6.3, §6.9).
+ */
+async function withPictures(checks: readonly AnyCheck[], screen: ScreenView, o: Observation, ctx: EvalCtx): Promise<EvalCtx> {
+  if (ctx.measure === undefined) return ctx;
+  const ids = new Set<string>();
+  for (const c of checks) if (evaluate(c, screen, ctx) !== "true") imageTargetsOf(c, ctx, ids);
+  // Only a target a picture could still decide: no winner now, but a winner if every crop
+  // matched. A loading page, a normal page, and a page without the element all skip the crops.
+  const perfect = new Map(screen.elements.map((e) => [e.id, 1]));
+  const optimistic: Likenesses = new Map([...ctx.targets.keys()].map((id) => [id, perfect]));
+  const open = [...ids].filter((id) => {
+    const t = ctx.targets.get(id);
+    if (t === undefined || vote(t, screen, ctx.targets, ctx.refs).kind !== "not_found") return false;
+    return vote(t, screen, ctx.targets, ctx.refs, optimistic).kind === "winner";
+  });
+  if (open.length === 0) return ctx;
+  return { ...ctx, likenesses: await ctx.measure(o, open) };
 }
 
 /** What a condition wait ends with: the answer it settled on, and the screen it read it from. */
@@ -59,8 +83,8 @@ export function waitForCondition(
     eyes,
     clock,
     timeoutMs,
-    (screen) => {
-      const answer = evaluate(check, screen, ctx);
+    async (screen, o) => {
+      const answer = evaluate(check, screen, await withPictures([check], screen, o, ctx));
       return { done: answer === "true", value: { answer, screen } };
     },
     signal,
@@ -95,9 +119,10 @@ export function raceCheckpointAndOutcomes(
     eyes,
     clock,
     timeoutMs,
-    (screen): { done: boolean; value: RaceResult } => {
-      const checkpointTrue = evaluate(checkpoint, screen, ctx) === "true";
-      const won = outcomes.find((o) => evaluate(o.condition, screen, ctx) === "true");
+    async (screen, look): Promise<{ done: boolean; value: RaceResult }> => {
+      const seen = await withPictures([checkpoint, ...outcomes.map((o) => o.condition)], screen, look, ctx);
+      const checkpointTrue = evaluate(checkpoint, screen, seen) === "true";
+      const won = outcomes.find((o) => evaluate(o.condition, screen, seen) === "true");
       if (won !== undefined) {
         return { done: true, value: { winner: "outcome", code: won.code, overlap: checkpointTrue, screen } };
       }

@@ -17,7 +17,7 @@ import type { Redactor } from "../safety/redaction/redactor.js";
 import { settleAfterAction } from "./settle.js";
 import { raceCheckpointAndOutcomes, waitForCondition, type RaceOutcome } from "./wait.js";
 import type { AnyCheck, EvalCtx } from "../targets/evaluate.js";
-import { picOf, type RecordedPictures } from "../targets/picture.js";
+import { measureWith, picOf, type RecordedPictures } from "../targets/picture.js";
 
 /** How long a precondition may wait: the previous step already waited for its own screen
  * (section 7 §5.2). Why 10 s, not 5 s: a frameset app's frames fill in after the page that holds
@@ -122,6 +122,9 @@ function evalCtxOf(ctx: StepRunnerContext): EvalCtx {
     targets: ctx.targets,
     conditions: ctx.conditions,
     ...(ctx.refs === undefined ? {} : { refs: ctx.refs }),
+    ...(ctx.recorded === undefined
+      ? {}
+      : { measure: measureWith({ eyes: ctx.eyes, recorded: ctx.recorded }, ctx.targets, ctx.redactor, ctx.signal) }),
   };
 }
 

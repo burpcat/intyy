@@ -2,6 +2,7 @@
 // state; a "not found" outcome wins early; a checkpoint/outcome overlap is marked; unknown never
 // passes. M05 task 4.
 import { describe, expect, test } from "vitest";
+import type { Target } from "../../../src/core/model/artifact/targets.js";
 import type { AnyCheck, EvalCtx } from "../../../src/core/targets/evaluate.js";
 import {
   raceCheckpointAndOutcomes,
@@ -112,5 +113,72 @@ describe("raceCheckpointAndOutcomes (section 7 §5.3)", () => {
     const eyes = eyesOf([ok(look("/there"))]);
     const r = await raceCheckpointAndOutcomes(HERE, outcomes, eyes, EMPTY_CTX, 1_000, new SteppingClock());
     expect(r).toMatchObject({ ok: true, value: { winner: "timeout" } });
+  });
+});
+
+describe("a wait measures pictures only when a picture could decide (section 7 §6.7, §6.9)", () => {
+  // The recorded Search button; today it is a bare image with no name (a stripped page).
+  const search: Target = {
+    id: "search_button",
+    description: "The button Search.",
+    clues: {
+      role: "button",
+      name: "Search",
+      region: { x: 0.5, y: 0.5, w: 0.05, h: 0.03 },
+      image: "crops/search_button.png",
+      path: "form > input[0]",
+    },
+  };
+  const bareImage = (id: string, x: number): SurfaceElement => ({
+    ref: ref(id),
+    role: "img",
+    roleGroup: "container",
+    clues: { path: `form > img[${id}]` },
+    enabled: true,
+    box: { x, y: 400, width: 64, height: 24 },
+  });
+  const VISIBLE: AnyCheck = { check: "element_visible", target: "search_button" };
+  const counting = (likeness: number) => {
+    const asked: string[][] = [];
+    const ctx: EvalCtx = {
+      targets: new Map([[search.id, search]]),
+      measure: (_o, ids) => {
+        asked.push([...ids]);
+        return Promise.resolve(new Map([["search_button", new Map([["0", likeness]])]]));
+      },
+    };
+    return { asked, ctx };
+  };
+
+  test("a bare-image button passes element_visible once its crop is measured", async () => {
+    const { asked, ctx } = counting(0.95);
+    const eyes = eyesOf([ok(look("/here", [bareImage("0", 608)]))]);
+    const r = await waitForCondition(VISIBLE, eyes, ctx, 5_000, new SteppingClock());
+    expect(r).toMatchObject({ ok: true, value: { answer: "true" } });
+    expect(asked).toEqual([["search_button"]]);
+  });
+
+  test("a different picture keeps it false", async () => {
+    const { ctx } = counting(0.1);
+    const eyes = eyesOf([ok(look("/here", [bareImage("0", 608)]))]);
+    const r = await waitForCondition(VISIBLE, eyes, ctx, 1_000, new SteppingClock());
+    expect(r).toMatchObject({ ok: true, value: { answer: "false" } });
+  });
+
+  test("no crop is taken when even a perfect picture could not win: an image far from the region", async () => {
+    const { asked, ctx } = counting(1);
+    const eyes = eyesOf([ok(look("/here", [bareImage("0", 10)]))]);
+    const r = await waitForCondition(VISIBLE, eyes, ctx, 1_000, new SteppingClock());
+    expect(r).toMatchObject({ ok: true, value: { answer: "false" } });
+    expect(asked).toEqual([]);
+  });
+
+  test("no crop is taken when the plain vote already wins", async () => {
+    const { asked, ctx } = counting(1);
+    const named: SurfaceElement = { ...button("form > input[0]", "Search"), box: { x: 608, y: 400, width: 64, height: 24 } };
+    const eyes = eyesOf([ok(look("/here", [named]))]);
+    const r = await waitForCondition(VISIBLE, eyes, ctx, 1_000, new SteppingClock());
+    expect(r).toMatchObject({ ok: true, value: { answer: "true" } });
+    expect(asked).toEqual([]);
   });
 });

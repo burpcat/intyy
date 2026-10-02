@@ -7,6 +7,8 @@ import type { Condition, NestedCheck } from "../model/artifact/conditions.js";
 import type { Target } from "../model/artifact/targets.js";
 import { descendantsOf, elementOf, type ScreenView } from "./screen.js";
 import { matchText, resolveRefs } from "./text.js";
+import type { Observation } from "../../ports/surface.js";
+import type { Likenesses } from "./picture.js";
 import { vote } from "./vote.js";
 
 /** Either a top-level, named condition, or a nested check inside `all_of`, `any_of`, or `not`. */
@@ -25,6 +27,11 @@ export type EvalCtx = {
   targets: ReadonlyMap<string, Target>;
   conditions?: ReadonlyMap<string, Condition>;
   refs?: ReadonlyMap<string, string>;
+  /** Measured picture likenesses for this screen (section 7 §6.3 `image`); absent leaves `image` missing. */
+  likenesses?: Likenesses;
+  /** Measures likenesses on a live look, for the waits: called only when a check is not yet
+   * `true` without them, so a bare-image button can still pass (section 7 §6.7, §6.9). */
+  measure?: (o: Observation, targetIds: readonly string[]) => Promise<Likenesses>;
 };
 
 /** A condition's answer (section 2 §14.2). */
@@ -39,7 +46,7 @@ function pushTrace(trace: EvalTrace | undefined, reason: EvalReason): void {
 function voteFor(targetId: string, screen: ScreenView, ctx: EvalCtx) {
   const target = ctx.targets.get(targetId);
   if (target === undefined) throw new Error(`condition target ${targetId} is not a known target`);
-  return vote(target, screen, ctx.targets, ctx.refs);
+  return vote(target, screen, ctx.targets, ctx.refs, ctx.likenesses);
 }
 
 /** `element_visible` (section 2 §14.3, section 7 §6.7). */
@@ -269,6 +276,29 @@ export function evaluate(
       const target = ctx.conditions?.get(check.ref);
       if (target === undefined) throw new Error(`ref ${check.ref} is not a known condition`);
       return evaluate(target, screen, ctx, trace);
+    }
+  }
+}
+
+/** The targets with an `image` clue that `check` votes for, through `ref`s and combiners: the
+ * ones a picture likeness can change (section 7 §6.3). */
+export function imageTargetsOf(check: AnyCheck, ctx: EvalCtx, out: Set<string> = new Set()): Set<string> {
+  switch (check.check) {
+    case "all_of":
+    case "any_of":
+      for (const c of check.checks) imageTargetsOf(c, ctx, out);
+      return out;
+    case "not":
+      return imageTargetsOf(check.of, ctx, out);
+    case "ref":
+    case undefined: {
+      const target = ctx.conditions?.get(check.ref);
+      return target === undefined ? out : imageTargetsOf(target, ctx, out);
+    }
+    default: {
+      const id = "target" in check && typeof check.target === "string" ? check.target : undefined;
+      if (id !== undefined && ctx.targets.get(id)?.clues.image !== undefined) out.add(id);
+      return out;
     }
   }
 }

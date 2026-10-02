@@ -15,7 +15,7 @@ import type { Gate, GateFailure } from "../safety/gate/gate.js";
 import type { Redactor } from "../safety/redaction/redactor.js";
 import { actStep, type ActContext, type ActStepResult } from "./act.js";
 import type { AnyCheck } from "../targets/evaluate.js";
-import { picOf, type RecordedPictures } from "../targets/picture.js";
+import { measureWith, picOf, type RecordedPictures } from "../targets/picture.js";
 import { raceCheckpointAndOutcomes, type RaceOutcome, type RaceResult } from "./wait.js";
 
 /** Asks a human for a commit approval when no authorization is present (docs/decisions.md, M05:
@@ -174,6 +174,9 @@ export async function commitStep(
       targets: ctx.targets,
       conditions: ctx.conditions,
       ...(ctx.refs === undefined ? {} : { refs: ctx.refs }),
+      ...(ctx.recorded === undefined
+        ? {}
+        : { measure: measureWith({ eyes: ctx.eyes, recorded: ctx.recorded }, ctx.targets, ctx.redactor, ctx.signal) }),
     },
     step.timeout_ms,
     ctx.clock,
