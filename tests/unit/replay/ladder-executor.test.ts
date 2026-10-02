@@ -127,6 +127,45 @@ describe("the sign_in handler recovers a lost session (section 7 §10, §8.13)",
   });
 });
 
+describe("the sign_in handler on the session capability itself (no session artifact)", () => {
+  test("the start page shows the expired banner once; sign_in starts the sign-in over at its entry and succeeds", async () => {
+    let startVisits = 0;
+    const site: FakeSite = {
+      origin: ORIGIN,
+      screens: {
+        get "/"() {
+          startVisits += 1;
+          return startVisits === 1
+            ? { elements: [textElement("expired_text", "Your session has expired")] }
+            : { elements: [START_SCREEN] };
+        },
+        "/home": { elements: [MEMBER_ID_BOX] },
+      },
+    };
+    const handler: Handler = {
+      class: "recoverable",
+      id: "session_expired",
+      description: "the session expired",
+      detector: "session_expired_shown",
+      fixtures: { fire: [], no_fire: [] },
+      response: [{ type: "sign_in", risk: "idempotent" }],
+      limits: { per_step: 2, per_run: 2 },
+      on_exhausted: { class: "hard_failure", failure: "app_error" },
+    };
+    const h = await buildHarness(site);
+    const input = replayInputOf(h, requestOf({ capability: "kvfcu/sign_in@1", inputs: {} }), {
+      frozenSet: frozenSetWith(handler, "Your session has expired", "session_expired_shown"),
+    });
+    const { result } = await runReplay(input, h.deps);
+
+    expect(result.status).toBe("success");
+    expect(result.recoveries).toEqual([
+      expect.objectContaining({ step: "click_login", via: "handler", ref: "session_expired", resumed_at: "click_login" }),
+    ]);
+    expect(startVisits).toBe(2);
+  });
+});
+
 describe("frozen ladder facts (docs/decisions.md, M06)", () => {
   test("run_start freezes ladder.jev and ladder.reviewer false", async () => {
     const h = await buildHarness(fixtureSite());

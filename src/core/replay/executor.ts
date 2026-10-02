@@ -956,7 +956,17 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     // is kept for a `sign_in` handler response later, during the task (section 7 §10, "`sign_in`
     // during the task": "the engine repeats steps 1 to 4 in the same browser").
     const runPreludeAgain = async (signal?: AbortSignal): Promise<boolean> => {
-      if (sessionArtifact === null) throw new Error("runLadder: a sign_in response with no session artifact");
+      if (sessionArtifact === null) {
+        // Why: this run is the session capability itself, which links none. Its sign-in is its
+        // own steps, so they start over as a new visitor: fresh cookies, then the task entry. The
+        // resume search then finds the first step.
+        await gate.freshSession(signal);
+        const nav = await gate.act(
+          { actor: "engine", lease, action: { type: "navigate", to: artifact.runs_on.entry }, step: "entry" },
+          signal,
+        );
+        return nav.ok && nav.value.decision === "allowed" && nav.value.act?.dispatched !== false;
+      }
       // Why: an app may keep serving its session-expired page to the old cookie, even at the
       // session's entry, so the sign-in starts as a new visitor (owner decision, 2026-10-02;
       // replaces section 7 §10's "same browser" for the cookies only).
