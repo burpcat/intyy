@@ -135,206 +135,218 @@ const CHECK_ORDER = [
 ];
 
 describe("patternNames", () => {
-  test("discovery's no-major call ignores any major in the pattern (unchanged behavior)", () => {
-    expect(patternNames("kvfcu/*@1", "kvfcu", "sign_in")).toBe(true);
-    expect(patternNames("kvfcu/sign_in@2", "kvfcu", "sign_in")).toBe(true);
-  });
-
-  test("replay's major-aware call checks the pattern's major too", () => {
-    expect(patternNames("kvfcu/*@1", "kvfcu", "open_share_subaccount", 1)).toBe(true);
-    expect(patternNames("kvfcu/*@1", "kvfcu", "open_share_subaccount", 2)).toBe(false);
-    expect(patternNames("kvfcu/*@*", "kvfcu", "open_share_subaccount", 2)).toBe(true);
-    expect(patternNames("*", "anything", "anything", 9)).toBe(true);
+  test("patternNames ignores the major in discovery and checks it in replay", () => {
+    // discovery's no-major call ignores any major in the pattern (unchanged behavior)
+    {
+      expect(patternNames("kvfcu/*@1", "kvfcu", "sign_in")).toBe(true);
+      expect(patternNames("kvfcu/sign_in@2", "kvfcu", "sign_in")).toBe(true);
+    }
+    // replay's major-aware call checks the pattern's major too
+    {
+      expect(patternNames("kvfcu/*@1", "kvfcu", "open_share_subaccount", 1)).toBe(true);
+      expect(patternNames("kvfcu/*@1", "kvfcu", "open_share_subaccount", 2)).toBe(false);
+      expect(patternNames("kvfcu/*@*", "kvfcu", "open_share_subaccount", 2)).toBe(true);
+      expect(patternNames("*", "anything", "anything", 9)).toBe(true);
+    }
   });
 });
 
 describe("runPrechecks", () => {
-  test("a fully valid supervised request, with no authorization, passes every check", async () => {
-    const { results, outcome } = await runPrechecks(baseInput());
-    expect(results.map((r) => r.check)).toEqual(CHECK_ORDER);
-    expect(results.every((r) => r.passed)).toBe(true);
-    expect(outcome.status).toBe("ok");
-  });
-
-  test("check 1: an unknown field is rejected as invalid_request; no later check runs", async () => {
-    const { results, outcome } = await runPrechecks(
-      baseInput({ raw: { ...baseRequest(), extra: true } }),
-    );
-    expect(outcome).toMatchObject({ status: "rejected", code: "invalid_request" });
-    expect(results.map((r) => r.check)).toEqual(["format"]);
-  });
-
-  test("check 3: the same request ID reused with different content is rejected", async () => {
-    const { results, outcome } = await runPrechecks(
-      baseInput({ lookupRequest: () => Promise.resolve(ok({ status: "reused" })) }),
-    );
-    expect(outcome).toMatchObject({ status: "rejected", code: "request_id_reused" });
-    expect(results.map((r) => r.check)).toEqual(["format", "request_id"]);
-  });
-
-  test("check 3: a true repeat returns the original run ID, and stops before check 4", async () => {
-    const { results, outcome } = await runPrechecks(
-      baseInput({
-        lookupRequest: () =>
-          Promise.resolve(ok({ status: "repeat", runId: "run_2026-09-20_aaaaaaaaaa" })),
-      }),
-    );
-    expect(outcome).toEqual({ status: "duplicate", runId: "run_2026-09-20_aaaaaaaaaa" });
-    expect(results.map((r) => r.check)).toEqual(["format", "request_id"]);
-  });
-
-  test("check 3 to 9 passing, then a failed write to the index, fails the run", async () => {
-    const { outcome } = await runPrechecks(
-      baseInput({ recordRequest: () => Promise.resolve({ ok: false, failure: "evidence_write_failed" }) }),
-    );
-    expect(outcome).toMatchObject({ status: "failed", code: "evidence_write_failed" });
-  });
-
-  test("missing K1 fails the run as secret_unavailable, at the lookup itself", async () => {
-    const { outcome } = await runPrechecks(
-      baseInput({ lookupRequest: () => Promise.resolve({ ok: false, failure: "secret_unavailable" }) }),
-    );
-    expect(outcome).toMatchObject({ status: "failed", code: "secret_unavailable" });
-  });
-
-  test("check 4: an unresolvable capability is capability_not_found", async () => {
-    const { outcome } = await runPrechecks(baseInput({ resolve: resolverFrom({}) }));
-    expect(outcome).toMatchObject({ status: "rejected", code: "capability_not_found" });
-  });
-
-  test("check 5: a sealed version that does not fit this app version is no_version_for_context", async () => {
-    const { outcome } = await runPrechecks(baseInput({ appVersion: "5.0" }));
-    expect(outcome).toMatchObject({ status: "rejected", code: "no_version_for_context" });
-  });
-
-  test("check 5: an unresolvable session link is no_version_for_context, naming the link", async () => {
-    const withSession: Artifact = {
-      ...baseArtifact(),
-      runs_on: { ...baseArtifact().runs_on, session: "kvfcu/sign_in@1" },
-    };
-    const { outcome } = await runPrechecks(
-      baseInput({ resolve: resolverFrom({ [CAP_LINK]: withSession }) }),
-    );
-    expect(outcome.status).toBe("rejected");
-    if (outcome.status === "rejected") {
-      expect(outcome.code).toBe("no_version_for_context");
-      expect(outcome.errors[0]?.message).toContain("kvfcu/sign_in@1");
+  test("runPrechecks check 1 to 3 and the index: format, request ID, and writes", async () => {
+    // a fully valid supervised request, with no authorization, passes every check
+    {
+      const { results, outcome } = await runPrechecks(baseInput());
+      expect(results.map((r) => r.check)).toEqual(CHECK_ORDER);
+      expect(results.every((r) => r.passed)).toBe(true);
+      expect(outcome.status).toBe("ok");
     }
-  });
-
-  test("check 6: every input problem is reported at once, and stops the pipeline there", async () => {
-    const raw = { ...baseRequest(), inputs: { deposit: "999999.00" } };
-    const { results, outcome } = await runPrechecks(baseInput({ raw }));
-    expect(outcome.status).toBe("rejected");
-    if (outcome.status === "rejected") {
-      expect(outcome.code).toBe("invalid_input");
-      const reasons = outcome.errors.map((e) => e.reason);
-      expect(reasons).toContain("missing");
-      expect(reasons).toContain("out_of_range");
-      expect(outcome.errors.length).toBeGreaterThanOrEqual(2);
-    }
-    expect(results.map((r) => r.check)).toEqual(["format", "request_id", "capability", "version", "inputs"]);
-  });
-
-  test("check 7, thin: an unattended request is always context_not_approved", async () => {
-    const raw = { ...baseRequest(), mode: "unattended" };
-    const { outcome } = await runPrechecks(baseInput({ raw }));
-    expect(outcome).toMatchObject({
-      status: "rejected",
-      code: "context_not_approved",
-      errors: [{ reason: "not_approved" }],
-    });
-  });
-
-  test("check 7, thin: a supervised request always passes, authorization or not", async () => {
-    const { results } = await runPrechecks(baseInput());
-    expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
-  });
-
-  test("check 8: every authorization problem is reported at once", async () => {
-    const raw = {
-      ...baseRequest(),
-      authorization: {
-        consent_ref: "consent_1",
-        granted_by: "staff",
-        granted_at: "2026-09-24T09:00:00Z",
-        expires_at: "2026-09-24T09:05:00Z",
-        capability: "kvfcu/other_capability@1",
-      },
-    };
-    const { outcome } = await runPrechecks(baseInput({ raw }));
-    expect(outcome.status).toBe("rejected");
-    if (outcome.status === "rejected") {
-      expect(outcome.code).toBe("authorization_invalid");
-      const reasons = outcome.errors.map((e) => e.reason);
-      expect(reasons).toContain("capability_mismatch");
-      expect(reasons).toContain("missing_field");
-      expect(outcome.errors.length).toBeGreaterThanOrEqual(2);
-    }
-  });
-
-  test("check 8: authorization already expired is rejected", async () => {
-    const raw = {
-      ...baseRequest(),
-      authorization: {
-        consent_ref: "consent_1",
-        granted_by: "member",
-        granted_at: "2026-09-24T09:00:00Z",
-        expires_at: "2026-09-24T09:05:00Z",
-        capability: CAP_LINK,
-      },
-    };
-    const { outcome } = await runPrechecks(baseInput({ raw }));
-    expect(outcome).toMatchObject({ status: "rejected", code: "authorization_invalid" });
-    if (outcome.status === "rejected") {
-      expect(outcome.errors.some((e) => e.reason === "expired")).toBe(true);
-    }
-  });
-
-  test("check 9: a path the policy no longer allows is policy_denied", async () => {
-    const narrowed = basePolicy(["/login", "/home", "/members/search", "/members/*"]);
-    const { outcome } = await runPrechecks(baseInput({ policy: narrowed, secretSources: baseSecretSources(narrowed) }));
-    expect(outcome).toMatchObject({
-      status: "rejected",
-      code: "policy_denied",
-      errors: [{ reason: "path_not_allowed" }],
-    });
-  });
-
-  test("check 9: covers the session artifact's paths too", async () => {
-    const sessionArtifact: Artifact = {
-      ...baseArtifact(),
-      identity: { ...baseArtifact().identity, capability: "sign_in" },
-      runs_on: { ...baseArtifact().runs_on, paths: ["/login", "/not-allowed"] },
-    };
-    const withSession: Artifact = {
-      ...baseArtifact(),
-      runs_on: { ...baseArtifact().runs_on, session: "kvfcu/sign_in@1" },
-    };
-    const { outcome } = await runPrechecks(
-      baseInput({
-        resolve: resolverFrom({ [CAP_LINK]: withSession, "kvfcu/sign_in@1": sessionArtifact }),
-      }),
-    );
-    expect(outcome).toMatchObject({ status: "rejected", code: "policy_denied" });
-    if (outcome.status === "rejected") {
-      expect(outcome.errors.some((e) => e.reason === "path_not_allowed" && e.message.includes("/not-allowed"))).toBe(
-        true,
+    // check 1: an unknown field is rejected as invalid_request; no later check runs
+    {
+      const { results, outcome } = await runPrechecks(
+        baseInput({ raw: { ...baseRequest(), extra: true } }),
       );
+      expect(outcome).toMatchObject({ status: "rejected", code: "invalid_request" });
+      expect(results.map((r) => r.check)).toEqual(["format"]);
+    }
+    // check 3: the same request ID reused with different content is rejected
+    {
+      const { results, outcome } = await runPrechecks(
+        baseInput({ lookupRequest: () => Promise.resolve(ok({ status: "reused" })) }),
+      );
+      expect(outcome).toMatchObject({ status: "rejected", code: "request_id_reused" });
+      expect(results.map((r) => r.check)).toEqual(["format", "request_id"]);
+    }
+    // check 3: a true repeat returns the original run ID, and stops before check 4
+    {
+      const { results, outcome } = await runPrechecks(
+        baseInput({
+          lookupRequest: () =>
+            Promise.resolve(ok({ status: "repeat", runId: "run_2026-09-20_aaaaaaaaaa" })),
+        }),
+      );
+      expect(outcome).toEqual({ status: "duplicate", runId: "run_2026-09-20_aaaaaaaaaa" });
+      expect(results.map((r) => r.check)).toEqual(["format", "request_id"]);
+    }
+    // check 3 to 9 passing, then a failed write to the index, fails the run
+    {
+      const { outcome } = await runPrechecks(
+        baseInput({ recordRequest: () => Promise.resolve({ ok: false, failure: "evidence_write_failed" }) }),
+      );
+      expect(outcome).toMatchObject({ status: "failed", code: "evidence_write_failed" });
+    }
+    // missing K1 fails the run as secret_unavailable, at the lookup itself
+    {
+      const { outcome } = await runPrechecks(
+        baseInput({ lookupRequest: () => Promise.resolve({ ok: false, failure: "secret_unavailable" }) }),
+      );
+      expect(outcome).toMatchObject({ status: "failed", code: "secret_unavailable" });
     }
   });
 
-  test("check 10: a missing secret value fails the run, but does not reject it", async () => {
-    const policy = basePolicy();
-    const secretSources: SecretSources = {
-      declared: policy.secrets,
-      bindings: { operator_username: { source: "env", key: "OU" } },
-      port: new MapSecrets({ OU: "opuser" }),
-    };
-    const { results, outcome } = await runPrechecks(baseInput({ policy, secretSources }));
-    expect(outcome).toMatchObject({ status: "failed", code: "secret_unavailable" });
-    expect(results.map((r) => r.check)).toEqual(CHECK_ORDER);
-    expect(results.at(-1)).toMatchObject({ check: "secrets", passed: false });
+  test("runPrechecks check 4 to 6: capability, version, and inputs", async () => {
+    // check 4: an unresolvable capability is capability_not_found
+    {
+      const { outcome } = await runPrechecks(baseInput({ resolve: resolverFrom({}) }));
+      expect(outcome).toMatchObject({ status: "rejected", code: "capability_not_found" });
+    }
+    // check 5: a sealed version that does not fit this app version is no_version_for_context
+    {
+      const { outcome } = await runPrechecks(baseInput({ appVersion: "5.0" }));
+      expect(outcome).toMatchObject({ status: "rejected", code: "no_version_for_context" });
+    }
+    // check 5: an unresolvable session link is no_version_for_context, naming the link
+    {
+      const withSession: Artifact = {
+        ...baseArtifact(),
+        runs_on: { ...baseArtifact().runs_on, session: "kvfcu/sign_in@1" },
+      };
+      const { outcome } = await runPrechecks(
+        baseInput({ resolve: resolverFrom({ [CAP_LINK]: withSession }) }),
+      );
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status === "rejected") {
+        expect(outcome.code).toBe("no_version_for_context");
+        expect(outcome.errors[0]?.message).toContain("kvfcu/sign_in@1");
+      }
+    }
+    // check 6: every input problem is reported at once, and stops the pipeline there
+    {
+      const raw = { ...baseRequest(), inputs: { deposit: "999999.00" } };
+      const { results, outcome } = await runPrechecks(baseInput({ raw }));
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status === "rejected") {
+        expect(outcome.code).toBe("invalid_input");
+        const reasons = outcome.errors.map((e) => e.reason);
+        expect(reasons).toContain("missing");
+        expect(reasons).toContain("out_of_range");
+        expect(outcome.errors.length).toBeGreaterThanOrEqual(2);
+      }
+      expect(results.map((r) => r.check)).toEqual(["format", "request_id", "capability", "version", "inputs"]);
+    }
+  });
+
+  test("runPrechecks check 7 to 10: approval, authorization, policy, and secrets", async () => {
+    // check 7, thin: an unattended request is always context_not_approved
+    {
+      const raw = { ...baseRequest(), mode: "unattended" };
+      const { outcome } = await runPrechecks(baseInput({ raw }));
+      expect(outcome).toMatchObject({
+        status: "rejected",
+        code: "context_not_approved",
+        errors: [{ reason: "not_approved" }],
+      });
+    }
+    // check 7, thin: a supervised request always passes, authorization or not
+    {
+      const { results } = await runPrechecks(baseInput());
+      expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
+    }
+    // check 8: every authorization problem is reported at once
+    {
+      const raw = {
+        ...baseRequest(),
+        authorization: {
+          consent_ref: "consent_1",
+          granted_by: "staff",
+          granted_at: "2026-09-24T09:00:00Z",
+          expires_at: "2026-09-24T09:05:00Z",
+          capability: "kvfcu/other_capability@1",
+        },
+      };
+      const { outcome } = await runPrechecks(baseInput({ raw }));
+      expect(outcome.status).toBe("rejected");
+      if (outcome.status === "rejected") {
+        expect(outcome.code).toBe("authorization_invalid");
+        const reasons = outcome.errors.map((e) => e.reason);
+        expect(reasons).toContain("capability_mismatch");
+        expect(reasons).toContain("missing_field");
+        expect(outcome.errors.length).toBeGreaterThanOrEqual(2);
+      }
+    }
+    // check 8: authorization already expired is rejected
+    {
+      const raw = {
+        ...baseRequest(),
+        authorization: {
+          consent_ref: "consent_1",
+          granted_by: "member",
+          granted_at: "2026-09-24T09:00:00Z",
+          expires_at: "2026-09-24T09:05:00Z",
+          capability: CAP_LINK,
+        },
+      };
+      const { outcome } = await runPrechecks(baseInput({ raw }));
+      expect(outcome).toMatchObject({ status: "rejected", code: "authorization_invalid" });
+      if (outcome.status === "rejected") {
+        expect(outcome.errors.some((e) => e.reason === "expired")).toBe(true);
+      }
+    }
+    // check 9: a path the policy no longer allows is policy_denied
+    {
+      const narrowed = basePolicy(["/login", "/home", "/members/search", "/members/*"]);
+      const { outcome } = await runPrechecks(baseInput({ policy: narrowed, secretSources: baseSecretSources(narrowed) }));
+      expect(outcome).toMatchObject({
+        status: "rejected",
+        code: "policy_denied",
+        errors: [{ reason: "path_not_allowed" }],
+      });
+    }
+    // check 9: covers the session artifact's paths too
+    {
+      const sessionArtifact: Artifact = {
+        ...baseArtifact(),
+        identity: { ...baseArtifact().identity, capability: "sign_in" },
+        runs_on: { ...baseArtifact().runs_on, paths: ["/login", "/not-allowed"] },
+      };
+      const withSession: Artifact = {
+        ...baseArtifact(),
+        runs_on: { ...baseArtifact().runs_on, session: "kvfcu/sign_in@1" },
+      };
+      const { outcome } = await runPrechecks(
+        baseInput({
+          resolve: resolverFrom({ [CAP_LINK]: withSession, "kvfcu/sign_in@1": sessionArtifact }),
+        }),
+      );
+      expect(outcome).toMatchObject({ status: "rejected", code: "policy_denied" });
+      if (outcome.status === "rejected") {
+        expect(outcome.errors.some((e) => e.reason === "path_not_allowed" && e.message.includes("/not-allowed"))).toBe(
+          true,
+        );
+      }
+    }
+    // check 10: a missing secret value fails the run, but does not reject it
+    {
+      const policy = basePolicy();
+      const secretSources: SecretSources = {
+        declared: policy.secrets,
+        bindings: { operator_username: { source: "env", key: "OU" } },
+        port: new MapSecrets({ OU: "opuser" }),
+      };
+      const { results, outcome } = await runPrechecks(baseInput({ policy, secretSources }));
+      expect(outcome).toMatchObject({ status: "failed", code: "secret_unavailable" });
+      expect(results.map((r) => r.check)).toEqual(CHECK_ORDER);
+      expect(results.at(-1)).toMatchObject({ check: "secrets", passed: false });
+    }
   });
 });
 
@@ -405,15 +417,17 @@ describe("the checks run in order, and the first failing check is the one report
     },
   ];
 
-  test.each(rows)("$name fails first: only $code is reported, and no later check runs", async ({ code, last, input }) => {
-    const { results, outcome } = await runPrechecks(input());
-    expect(outcome).toMatchObject({ status: "rejected", code });
-    if (outcome.status !== "rejected") throw new Error("expected rejected");
-    // Every error belongs to the one failing check, not to a later one.
-    expect(outcome.errors.every((e) => e.code === code)).toBe(true);
-    expect(results.at(-1)).toMatchObject({ check: last, passed: false });
-    expect(results.map((r) => r.check)).toEqual(CHECK_ORDER.slice(0, CHECK_ORDER.indexOf(last) + 1));
-    expect(results.slice(0, -1).every((r) => r.passed)).toBe(true);
+  test("each earlier problem fails first: only its own code is reported, and no later check runs", async () => {
+    for (const { name, code, last, input } of rows) {
+      const { results, outcome } = await runPrechecks(input());
+      expect(outcome, name).toMatchObject({ status: "rejected", code });
+      if (outcome.status !== "rejected") throw new Error(`expected rejected: ${name}`);
+      // Every error belongs to the one failing check, not to a later one.
+      expect(outcome.errors.every((e) => e.code === code), name).toBe(true);
+      expect(results.at(-1), name).toMatchObject({ check: last, passed: false });
+      expect(results.map((r) => r.check), name).toEqual(CHECK_ORDER.slice(0, CHECK_ORDER.indexOf(last) + 1));
+      expect(results.slice(0, -1).every((r) => r.passed), name).toBe(true);
+    }
   });
 });
 
@@ -438,31 +452,33 @@ describe("check 8 with allowExpiredAuthorization (the commit retry)", () => {
     return outcome.status === "rejected" ? outcome.errors.map((e) => e.reason ?? "") : outcome.status;
   };
 
-  test("an expired authorization passes with the flag, and is rejected as expired without it", async () => {
-    expect(await reasonsOf(baseInput({ raw: expired(), allowExpiredAuthorization: true }))).toBe("ok");
-    expect(await reasonsOf(baseInput({ raw: expired() }))).toEqual(["expired"]);
-    expect(await reasonsOf(baseInput({ raw: expired(), allowExpiredAuthorization: false }))).toEqual(["expired"]);
-  });
-
-  test("the flag skips nothing but expiry: a wrong capability still rejects", async () => {
-    const raw = expired({ capability: "kvfcu/other_capability@1" });
-    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["capability_mismatch"]);
-  });
-
-  test("the flag skips nothing but expiry: a lifetime over the policy cap still rejects", async () => {
-    const raw = expired({ granted_at: "2026-09-24T07:00:00Z", expires_at: "2026-09-24T09:00:00Z" });
-    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["lifetime_too_long"]);
-  });
-
-  test("the flag skips nothing but expiry: a missing staff ID still rejects", async () => {
-    const raw = expired({ granted_by: "staff" });
-    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["missing_field"]);
-  });
-
-  test("a still-valid authorization passes with or without the flag", async () => {
-    const raw = expired({ granted_at: "2026-09-24T09:55:00Z", expires_at: "2026-09-24T10:10:00Z" });
-    expect(await reasonsOf(baseInput({ raw }))).toBe("ok");
-    expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toBe("ok");
+  test("an expired authorization passes only with the flag, which skips nothing else", async () => {
+    // an expired authorization passes with the flag, and is rejected as expired without it
+    {
+      expect(await reasonsOf(baseInput({ raw: expired(), allowExpiredAuthorization: true }))).toBe("ok");
+      expect(await reasonsOf(baseInput({ raw: expired() }))).toEqual(["expired"]);
+      expect(await reasonsOf(baseInput({ raw: expired(), allowExpiredAuthorization: false }))).toEqual(["expired"]);
+    }
+    // the flag skips nothing but expiry: a wrong capability still rejects
+    {
+      const raw = expired({ capability: "kvfcu/other_capability@1" });
+      expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["capability_mismatch"]);
+    }
+    // the flag skips nothing but expiry: a lifetime over the policy cap still rejects
+    {
+      const raw = expired({ granted_at: "2026-09-24T07:00:00Z", expires_at: "2026-09-24T09:00:00Z" });
+      expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["lifetime_too_long"]);
+    }
+    // the flag skips nothing but expiry: a missing staff ID still rejects
+    {
+      const raw = expired({ granted_by: "staff" });
+      expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toEqual(["missing_field"]);
+    }
+    // a still-valid authorization passes with or without the flag
+    {
+      const raw = expired({ granted_at: "2026-09-24T09:55:00Z", expires_at: "2026-09-24T10:10:00Z" });
+      expect(await reasonsOf(baseInput({ raw }))).toBe("ok");
+      expect(await reasonsOf(baseInput({ raw, allowExpiredAuthorization: true }))).toBe("ok");
+    }
   });
 });
-

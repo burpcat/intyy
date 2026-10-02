@@ -97,52 +97,55 @@ function input(st: MajorStatus | null | "unset", over: Partial<PrecheckInput> = 
 const status = (retiresOn: string | null): MajorStatus => ({ name: CAP_LINK, successor: 2, retiresOn });
 
 describe("check 4, deprecated major", () => {
-  test("past the retire day: rejected capability_not_found, reason major_retired, naming the successor", async () => {
-    const { i, calls } = input(status("2026-09-23"));
-    const { results, outcome } = await runPrechecks(i);
-    expect(calls).toEqual([["kvfcu", CAPABILITY, 1]]);
-    expect(outcome).toMatchObject({ status: "rejected", code: "capability_not_found" });
-    if (outcome.status !== "rejected") return;
-    expect(outcome.errors[0]?.reason).toBe("major_retired");
-    expect(outcome.errors[0]?.message).toContain("kvfcu/open_share_subaccount@2");
-    expect(results.at(-1)).toMatchObject({ check: "capability", passed: false });
-  });
-
-  test("before the day, successor approved here: ok with a major_version_deprecated warning naming the date", async () => {
-    const { outcome } = await runPrechecks(input(status("2026-12-31")).i);
-    expect(outcome.status).toBe("ok");
-    if (outcome.status !== "ok") return;
-    expect(outcome.warnings).toHaveLength(1);
-    expect(outcome.warnings?.[0]).toMatchObject({ code: "major_version_deprecated" });
-    expect(outcome.warnings?.[0]?.message).toContain("2026-12-31");
-  });
-
-  test("successor not approved here: no warning, no rejection", async () => {
-    const { outcome } = await runPrechecks(input(status(null)).i);
-    expect(outcome.status).toBe("ok");
-    if (outcome.status === "ok") expect(outcome.warnings ?? []).toEqual([]);
-  });
-
-  test("no record (null), or no major view at all: no warning, no rejection", async () => {
-    for (const st of [null, "unset"] as const) {
-      const { outcome } = await runPrechecks(input(st).i);
+  test("check 4 warns, rejects, or skips by the major's retire day and pin", async () => {
+    // past the retire day: rejected capability_not_found, reason major_retired, naming the successor
+    {
+      const { i, calls } = input(status("2026-09-23"));
+      const { results, outcome } = await runPrechecks(i);
+      expect(calls).toEqual([["kvfcu", CAPABILITY, 1]]);
+      expect(outcome).toMatchObject({ status: "rejected", code: "capability_not_found" });
+      if (outcome.status !== "rejected") return;
+      expect(outcome.errors[0]?.reason).toBe("major_retired");
+      expect(outcome.errors[0]?.message).toContain("kvfcu/open_share_subaccount@2");
+      expect(results.at(-1)).toMatchObject({ check: "capability", passed: false });
+    }
+    // before the day, successor approved here: ok with a major_version_deprecated warning naming the date
+    {
+      const { outcome } = await runPrechecks(input(status("2026-12-31")).i);
+      expect(outcome.status).toBe("ok");
+      if (outcome.status !== "ok") return;
+      expect(outcome.warnings).toHaveLength(1);
+      expect(outcome.warnings?.[0]).toMatchObject({ code: "major_version_deprecated" });
+      expect(outcome.warnings?.[0]?.message).toContain("2026-12-31");
+    }
+    // successor not approved here: no warning, no rejection
+    {
+      const { outcome } = await runPrechecks(input(status(null)).i);
       expect(outcome.status).toBe("ok");
       if (outcome.status === "ok") expect(outcome.warnings ?? []).toEqual([]);
     }
-  });
-
-  test("a pinned run skips the check, even past the day", async () => {
-    const { i, calls } = input(status("2026-09-23"), { pinned: true });
-    const { outcome } = await runPrechecks(i);
-    expect(calls).toEqual([]);
-    expect(outcome.status).toBe("ok");
-    if (outcome.status === "ok") expect(outcome.warnings ?? []).toEqual([]);
-  });
-
-  test("a major with no sealed version is plain capability_not_found, with no reason", async () => {
-    const { i } = input(status("2026-09-23"), { resolve: () => Promise.resolve(undefined) });
-    const { outcome } = await runPrechecks(i);
-    expect(outcome).toMatchObject({ status: "rejected", code: "capability_not_found" });
-    if (outcome.status === "rejected") expect(outcome.errors[0]?.reason).toBeUndefined();
+    // no record (null), or no major view at all: no warning, no rejection
+    {
+      for (const st of [null, "unset"] as const) {
+        const { outcome } = await runPrechecks(input(st).i);
+        expect(outcome.status).toBe("ok");
+        if (outcome.status === "ok") expect(outcome.warnings ?? []).toEqual([]);
+      }
+    }
+    // a pinned run skips the check, even past the day
+    {
+      const { i, calls } = input(status("2026-09-23"), { pinned: true });
+      const { outcome } = await runPrechecks(i);
+      expect(calls).toEqual([]);
+      expect(outcome.status).toBe("ok");
+      if (outcome.status === "ok") expect(outcome.warnings ?? []).toEqual([]);
+    }
+    // a major with no sealed version is plain capability_not_found, with no reason
+    {
+      const { i } = input(status("2026-09-23"), { resolve: () => Promise.resolve(undefined) });
+      const { outcome } = await runPrechecks(i);
+      expect(outcome).toMatchObject({ status: "rejected", code: "capability_not_found" });
+      if (outcome.status === "rejected") expect(outcome.errors[0]?.reason).toBeUndefined();
+    }
   });
 });

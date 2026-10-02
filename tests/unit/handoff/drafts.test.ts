@@ -113,102 +113,106 @@ const oneDraft = (lines: Line[], ctx = ctxOf()): HandlerDraft => {
 // ---- Golden ----------------------------------------------------------------------------------
 
 describe("golden (section 5 §12, spec: a saved takeover log always gives the same draft handler)", () => {
-  test("the saved log gives the golden drafts, twice over", () => {
-    const first = draftsOf(POPUP_LOG);
-    const second = draftsOf(POPUP_LOG);
-    expect(second).toEqual(first);
+  test("a saved takeover log gives the golden drafts, twice, in the readable shape", () => {
+    // the saved log gives the golden drafts, twice over
+    {
+      const first = draftsOf(POPUP_LOG);
+      const second = draftsOf(POPUP_LOG);
+      expect(second).toEqual(first);
 
-    const actual = canonicalJson({ drafts: first.drafts, skipped: first.skipped });
-    if (process.env.UPDATE_GOLDEN === "1") writeFileSync(GOLDEN, `${JSON.stringify(JSON.parse(actual), null, 2)}\n`);
-    const golden = canonicalJson(JSON.parse(readFileSync(GOLDEN, "utf8")) as unknown);
-    expect(actual).toBe(golden);
-  });
-
-  test("the draft is the readable shape section 5 §12.2 names", () => {
-    const d = oneDraft(POPUP_LOG);
-    expect(HandlerDraft.safeParse(d).success).toBe(true);
-    expect(d).toMatchObject({
-      schema: "intyy.handler_draft/1.0",
-      id: "click_search_t8",
-      app: "kvfcu",
-      suggested_scope: "tenant",
-      source: { kind: "takeover", run_id: RUN_ID, tenant: TENANT, app_version: "8.4" },
-      fixtures: { fire: "click_search_t8_fire", no_fire: [] },
-    });
-    // The takeover line, then each human action line, by `seq`.
-    expect(d.source.seq).toEqual([8, 12, 14]);
-    expect(d.handler.class).toBe("recoverable");
+      const actual = canonicalJson({ drafts: first.drafts, skipped: first.skipped });
+      if (process.env.UPDATE_GOLDEN === "1") writeFileSync(GOLDEN, `${JSON.stringify(JSON.parse(actual), null, 2)}\n`);
+      const golden = canonicalJson(JSON.parse(readFileSync(GOLDEN, "utf8")) as unknown);
+      expect(actual).toBe(golden);
+    }
+    // the draft is the readable shape section 5 §12.2 names
+    {
+      const d = oneDraft(POPUP_LOG);
+      expect(HandlerDraft.safeParse(d).success).toBe(true);
+      expect(d).toMatchObject({
+        schema: "intyy.handler_draft/1.0",
+        id: "click_search_t8",
+        app: "kvfcu",
+        suggested_scope: "tenant",
+        source: { kind: "takeover", run_id: RUN_ID, tenant: TENANT, app_version: "8.4" },
+        fixtures: { fire: "click_search_t8_fire", no_fire: [] },
+      });
+      // The takeover line, then each human action line, by `seq`.
+      expect(d.source.seq).toEqual([8, 12, 14]);
+      expect(d.handler.class).toBe("recoverable");
+    }
   });
 });
 
 // ---- Class rules (section 5 §12.4) -------------------------------------------------------------
 
 describe("the draft's class (section 5 §12.4)", () => {
-  test("only a click the gate classed idempotent: recoverable, response risk is the gate's class", () => {
-    const d = oneDraft(logOf({ acts: [click("idempotent")] }));
-    expect(d.handler.class).toBe("recoverable");
-    if (d.handler.class !== "recoverable") throw new Error("expected recoverable");
-    expect(d.handler.response).toEqual([{ type: "click", target: "dismiss_button", risk: "idempotent" }]);
-    expect(d.risk_hints).toEqual([{ subject: `${RUN_ID}#10`, class: "idempotent", source: "gate" }]);
-    // The detector is the dialog's name plus the acted control.
-    expect(d.conditions.map((c) => c.check)).toContain("all_of");
-    expect(JSON.stringify(d.conditions)).toContain("Session notice");
-  });
-
-  test("a click classed reversible is still recoverable, and the response keeps that class", () => {
-    const d = oneDraft(logOf({ acts: [click("reversible")] }));
-    expect(d.handler.class).toBe("recoverable");
-    if (d.handler.class !== "recoverable") throw new Error("expected recoverable");
-    expect(d.handler.response[0]).toMatchObject({ risk: "reversible" });
-  });
-
-  test("a click then Tab: recoverable, both replayable", () => {
-    const d = oneDraft(logOf({ acts: [click(), tab] }));
-    expect(d.handler.class).toBe("recoverable");
-    if (d.handler.class !== "recoverable") throw new Error("expected recoverable");
-    expect(d.handler.response.map((a) => a.type)).toEqual(["click", "press"]);
-  });
-
-  test.each([
-    ["[human_text]", "typed text"],
-    ["[secret]", "a typed secret"],
-    ["{input.member_id}", "a known input"],
-  ])("typing %s (%s): needs_human", (value) => {
-    const d = oneDraft(logOf({ acts: [click(), typed(value)] }));
-    expect(d.handler.class).toBe("needs_human");
-  });
-
-  test("an action the gate classed irreversible: needs_human", () => {
-    expect(oneDraft(logOf({ acts: [click("irreversible")] })).handler.class).toBe("needs_human");
-  });
-
-  test("an action with no gate line before it counts as irreversible: needs_human", () => {
-    const d = oneDraft(logOf({ acts: [click(null)] }));
-    expect(d.handler.class).toBe("needs_human");
-    expect(d.risk_hints[0]).toMatchObject({ class: "irreversible" });
-  });
-
-  test("a navigation: needs_human", () => {
-    const nav: Act = { risk: "idempotent", data: data("navigate", { value: "/somewhere" }) };
-    expect(oneDraft(logOf({ acts: [click(), nav] })).handler.class).toBe("needs_human");
-  });
-
-  test("more than five actions: needs_human", () => {
-    expect(oneDraft(logOf({ acts: Array.from({ length: 6 }, () => click()) })).handler.class).toBe("needs_human");
-    expect(oneDraft(logOf({ acts: Array.from({ length: 5 }, () => click()) })).handler.class).toBe("recoverable");
-  });
-
-  test("a needs_human draft carries an operator note that names the step", () => {
-    const d = oneDraft(logOf({ acts: [typed("[human_text]")] }));
-    if (d.handler.class !== "needs_human") throw new Error("expected needs_human");
-    expect(d.handler.operator_note).toContain("click_search");
-  });
-
-  test("a heading with a mask token is not plain UI text: the detector leaves it out", () => {
-    const a11y = '- heading "Hello [name#1]"\n- button "Dismiss"\n';
-    const d = oneDraft(logOf({ acts: [click()] }), ctxOf(new Map([[TROUBLE, a11y]])));
-    expect(JSON.stringify(d.conditions)).not.toContain("[name#1]");
-    expect(JSON.stringify(d.conditions)).not.toContain("all_of");
+  test("the draft class follows the gate class, typed text, navigation, and the five-action cap", () => {
+    // only a click the gate classed idempotent: recoverable, response risk is the gate's class
+    {
+      const d = oneDraft(logOf({ acts: [click("idempotent")] }));
+      expect(d.handler.class).toBe("recoverable");
+      if (d.handler.class !== "recoverable") throw new Error("expected recoverable");
+      expect(d.handler.response).toEqual([{ type: "click", target: "dismiss_button", risk: "idempotent" }]);
+      expect(d.risk_hints).toEqual([{ subject: `${RUN_ID}#10`, class: "idempotent", source: "gate" }]);
+      // The detector is the dialog's name plus the acted control.
+      expect(d.conditions.map((c) => c.check)).toContain("all_of");
+      expect(JSON.stringify(d.conditions)).toContain("Session notice");
+    }
+    // a click classed reversible is still recoverable, and the response keeps that class
+    {
+      const d = oneDraft(logOf({ acts: [click("reversible")] }));
+      expect(d.handler.class).toBe("recoverable");
+      if (d.handler.class !== "recoverable") throw new Error("expected recoverable");
+      expect(d.handler.response[0]).toMatchObject({ risk: "reversible" });
+    }
+    // a click then Tab: recoverable, both replayable
+    {
+      const d = oneDraft(logOf({ acts: [click(), tab] }));
+      expect(d.handler.class).toBe("recoverable");
+      if (d.handler.class !== "recoverable") throw new Error("expected recoverable");
+      expect(d.handler.response.map((a) => a.type)).toEqual(["click", "press"]);
+    }
+    // typing text, a secret, or a known input: needs_human
+    {
+      for (const value of ["[human_text]", "[secret]", "{input.member_id}"]) {
+        const d = oneDraft(logOf({ acts: [click(), typed(value)] }));
+        expect(d.handler.class, value).toBe("needs_human");
+      }
+    }
+    // an action the gate classed irreversible: needs_human
+    {
+      expect(oneDraft(logOf({ acts: [click("irreversible")] })).handler.class).toBe("needs_human");
+    }
+    // an action with no gate line before it counts as irreversible: needs_human
+    {
+      const d = oneDraft(logOf({ acts: [click(null)] }));
+      expect(d.handler.class).toBe("needs_human");
+      expect(d.risk_hints[0]).toMatchObject({ class: "irreversible" });
+    }
+    // a navigation: needs_human
+    {
+      const nav: Act = { risk: "idempotent", data: data("navigate", { value: "/somewhere" }) };
+      expect(oneDraft(logOf({ acts: [click(), nav] })).handler.class).toBe("needs_human");
+    }
+    // more than five actions: needs_human
+    {
+      expect(oneDraft(logOf({ acts: Array.from({ length: 6 }, () => click()) })).handler.class).toBe("needs_human");
+      expect(oneDraft(logOf({ acts: Array.from({ length: 5 }, () => click()) })).handler.class).toBe("recoverable");
+    }
+    // a needs_human draft carries an operator note that names the step
+    {
+      const d = oneDraft(logOf({ acts: [typed("[human_text]")] }));
+      if (d.handler.class !== "needs_human") throw new Error("expected needs_human");
+      expect(d.handler.operator_note).toContain("click_search");
+    }
+    // a heading with a mask token is not plain UI text: the detector leaves it out
+    {
+      const a11y = '- heading "Hello [name#1]"\n- button "Dismiss"\n';
+      const d = oneDraft(logOf({ acts: [click()] }), ctxOf(new Map([[TROUBLE, a11y]])));
+      expect(JSON.stringify(d.conditions)).not.toContain("[name#1]");
+      expect(JSON.stringify(d.conditions)).not.toContain("all_of");
+    }
   });
 });
 
@@ -221,44 +225,47 @@ describe("takeovers that draft nothing, and why (section 5 §12.1, section 7 §1
     return got.skipped.map((s) => s.reason);
   };
 
-  test("a takeover caused by a needs_human handler", () => {
-    expect(skipped(logOf({ reason: "needs_human_handler" }))).toEqual(["needs_human_handler"]);
-  });
-
-  test("a takeover caused by human input: no unknown state to detect", () => {
-    expect(skipped(logOf({ reason: "unexpected_human_input" }))).toEqual(["not_unknown_state"]);
-  });
-
-  test("a takeover the human ended: the human judged it hopeless", () => {
-    expect(skipped(logOf({ decision: "end_run" }))).toEqual(["ended_run"]);
-  });
-
-  test("a takeover that ended in set_outcome: it suggests an outcome, not a handler", () => {
-    expect(skipped(logOf({ decision: "set_outcome" }))).toEqual(["set_outcome"]);
-  });
-
-  test("a takeover nobody resolved", () => {
-    expect(skipped(logOf({ decision: null }))).toEqual(["no_decision_to_hand_back"]);
-  });
-
-  test("a handback with no human action", () => {
-    expect(skipped(logOf({ acts: [] }))).toEqual(["no_actions"]);
-  });
-
-  test("no saved trouble screen: the log names none, or the file is missing", () => {
-    expect(skipped(logOf({ noLadder: true }))).toEqual(["no_trouble_screen"]);
-    expect(skipped(logOf({}), ctxOf(new Map()))).toEqual(["no_trouble_screen"]);
-  });
-
-  test("a screen with no plain landmark and no acted control gives no detector", () => {
-    const a11y = "- text: Member Name: [name#1]\n- button \"OK\"\n";
-    expect(skipped(logOf({ acts: [tab] }), ctxOf(new Map([[TROUBLE, a11y]])))).toEqual(["no_detector"]);
-  });
-
-  test("each skip names the step and the takeover's log line", () => {
-    const got = draftsOf(logOf({ decision: "end_run" }));
-    expect(got.skipped[0]).toMatchObject({ step: "click_search", reason: "ended_run" });
-    expect(typeof got.skipped[0]?.seq).toBe("number");
+  test("takeovers that draft nothing name the skip reason, the step, and the log line", () => {
+    // a takeover caused by a needs_human handler
+    {
+      expect(skipped(logOf({ reason: "needs_human_handler" }))).toEqual(["needs_human_handler"]);
+    }
+    // a takeover caused by human input: no unknown state to detect
+    {
+      expect(skipped(logOf({ reason: "unexpected_human_input" }))).toEqual(["not_unknown_state"]);
+    }
+    // a takeover the human ended: the human judged it hopeless
+    {
+      expect(skipped(logOf({ decision: "end_run" }))).toEqual(["ended_run"]);
+    }
+    // a takeover that ended in set_outcome: it suggests an outcome, not a handler
+    {
+      expect(skipped(logOf({ decision: "set_outcome" }))).toEqual(["set_outcome"]);
+    }
+    // a takeover nobody resolved
+    {
+      expect(skipped(logOf({ decision: null }))).toEqual(["no_decision_to_hand_back"]);
+    }
+    // a handback with no human action
+    {
+      expect(skipped(logOf({ acts: [] }))).toEqual(["no_actions"]);
+    }
+    // no saved trouble screen: the log names none, or the file is missing
+    {
+      expect(skipped(logOf({ noLadder: true }))).toEqual(["no_trouble_screen"]);
+      expect(skipped(logOf({}), ctxOf(new Map()))).toEqual(["no_trouble_screen"]);
+    }
+    // a screen with no plain landmark and no acted control gives no detector
+    {
+      const a11y = "- text: Member Name: [name#1]\n- button \"OK\"\n";
+      expect(skipped(logOf({ acts: [tab] }), ctxOf(new Map([[TROUBLE, a11y]])))).toEqual(["no_detector"]);
+    }
+    // each skip names the step and the takeover's log line
+    {
+      const got = draftsOf(logOf({ decision: "end_run" }));
+      expect(got.skipped[0]).toMatchObject({ step: "click_search", reason: "ended_run" });
+      expect(typeof got.skipped[0]?.seq).toBe("number");
+    }
   });
 });
 
@@ -278,7 +285,7 @@ async function seededRun(): Promise<FakeEvidenceStore> {
 const RUN = { tenant: TENANT, runId: RUN_ID, app: "kvfcu", appVersion: "8.4" };
 
 describe("draftTakeovers writes the draft and its fire fixture", () => {
-  test("writes draft.json's draft and the fixture files; a second call keeps the first", async () => {
+  test("writes the draft and its fixture files, keeps them on a second call, and matches buildTakeoverDrafts", async () => {
     const evidence = await seededRun();
     const drafts = new FakeDraftStore(HandlerDraft);
 
@@ -293,12 +300,8 @@ describe("draftTakeovers writes the draft and its fire fixture", () => {
     const second = await draftTakeovers({ evidence, drafts }, RUN);
     expect(second).toMatchObject({ written: [], existing: ["click_search_t8"], failed: [] });
     expect(await drafts.list()).toEqual([{ app: "kvfcu", id: "click_search_t8" }]);
-  });
 
-  test("the written draft is what buildTakeoverDrafts gives", async () => {
-    const evidence = await seededRun();
-    const drafts = new FakeDraftStore(HandlerDraft);
-    await draftTakeovers({ evidence, drafts }, RUN);
+    // the written draft is what buildTakeoverDrafts gives
     const got = await drafts.get("kvfcu", "click_search_t8");
     if (!got.ok) throw new Error("no draft written");
     expect(got.value).toEqual(oneDraft(POPUP_LOG));
@@ -364,37 +367,37 @@ async function seededRoot(): Promise<string> {
 const cli = (root: string, argv: string[]) => call(argv, { cwd: root, env: { INTYY_STAFF: "op_017" }, deps: { commands } });
 
 describe("pack draft list | show (section 9 §8.5)", () => {
-  test("list prints every draft with its source and class", async () => {
+  test("pack draft list, list --app, show, and show of an unknown draft read one seeded root", async () => {
     const root = await seededRoot();
-    const got = await cli(root, ["pack", "draft", "list"]);
-    expect(got.code).toBe(EXIT.ok);
-    expect(got.stdout).toContain("kvfcu/click_search_t8");
-    expect(got.stdout).toContain("kvfcu/click_search_t99");
-    expect(got.stdout).toMatch(/click_search_t8 +takeover +recoverable/);
-    expect(got.stdout).toMatch(/click_search_t99 +takeover +needs_human/);
-  });
-
-  test("list --app narrows to one app", async () => {
-    const root = await seededRoot();
-    const none = await cli(root, ["pack", "draft", "list", "--app", "otherapp"]);
-    expect(none.code).toBe(EXIT.ok);
-    expect(none.stdout).toContain("no draft handlers");
-  });
-
-  test("show prints the class, source run, detector, and each response action's class", async () => {
-    const root = await seededRoot();
-    const got = await cli(root, ["pack", "draft", "show", "click_search_t8"]);
-    expect(got.code).toBe(EXIT.ok);
-    expect(got.stdout).toContain("recoverable");
-    expect(got.stdout).toContain(RUN_ID);
-    expect(got.stdout).toContain("response 1: click dismiss_button (idempotent)");
-    expect(got.stdout).toContain("fire fixture: click_search_t8_fire");
-  });
-
-  test("show of an unknown draft exits usage", async () => {
-    const root = await seededRoot();
-    const got = await cli(root, ["pack", "draft", "show", "no_such_draft"]);
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain("no_such_draft");
+    // list prints every draft with its source and class
+    {
+      const got = await cli(root, ["pack", "draft", "list"]);
+      expect(got.code).toBe(EXIT.ok);
+      expect(got.stdout).toContain("kvfcu/click_search_t8");
+      expect(got.stdout).toContain("kvfcu/click_search_t99");
+      expect(got.stdout).toMatch(/click_search_t8 +takeover +recoverable/);
+      expect(got.stdout).toMatch(/click_search_t99 +takeover +needs_human/);
+    }
+    // list --app narrows to one app
+    {
+      const none = await cli(root, ["pack", "draft", "list", "--app", "otherapp"]);
+      expect(none.code).toBe(EXIT.ok);
+      expect(none.stdout).toContain("no draft handlers");
+    }
+    // show prints the class, source run, detector, and each response action's class
+    {
+      const got = await cli(root, ["pack", "draft", "show", "click_search_t8"]);
+      expect(got.code).toBe(EXIT.ok);
+      expect(got.stdout).toContain("recoverable");
+      expect(got.stdout).toContain(RUN_ID);
+      expect(got.stdout).toContain("response 1: click dismiss_button (idempotent)");
+      expect(got.stdout).toContain("fire fixture: click_search_t8_fire");
+    }
+    // show of an unknown draft exits usage
+    {
+      const got = await cli(root, ["pack", "draft", "show", "no_such_draft"]);
+      expect(got.code).toBe(EXIT.usage);
+      expect(got.stderr).toContain("no_such_draft");
+    }
   });
 });

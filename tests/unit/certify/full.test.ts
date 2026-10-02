@@ -45,54 +45,93 @@ describe("matrixCells", () => {
   const commit = profile("commit", "@commit_point");
   const fixed = profile("fixed", "@step:open_member");
 
-  test("@each_request_step makes one cell per task request step, none for session:* steps", () => {
-    const cells = matrixCells([each], ["session:login", "click_search", "session:logout", "click_confirm"], "click_confirm");
-    expect(cells.map((c) => [c.step, c.at])).toEqual([
-      ["click_search", "@step:click_search"],
-      ["click_confirm", "@step:click_confirm"],
-    ]);
-  });
-
-  test("@commit_point sits on the commit step and a fixed @step:x on its own step", () => {
-    const cells = matrixCells([commit, fixed], ["open_member", "click_confirm"], "click_confirm");
-    expect(cells).toEqual([
-      { profile: commit, step: "click_confirm", at: undefined },
-      { profile: fixed, step: "open_member", at: undefined },
-    ]);
-  });
-
-  test("cells follow the profile order, then the step order", () => {
-    const cells = matrixCells([fixed, each, commit], ["a", "b"], "b");
-    expect(cells.map((c) => `${c.profile.id}:${c.step}`)).toEqual(["fixed:open_member", "each:a", "each:b", "commit:b"]);
-  });
-
-  test("no profiles, no cells", () => {
-    expect(matrixCells([], ["a"], "a")).toEqual([]);
-  });
-
-  test("no commit point (a session or read-only capability): @commit_point profiles make no cell", () => {
-    const cells = matrixCells([each, commit], ["type_user", "click_login"], null);
-    expect(cells.map((c) => `${c.profile.id}:${c.step}`)).toEqual(["each:type_user", "each:click_login"]);
+  test("matrixCells makes cells per profile anchor, in profile then step order", () => {
+    // @each_request_step makes one cell per task request step, none for session:* steps
+    {
+      const cells = matrixCells([each], ["session:login", "click_search", "session:logout", "click_confirm"], "click_confirm");
+      expect(cells.map((c) => [c.step, c.at])).toEqual([
+        ["click_search", "@step:click_search"],
+        ["click_confirm", "@step:click_confirm"],
+      ]);
+    }
+    // @commit_point sits on the commit step and a fixed @step:x on its own step
+    {
+      const cells = matrixCells([commit, fixed], ["open_member", "click_confirm"], "click_confirm");
+      expect(cells).toEqual([
+        { profile: commit, step: "click_confirm", at: undefined },
+        { profile: fixed, step: "open_member", at: undefined },
+      ]);
+    }
+    // cells follow the profile order, then the step order
+    {
+      const cells = matrixCells([fixed, each, commit], ["a", "b"], "b");
+      expect(cells.map((c) => `${c.profile.id}:${c.step}`)).toEqual(["fixed:open_member", "each:a", "each:b", "commit:b"]);
+    }
+    // no profiles, no cells
+    {
+      expect(matrixCells([], ["a"], "a")).toEqual([]);
+    }
+    // no commit point (a session or read-only capability): @commit_point profiles make no cell
+    {
+      const cells = matrixCells([each, commit], ["type_user", "click_login"], null);
+      expect(cells.map((c) => `${c.profile.id}:${c.step}`)).toEqual(["each:type_user", "each:click_login"]);
+    }
   });
 });
 
 describe("runCertifyFull: a clean batch", () => {
-  test("the plan and report parse, and the gate passes on a clean app", async () => {
+  test("a clean default batch parses, passes the gate, writes run.json, lists coverage gaps, and names its versions", async () => {
     const b = await batchOf((id) => fullInput(id));
-    expect(BatchPlan.safeParse(b.plan).success).toBe(true);
-    expect(BatchReport.safeParse(b.report).success).toBe(true);
-    expect(b.plan).toMatchObject({ kind: "full", pin: "kvfcu/open_sub@1.0.0", started_by: "op_017" });
-    expect(b.report.kind).toBe("full");
-    expect(b.report.gate).toEqual({
-      passed: true,
-      rules: { complete: true, no_wrong: true, baseline: true, matrix: true, extra: true, no_void: true },
-    });
-    expect(b.report.stability).toBeNull();
-    expect(b.report.drill).toBeUndefined();
-    expect(b.failing).toEqual([]);
-    expect(b.scores).toMatchObject({ outcome_score: 1, verdicts: { pass: 8, void: 0, wrong: 0 } });
-    expect(b.report.outcome_score).toBe(1);
-    expect(b.report.verdicts).toEqual(b.scores.verdicts);
+    // the plan and report parse, and the gate passes on a clean app
+    {
+      expect(BatchPlan.safeParse(b.plan).success).toBe(true);
+      expect(BatchReport.safeParse(b.report).success).toBe(true);
+      expect(b.plan).toMatchObject({ kind: "full", pin: "kvfcu/open_sub@1.0.0", started_by: "op_017" });
+      expect(b.report.kind).toBe("full");
+      expect(b.report.gate).toEqual({
+        passed: true,
+        rules: { complete: true, no_wrong: true, baseline: true, matrix: true, extra: true, no_void: true },
+      });
+      expect(b.report.stability).toBeNull();
+      expect(b.report.drill).toBeUndefined();
+      expect(b.failing).toEqual([]);
+      expect(b.scores).toMatchObject({ outcome_score: 1, verdicts: { pass: 8, void: 0, wrong: 0 } });
+      expect(b.report.outcome_score).toBe(1);
+      expect(b.report.verdicts).toEqual(b.scores.verdicts);
+    }
+    // each run's run.json carries the batch ID and its case ID
+    {
+      for (const c of b.plan.cases) {
+        const json = await b.deps.evidence.readRunJson(TENANT, c.run_id);
+        if (!json.ok) throw new Error(`no run.json for ${c.case_id}`);
+        expect(json.value).toMatchObject({ batch_id: b.plan.batch_id, case_id: c.case_id });
+      }
+    }
+    // the matrix cases name their step; a fault that never fired is a coverage gap
+    {
+      expect(b.report.coverage_gaps?.length).toBe(4);
+      expect(b.report.coverage_gaps?.join("\n")).toContain("never fired");
+      expect(b.plan.cases.find((c) => c.case_id === "server_error.click_search")?.faults).toEqual([
+        { kind: "server_error", route: "POST /search", nth: 1, repeat: "once" },
+      ]);
+      expect(b.plan.cases.find((c) => c.case_id === "reply_lost.click_confirm")?.faults[0]?.route).toBe("POST /confirm");
+    }
+    // `under` names the engine, the handler set (null with none), and the session's exact version
+    {
+      expect(b.under).toEqual({ engine: "0.1.0", handler_set: null, jev: null, session: "kvfcu/sign_in@1.0.0", check: null });
+      expect(b.report.under).toEqual(b.under);
+    }
+    // a step with too few samples is listed with its count, and the matrix leaves out the faulted step
+    {
+      // Four baseline runs, then four matrix cells: click_search is faulted in two and click_confirm in two.
+      expect(b.report.timeouts?.proposed).toEqual({});
+      expect(b.report.timeouts?.not_proposed).toEqual({
+        type_member_id: "8 samples",
+        click_search: "6 samples",
+        click_confirm: "6 samples",
+        read_account_number: "8 samples",
+      });
+    }
   });
 
   test("cases run in order: baseline repeats, twin, matrix, extra, drills; groups and seeds follow", async () => {
@@ -149,25 +188,6 @@ describe("runCertifyFull: a clean batch", () => {
     expect(missing?.inputs).toEqual({ member_id: "700199" });
   });
 
-  test("each run's run.json carries the batch ID and its case ID", async () => {
-    const b = await batchOf((id) => fullInput(id));
-    for (const c of b.plan.cases) {
-      const json = await b.deps.evidence.readRunJson(TENANT, c.run_id);
-      if (!json.ok) throw new Error(`no run.json for ${c.case_id}`);
-      expect(json.value).toMatchObject({ batch_id: b.plan.batch_id, case_id: c.case_id });
-    }
-  });
-
-  test("the matrix cases name their step; a fault that never fired is a coverage gap", async () => {
-    const b = await batchOf((id) => fullInput(id));
-    expect(b.report.coverage_gaps?.length).toBe(4);
-    expect(b.report.coverage_gaps?.join("\n")).toContain("never fired");
-    expect(b.plan.cases.find((c) => c.case_id === "server_error.click_search")?.faults).toEqual([
-      { kind: "server_error", route: "POST /search", nth: 1, repeat: "once" },
-    ]);
-    expect(b.plan.cases.find((c) => c.case_id === "reply_lost.click_confirm")?.faults[0]?.route).toBe("POST /confirm");
-  });
-
   test("margins come from the logged votes, with the batch's lowest and its step", async () => {
     const b = await batchOf((id) => fullInput(id, { profiles: [] }));
     expect(Object.keys(b.report.margin?.targets ?? {}).sort()).toEqual([
@@ -180,12 +200,6 @@ describe("runCertifyFull: a clean batch", () => {
     expect(b.report.margin?.step).not.toBeNull();
     expect(b.scores.margin).toEqual({ lowest: b.report.margin?.lowest, step: b.report.margin?.step });
     expect(b.report.fragile).toEqual(b.scores.fragile);
-  });
-
-  test("`under` names the engine, the handler set (null with none), and the session's exact version", async () => {
-    const b = await batchOf((id) => fullInput(id));
-    expect(b.under).toEqual({ engine: "0.1.0", handler_set: null, jev: null, session: "kvfcu/sign_in@1.0.0", check: null });
-    expect(b.report.under).toEqual(b.under);
   });
 
   test("the matrix `suite.matrix.profiles` list picks profiles by ID", async () => {
@@ -691,18 +705,6 @@ describe("runCertifyFull: tuned timeouts (section 8 §9.6)", () => {
       ran_with_from: null,
       proposed: { type_member_id: 5000, click_search: 10000, click_confirm: 15000, read_account_number: 5000 },
       not_proposed: {},
-    });
-  });
-
-  test("a step with too few samples is listed with its count, and the matrix leaves out the faulted step", async () => {
-    // Four baseline runs, then four matrix cells: click_search is faulted in two and click_confirm in two.
-    const b = await batchOf((id) => fullInput(id));
-    expect(b.report.timeouts?.proposed).toEqual({});
-    expect(b.report.timeouts?.not_proposed).toEqual({
-      type_member_id: "8 samples",
-      click_search: "6 samples",
-      click_confirm: "6 samples",
-      read_account_number: "8 samples",
     });
   });
 

@@ -103,104 +103,110 @@ class StubDesk implements InterventionDesk {
 }
 
 describe("open requests close run_ended (section 7 §17)", () => {
-  test("two open requests both close, and none is open afterwards", async () => {
-    const desk = new StubDesk(["01_approval", "02_takeover"]);
-    const deps = await harness(desk);
-    await seedCrashedRun(deps, RUN, { kind: "replay", capability: "kvfcu/open_sub", events: [start(RUN)] });
-    await runSweep(deps, TENANT);
-    expect([...desk.closed.entries()].sort()).toEqual([
-      ["01_approval", "run_ended"],
-      ["02_takeover", "run_ended"],
-    ]);
-    expect(await desk.openRequest()).toEqual(ok(null));
-  });
-
-  test("a request that already closed keeps its own how", async () => {
-    const desk = new StubDesk(["01_approval", "02_takeover"]);
-    desk.closed.set("01_approval", "timed_out");
-    const deps = await harness(desk);
-    await seedCrashedRun(deps, RUN, { kind: "replay", capability: "kvfcu/open_sub", events: [start(RUN)] });
-    await runSweep(deps, TENANT);
-    expect(desk.closed.get("01_approval")).toBe("timed_out");
-    expect(desk.closed.get("02_takeover")).toBe("run_ended");
-  });
-
-  test("with no desk nothing closes, and the run is still swept", async () => {
-    const desk = new StubDesk(["01_takeover"]);
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, { kind: "replay", capability: "kvfcu/open_sub", events: [start(RUN)] });
-    const report = await runSweep(deps, TENANT);
-    expect(report.closed).toBe(1);
-    expect(desk.closed.size).toBe(0);
-    expect(desk.calls).toEqual([]);
+  test("the sweep closes every open request run_ended, keeps an earlier how, and works with no desk", async () => {
+    // two open requests both close, and none is open afterwards
+    {
+      const desk = new StubDesk(["01_approval", "02_takeover"]);
+      const deps = await harness(desk);
+      await seedCrashedRun(deps, RUN, { kind: "replay", capability: "kvfcu/open_sub", events: [start(RUN)] });
+      await runSweep(deps, TENANT);
+      expect([...desk.closed.entries()].sort()).toEqual([
+        ["01_approval", "run_ended"],
+        ["02_takeover", "run_ended"],
+      ]);
+      expect(await desk.openRequest()).toEqual(ok(null));
+    }
+    // a request that already closed keeps its own how
+    {
+      const desk = new StubDesk(["01_approval", "02_takeover"]);
+      desk.closed.set("01_approval", "timed_out");
+      const deps = await harness(desk);
+      await seedCrashedRun(deps, RUN, { kind: "replay", capability: "kvfcu/open_sub", events: [start(RUN)] });
+      await runSweep(deps, TENANT);
+      expect(desk.closed.get("01_approval")).toBe("timed_out");
+      expect(desk.closed.get("02_takeover")).toBe("run_ended");
+    }
+    // with no desk nothing closes, and the run is still swept
+    {
+      const desk = new StubDesk(["01_takeover"]);
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, { kind: "replay", capability: "kvfcu/open_sub", events: [start(RUN)] });
+      const report = await runSweep(deps, TENANT);
+      expect(report.closed).toBe(1);
+      expect(desk.closed.size).toBe(0);
+      expect(desk.calls).toEqual([]);
+    }
   });
 });
 
 describe("the lease ends at nobody (section 7 §12.2, §17)", () => {
   const leaseLines = (lines: Line[]): Line[] => lines.filter((l) => l.event === "lease");
 
-  test("a log that ends on a bot lease gets a lease line to nobody, reason run_end, just before run_end", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [start(RUN), leaseLine(2, "nobody", "bot", "run_start")],
-    });
-    await runSweep(deps, TENANT);
-    const lines = await eventsOf(deps, RUN);
-    const added = leaseLines(lines)[1];
-    expect(added).toMatchObject({
-      by: "engine",
-      why: { kind: "engine_rule", ref: "run_end" },
-      data: { from: "bot", to: "nobody", reason: "run_end", staff_id: null, implicit: false },
-    });
-    const runEnd = lines.find((l) => l.event === "run_end");
-    expect(added?.seq).toBe(3);
-    expect(runEnd?.seq).toBe(4);
-  });
-
-  test("a log that already ends on nobody, or has no lease line at all, gets no new lease line", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [start(RUN), leaseLine(2, "nobody", "bot", "run_start"), leaseLine(3, "bot", "nobody", "takeover_requested")],
-    });
-    const other = "run_2026-01-15_1000000031";
-    await seedCrashedRun(deps, other, { kind: "replay", capability: "kvfcu/open_sub", events: [start(other)] });
-    await runSweep(deps, TENANT);
-    expect(leaseLines(await eventsOf(deps, RUN))).toHaveLength(2);
-    expect(leaseLines(await eventsOf(deps, other))).toHaveLength(0);
-  });
-
-  test("a log that ends on a human lease: the lease line is from human, and the message says a person held control", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [
-        start(RUN),
-        leaseLine(2, "nobody", "bot", "run_start"),
-        leaseLine(3, "bot", "nobody", "takeover_requested"),
-        leaseLine(4, "nobody", "human", "claimed"),
-      ],
-    });
-    await runSweep(deps, TENANT);
-    const added = leaseLines(await eventsOf(deps, RUN)).at(-1);
-    expect(added).toMatchObject({ data: { from: "human", to: "nobody", reason: "run_end" } });
-    const failure = (await resultOf(deps, RUN)).failure as Record<string, unknown>;
-    expect(String(failure.message)).toContain("a person held control");
-  });
-
-  test("a log that ends on a bot lease does not mention a person", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [start(RUN), leaseLine(2, "nobody", "bot", "run_start")],
-    });
-    await runSweep(deps, TENANT);
-    expect(String(((await resultOf(deps, RUN)).failure as Record<string, unknown>).message)).not.toContain("a person");
+  test("the sweep ends a bot or human lease at nobody and adds no line when it already ended", async () => {
+    // a log that ends on a bot lease gets a lease line to nobody, reason run_end, just before run_end
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [start(RUN), leaseLine(2, "nobody", "bot", "run_start")],
+      });
+      await runSweep(deps, TENANT);
+      const lines = await eventsOf(deps, RUN);
+      const added = leaseLines(lines)[1];
+      expect(added).toMatchObject({
+        by: "engine",
+        why: { kind: "engine_rule", ref: "run_end" },
+        data: { from: "bot", to: "nobody", reason: "run_end", staff_id: null, implicit: false },
+      });
+      const runEnd = lines.find((l) => l.event === "run_end");
+      expect(added?.seq).toBe(3);
+      expect(runEnd?.seq).toBe(4);
+    }
+    // a log that already ends on nobody, or has no lease line at all, gets no new lease line
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [start(RUN), leaseLine(2, "nobody", "bot", "run_start"), leaseLine(3, "bot", "nobody", "takeover_requested")],
+      });
+      const other = "run_2026-01-15_1000000031";
+      await seedCrashedRun(deps, other, { kind: "replay", capability: "kvfcu/open_sub", events: [start(other)] });
+      await runSweep(deps, TENANT);
+      expect(leaseLines(await eventsOf(deps, RUN))).toHaveLength(2);
+      expect(leaseLines(await eventsOf(deps, other))).toHaveLength(0);
+    }
+    // a log that ends on a human lease: the lease line is from human, and the message says a person held control
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [
+          start(RUN),
+          leaseLine(2, "nobody", "bot", "run_start"),
+          leaseLine(3, "bot", "nobody", "takeover_requested"),
+          leaseLine(4, "nobody", "human", "claimed"),
+        ],
+      });
+      await runSweep(deps, TENANT);
+      const added = leaseLines(await eventsOf(deps, RUN)).at(-1);
+      expect(added).toMatchObject({ data: { from: "human", to: "nobody", reason: "run_end" } });
+      const failure = (await resultOf(deps, RUN)).failure as Record<string, unknown>;
+      expect(String(failure.message)).toContain("a person held control");
+    }
+    // a log that ends on a bot lease does not mention a person
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [start(RUN), leaseLine(2, "nobody", "bot", "run_start")],
+      });
+      await runSweep(deps, TENANT);
+      expect(String(((await resultOf(deps, RUN)).failure as Record<string, unknown>).message)).not.toContain("a person");
+    }
   });
 });
 
@@ -217,88 +223,97 @@ describe("confirmed by a passed checkpoint line (section 7 §17, §15)", () => {
     return String(report.runs?.[0]?.commit);
   }
 
-  test.each<[string, Record<string, unknown>, string]>([
-    ["a passed checkpoint check by the run", { role: "checkpoint" }, "confirmed"],
-    ["a passed check by a watcher while a person drove", { role: "watch" }, "confirmed"],
-    ["a check that did not pass", { passed: false }, "uncertain"],
-    ["a passed check of another condition", { condition: "home_shown" }, "uncertain"],
-    ["a passed check by the sweep's own role", { role: "sweep" }, "uncertain"],
-    ["a passed check by a handler", { role: "handler" }, "uncertain"],
-  ])("%s", async (_name, change, want) => {
-    expect(await sweepWith([checkLine(3, change)])).toBe(want);
-  });
-
-  test("a passed check from before the commit_intent proves nothing", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [start(RUN), checkLine(2), intent(3)],
-    });
-    const report = await runSweep(deps, TENANT);
-    expect(report.runs?.[0]?.commit).toBe("uncertain");
-  });
-
-  test("an artifact the sweep cannot read: no check line proves anything", async () => {
-    expect(await sweepWith([checkLine(3)], "kvfcu/vanished_cap@9.9.9")).toBe("uncertain");
+  test("the sweep confirms a commit only by a passed checkpoint line after the intent", async () => {
+    // a passed check proves the commit only for a checkpoint or watch role, on this condition, after the intent
+    {
+      const rows: [string, Record<string, unknown>, string][] = [
+        ["a passed checkpoint check by the run", { role: "checkpoint" }, "confirmed"],
+        ["a passed check by a watcher while a person drove", { role: "watch" }, "confirmed"],
+        ["a check that did not pass", { passed: false }, "uncertain"],
+        ["a passed check of another condition", { condition: "home_shown" }, "uncertain"],
+        ["a passed check by the sweep's own role", { role: "sweep" }, "uncertain"],
+        ["a passed check by a handler", { role: "handler" }, "uncertain"],
+      ];
+      for (const [name, change, want] of rows) {
+        expect(await sweepWith([checkLine(3, change)]), name).toBe(want);
+      }
+    }
+    // a passed check from before the commit_intent proves nothing
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [start(RUN), checkLine(2), intent(3)],
+      });
+      const report = await runSweep(deps, TENANT);
+      expect(report.runs?.[0]?.commit).toBe("uncertain");
+    }
+    // an artifact the sweep cannot read: no check line proves anything
+    {
+      expect(await sweepWith([checkLine(3)], "kvfcu/vanished_cap@9.9.9")).toBe("uncertain");
+    }
   });
 });
 
 describe("who sent the commit (section 7 §14.4, §17)", () => {
-  test("a person's commit warning with no commit_intent: performed_by human, sent_at the warning's time, uncertain", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [start(RUN), humanWarning(2, true)],
-    });
-    await runSweep(deps, TENANT);
-    expect(await effectOf(deps, RUN)).toMatchObject({ commit: "uncertain", performed_by: "human", sent_at: at(2) });
-  });
-
-  test("the same, with a passed checkpoint line after it: confirmed", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [start(RUN), humanWarning(2, true), checkLine(3, { role: "watch" })],
-    });
-    await runSweep(deps, TENANT);
-    expect(await effectOf(deps, RUN)).toMatchObject({ commit: "confirmed", performed_by: "human" });
-  });
-
-  test("a warning that says commit: false proves no send: not_sent, no performer", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [start(RUN), humanWarning(2, false)],
-    });
-    await runSweep(deps, TENANT);
-    expect(await effectOf(deps, RUN)).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });
-  });
-
-  test("with a commit_intent the bot sent it, whatever a warning says", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      // Same step as the intent, so no later step's line confirms it.
-      events: [start(RUN), intent(2), humanWarning(3, true, "click_confirm")],
-    });
-    await runSweep(deps, TENANT);
-    expect(await effectOf(deps, RUN)).toMatchObject({ commit: "uncertain", performed_by: "bot", sent_at: at(1) });
-  });
-
-  test("a read_only capability gets no effect block, even with a person's warning", async () => {
-    const deps = await harness();
-    await seedCrashedRun(deps, RUN, {
-      kind: "replay",
-      capability: "kvfcu/sign_in",
-      events: [start(RUN, "kvfcu/sign_in@1.0.0"), humanWarning(2, true)],
-    });
-    await runSweep(deps, TENANT);
-    expect("effect" in (await resultOf(deps, RUN))).toBe(false);
+  test("the sweep names who sent the commit from the intent and the person's warning", async () => {
+    // a person's commit warning with no commit_intent: performed_by human, sent_at the warning's time, uncertain
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [start(RUN), humanWarning(2, true)],
+      });
+      await runSweep(deps, TENANT);
+      expect(await effectOf(deps, RUN)).toMatchObject({ commit: "uncertain", performed_by: "human", sent_at: at(2) });
+    }
+    // the same, with a passed checkpoint line after it: confirmed
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [start(RUN), humanWarning(2, true), checkLine(3, { role: "watch" })],
+      });
+      await runSweep(deps, TENANT);
+      expect(await effectOf(deps, RUN)).toMatchObject({ commit: "confirmed", performed_by: "human" });
+    }
+    // a warning that says commit: false proves no send: not_sent, no performer
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [start(RUN), humanWarning(2, false)],
+      });
+      await runSweep(deps, TENANT);
+      expect(await effectOf(deps, RUN)).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });
+    }
+    // with a commit_intent the bot sent it, whatever a warning says
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        // Same step as the intent, so no later step's line confirms it.
+        events: [start(RUN), intent(2), humanWarning(3, true, "click_confirm")],
+      });
+      await runSweep(deps, TENANT);
+      expect(await effectOf(deps, RUN)).toMatchObject({ commit: "uncertain", performed_by: "bot", sent_at: at(1) });
+    }
+    // a read_only capability gets no effect block, even with a person's warning
+    {
+      const deps = await harness();
+      await seedCrashedRun(deps, RUN, {
+        kind: "replay",
+        capability: "kvfcu/sign_in",
+        events: [start(RUN, "kvfcu/sign_in@1.0.0"), humanWarning(2, true)],
+      });
+      await runSweep(deps, TENANT);
+      expect("effect" in (await resultOf(deps, RUN))).toBe(false);
+    }
   });
 });
 
@@ -495,4 +510,3 @@ describe("the human_irreversible_action warning's commit flag (section 7 §14.4)
     expect(warnings.map((w) => w.data["commit"])).toEqual([false]);
   });
 });
-

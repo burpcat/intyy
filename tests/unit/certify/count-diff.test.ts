@@ -38,29 +38,34 @@ const ESCALATED: ResultClass = { status: "escalated", detail: "takeover/stuck/cl
 const successExpect = { status: "success" };
 
 describe("matchesExpectRule: reconciles_found with a count_diff check", () => {
-  test("matches failed outputs_unavailable with commit found_by_check", () => {
-    expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, "found_by_check", "count_diff")).toBe(true);
-  });
-
-  test("does not match success with found_by_check", () => {
-    expect(matchesExpectRule("reconciles_found", SUCCESS, successExpect, "found_by_check", "count_diff")).toBe(false);
-  });
-
-  test("does not match failed outputs_unavailable with any other commit state", () => {
-    for (const commit of ["uncertain", "confirmed", "absent_by_check", null] as const) {
-      expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, commit, "count_diff")).toBe(false);
+  test("reconciles_found with a count_diff check needs failed outputs_unavailable and found_by_check", () => {
+    // matches failed outputs_unavailable with commit found_by_check
+    {
+      expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, "found_by_check", "count_diff")).toBe(true);
     }
-  });
-
-  test("does not match another failure code, even with found_by_check", () => {
-    expect(matchesExpectRule("reconciles_found", FAILED_APP_ERROR, successExpect, "found_by_check", "count_diff")).toBe(false);
+    // does not match success with found_by_check
+    {
+      expect(matchesExpectRule("reconciles_found", SUCCESS, successExpect, "found_by_check", "count_diff")).toBe(false);
+    }
+    // does not match failed outputs_unavailable with any other commit state
+    {
+      for (const commit of ["uncertain", "confirmed", "absent_by_check", null] as const) {
+        expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, commit, "count_diff")).toBe(false);
+      }
+    }
+    // does not match another failure code, even with found_by_check
+    {
+      expect(matchesExpectRule("reconciles_found", FAILED_APP_ERROR, successExpect, "found_by_check", "count_diff")).toBe(false);
+    }
   });
 });
 
 describe("matchesExpectRule: reconciles_found in reference mode is unchanged", () => {
-  test.each([[undefined], ["reference" as const]])("check mode %s: success with found_by_check matches; the failed ending does not", (mode) => {
-    expect(matchesExpectRule("reconciles_found", SUCCESS, successExpect, "found_by_check", mode)).toBe(true);
-    expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, "found_by_check", mode)).toBe(false);
+  test("in the default and reference modes, success with found_by_check matches and the failed ending does not", () => {
+    for (const mode of [undefined, "reference" as const]) {
+      expect(matchesExpectRule("reconciles_found", SUCCESS, successExpect, "found_by_check", mode), String(mode)).toBe(true);
+      expect(matchesExpectRule("reconciles_found", FAILED_NO_OUTPUTS, successExpect, "found_by_check", mode), String(mode)).toBe(false);
+    }
   });
 });
 
@@ -69,12 +74,15 @@ describe("matchesExpectRule: the other rules answer the same in either mode", ()
   const classes: ResultClass[] = [SUCCESS, FAILED_NO_OUTPUTS, FAILED_APP_ERROR, ESCALATED];
   const commits: (CommitState | null)[] = [null, "confirmed", "found_by_check", "uncertain"];
 
-  test.each(rules)("%s", (rule) => {
-    for (const rc of classes) {
-      for (const commit of commits) {
-        const reference = matchesExpectRule(rule, rc, successExpect, commit, "reference");
-        expect(matchesExpectRule(rule, rc, successExpect, commit, "count_diff")).toBe(reference);
-        expect(matchesExpectRule(rule, rc, successExpect, commit)).toBe(reference);
+  test("each rule, class, and commit state answers the same in reference, count_diff, and default mode", () => {
+    for (const rule of rules) {
+      for (const rc of classes) {
+        for (const commit of commits) {
+          const label = `${rule} ${rc.status} ${String(commit)}`;
+          const reference = matchesExpectRule(rule, rc, successExpect, commit, "reference");
+          expect(matchesExpectRule(rule, rc, successExpect, commit, "count_diff"), label).toBe(reference);
+          expect(matchesExpectRule(rule, rc, successExpect, commit), label).toBe(reference);
+        }
       }
     }
   });
@@ -95,34 +103,37 @@ describe("buildRouteMap with a count_diff baseline child before the parent's fir
     delay_ms: 0,
   });
 
-  test("the child's earlier requests are dropped; the parent's steps keep the counters that include them", () => {
-    // The baseline child signs in and reads first: two requests, nth 1, before any parent action.
-    const actions = [
-      { step: "session:click_login", at: "2026-01-15T09:00:10.000Z" },
-      { step: "click_search", at: "2026-01-15T09:00:11.000Z" },
-      { step: "click_confirm", at: "2026-01-15T09:00:12.000Z" },
-    ];
-    const log = [
-      entry("2026-01-15T09:00:01.000Z", "POST /login", 1),
-      entry("2026-01-15T09:00:02.000Z", "GET /subaccounts", 1),
-      entry("2026-01-15T09:00:10.200Z", "POST /login", 2),
-      entry("2026-01-15T09:00:11.200Z", "POST /search", 1),
-      entry("2026-01-15T09:00:12.200Z", "POST /confirm", 1),
-    ];
-    const map = buildRouteMap(actions, log);
-    expect([...map.keys()]).toEqual(["session:click_login", "click_search", "click_confirm"]);
-    expect(map.get("session:click_login")).toEqual({ route: "POST /login", nth: 2 });
-    expect(map.get("click_search")).toEqual({ route: "POST /search", nth: 1 });
-    expect(map.get("click_confirm")).toEqual({ route: "POST /confirm", nth: 1 });
-  });
-
-  test("a baseline child's request on a route the parent shares does not become the parent's first", () => {
-    const actions = [{ step: "click_search", at: "2026-01-15T09:00:11.000Z" }];
-    const log = [
-      entry("2026-01-15T09:00:02.000Z", "POST /search", 1),
-      entry("2026-01-15T09:00:11.200Z", "POST /search", 2),
-    ];
-    expect(buildRouteMap(actions, log).get("click_search")).toEqual({ route: "POST /search", nth: 2 });
+  test("buildRouteMap drops a baseline child's earlier requests and keeps the parent's counters", () => {
+    // the child's earlier requests are dropped; the parent's steps keep the counters that include them
+    {
+      // The baseline child signs in and reads first: two requests, nth 1, before any parent action.
+      const actions = [
+        { step: "session:click_login", at: "2026-01-15T09:00:10.000Z" },
+        { step: "click_search", at: "2026-01-15T09:00:11.000Z" },
+        { step: "click_confirm", at: "2026-01-15T09:00:12.000Z" },
+      ];
+      const log = [
+        entry("2026-01-15T09:00:01.000Z", "POST /login", 1),
+        entry("2026-01-15T09:00:02.000Z", "GET /subaccounts", 1),
+        entry("2026-01-15T09:00:10.200Z", "POST /login", 2),
+        entry("2026-01-15T09:00:11.200Z", "POST /search", 1),
+        entry("2026-01-15T09:00:12.200Z", "POST /confirm", 1),
+      ];
+      const map = buildRouteMap(actions, log);
+      expect([...map.keys()]).toEqual(["session:click_login", "click_search", "click_confirm"]);
+      expect(map.get("session:click_login")).toEqual({ route: "POST /login", nth: 2 });
+      expect(map.get("click_search")).toEqual({ route: "POST /search", nth: 1 });
+      expect(map.get("click_confirm")).toEqual({ route: "POST /confirm", nth: 1 });
+    }
+    // a baseline child's request on a route the parent shares does not become the parent's first
+    {
+      const actions = [{ step: "click_search", at: "2026-01-15T09:00:11.000Z" }];
+      const log = [
+        entry("2026-01-15T09:00:02.000Z", "POST /search", 1),
+        entry("2026-01-15T09:00:11.200Z", "POST /search", 2),
+      ];
+      expect(buildRouteMap(actions, log).get("click_search")).toEqual({ route: "POST /search", nth: 2 });
+    }
   });
 });
 

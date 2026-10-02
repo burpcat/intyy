@@ -35,77 +35,83 @@ function entry(time: string, route: string, nth: number): FaultLogEntry {
 }
 
 describe("actionTimesFromRunLog", () => {
-  test("keeps only allowed gate lines with a real step, in arrival order", () => {
-    const lines = [
-      gateLine("click_a", "2026-01-15T09:00:00.000Z"),
-      gateLine("click_b", "2026-01-15T09:00:01.000Z", "blocked"),
-      gateLine(null, "2026-01-15T09:00:02.000Z"),
-      gateLine("session:sign_in", "2026-01-15T09:00:03.000Z"),
-      { event: "run_start", seq: 5, at: "2026-01-15T09:00:04.000Z" },
-      { no_event_field: true },
-    ];
-    expect(actionTimesFromRunLog(lines)).toEqual([
-      { step: "click_a", at: "2026-01-15T09:00:00.000Z" },
-      { step: "session:sign_in", at: "2026-01-15T09:00:03.000Z" },
-    ]);
-  });
-
-  test("replay action lines are skipped, not parsed as discovery actions: a reviewer's and a handler's", () => {
-    const lines = [
-      gateLine("click_a", "2026-01-15T09:00:00.000Z"),
-      { seq: 2, at: "2026-01-15T09:00:01.000Z", run_id: "r", step: "click_a", by: "reviewer", event: "action", data: { type: "type", ok: true, expected: "x" } },
-      { seq: 3, at: "2026-01-15T09:00:02.000Z", run_id: "r", step: "click_a", by: "engine", event: "action", data: { type: "sign_in", ok: false } },
-    ];
-    expect(actionTimesFromRunLog(lines)).toEqual([{ step: "click_a", at: "2026-01-15T09:00:00.000Z" }]);
-  });
-
-  test("an empty log gives no actions", () => {
-    expect(actionTimesFromRunLog([])).toEqual([]);
+  test("actionTimesFromRunLog keeps allowed gate lines and skips replay lines", () => {
+    // keeps only allowed gate lines with a real step, in arrival order
+    {
+      const lines = [
+        gateLine("click_a", "2026-01-15T09:00:00.000Z"),
+        gateLine("click_b", "2026-01-15T09:00:01.000Z", "blocked"),
+        gateLine(null, "2026-01-15T09:00:02.000Z"),
+        gateLine("session:sign_in", "2026-01-15T09:00:03.000Z"),
+        { event: "run_start", seq: 5, at: "2026-01-15T09:00:04.000Z" },
+        { no_event_field: true },
+      ];
+      expect(actionTimesFromRunLog(lines)).toEqual([
+        { step: "click_a", at: "2026-01-15T09:00:00.000Z" },
+        { step: "session:sign_in", at: "2026-01-15T09:00:03.000Z" },
+      ]);
+    }
+    // replay action lines are skipped, not parsed as discovery actions: a reviewer's and a handler's
+    {
+      const lines = [
+        gateLine("click_a", "2026-01-15T09:00:00.000Z"),
+        { seq: 2, at: "2026-01-15T09:00:01.000Z", run_id: "r", step: "click_a", by: "reviewer", event: "action", data: { type: "type", ok: true, expected: "x" } },
+        { seq: 3, at: "2026-01-15T09:00:02.000Z", run_id: "r", step: "click_a", by: "engine", event: "action", data: { type: "sign_in", ok: false } },
+      ];
+      expect(actionTimesFromRunLog(lines)).toEqual([{ step: "click_a", at: "2026-01-15T09:00:00.000Z" }]);
+    }
+    // an empty log gives no actions
+    {
+      expect(actionTimesFromRunLog([])).toEqual([]);
+    }
   });
 });
 
 describe("buildRouteMap", () => {
-  test("each fault log entry belongs to the last action at or before its own time", () => {
-    const actions = [
-      { step: "type_member_id", at: "2026-01-15T09:00:00.000Z" },
-      { step: "click_search", at: "2026-01-15T09:00:05.000Z" },
-      { step: "click_confirm", at: "2026-01-15T09:00:10.000Z" },
-    ];
-    const log = [
-      entry("2026-01-15T09:00:05.500Z", "POST /search", 1),
-      entry("2026-01-15T09:00:10.200Z", "POST /confirm", 1),
-    ];
-    const map = buildRouteMap(actions, log);
-    expect(map.get("click_search")).toEqual({ route: "POST /search", nth: 1 });
-    expect(map.get("click_confirm")).toEqual({ route: "POST /confirm", nth: 1 });
-    expect(map.has("type_member_id")).toBe(false);
-  });
-
-  test("only the first request of a step is kept (which: first)", () => {
-    const actions = [{ step: "click_confirm", at: "2026-01-15T09:00:00.000Z" }];
-    const log = [
-      entry("2026-01-15T09:00:01.000Z", "POST /confirm", 1),
-      entry("2026-01-15T09:00:02.000Z", "POST /confirm", 2),
-    ];
-    const map = buildRouteMap(actions, log);
-    expect(map.get("click_confirm")).toEqual({ route: "POST /confirm", nth: 1 });
-  });
-
-  test("a request before any action is dropped", () => {
-    const actions = [{ step: "click_confirm", at: "2026-01-15T09:00:10.000Z" }];
-    const log = [entry("2026-01-15T09:00:00.000Z", "POST /early", 1)];
-    const map = buildRouteMap(actions, log);
-    expect(map.size).toBe(0);
-  });
-
-  test("a step with no requests, like a fill step, gets no entry", () => {
-    const actions = [
-      { step: "type_member_id", at: "2026-01-15T09:00:00.000Z" },
-      { step: "click_search", at: "2026-01-15T09:00:05.000Z" },
-    ];
-    const log = [entry("2026-01-15T09:00:05.500Z", "POST /search", 1)];
-    const map = buildRouteMap(actions, log);
-    expect([...map.keys()]).toEqual(["click_search"]);
+  test("buildRouteMap gives each request to the last action at or before it", () => {
+    // each fault log entry belongs to the last action at or before its own time
+    {
+      const actions = [
+        { step: "type_member_id", at: "2026-01-15T09:00:00.000Z" },
+        { step: "click_search", at: "2026-01-15T09:00:05.000Z" },
+        { step: "click_confirm", at: "2026-01-15T09:00:10.000Z" },
+      ];
+      const log = [
+        entry("2026-01-15T09:00:05.500Z", "POST /search", 1),
+        entry("2026-01-15T09:00:10.200Z", "POST /confirm", 1),
+      ];
+      const map = buildRouteMap(actions, log);
+      expect(map.get("click_search")).toEqual({ route: "POST /search", nth: 1 });
+      expect(map.get("click_confirm")).toEqual({ route: "POST /confirm", nth: 1 });
+      expect(map.has("type_member_id")).toBe(false);
+    }
+    // only the first request of a step is kept (which: first)
+    {
+      const actions = [{ step: "click_confirm", at: "2026-01-15T09:00:00.000Z" }];
+      const log = [
+        entry("2026-01-15T09:00:01.000Z", "POST /confirm", 1),
+        entry("2026-01-15T09:00:02.000Z", "POST /confirm", 2),
+      ];
+      const map = buildRouteMap(actions, log);
+      expect(map.get("click_confirm")).toEqual({ route: "POST /confirm", nth: 1 });
+    }
+    // a request before any action is dropped
+    {
+      const actions = [{ step: "click_confirm", at: "2026-01-15T09:00:10.000Z" }];
+      const log = [entry("2026-01-15T09:00:00.000Z", "POST /early", 1)];
+      const map = buildRouteMap(actions, log);
+      expect(map.size).toBe(0);
+    }
+    // a step with no requests, like a fill step, gets no entry
+    {
+      const actions = [
+        { step: "type_member_id", at: "2026-01-15T09:00:00.000Z" },
+        { step: "click_search", at: "2026-01-15T09:00:05.000Z" },
+      ];
+      const log = [entry("2026-01-15T09:00:05.500Z", "POST /search", 1)];
+      const map = buildRouteMap(actions, log);
+      expect([...map.keys()]).toEqual(["click_search"]);
+    }
   });
 });
 

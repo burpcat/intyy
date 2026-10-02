@@ -10,126 +10,133 @@ import { buildHarness, fixtureSite, replayInputOf, requestOf } from "../replay/e
 import { TENANT, harness, line, maskedCast, readBack, runStartData, seedCrashedRun } from "./sweep-kit.js";
 
 describe("runSweep: the design's own commit-state table (section 7 §17)", () => {
-  test("no commit_intent: failed, internal_error, commit not_sent, safe_to_retry true", async () => {
-    const deps = await harness();
-    const runId = "run_2026-01-15_1000000010";
-    await seedCrashedRun(deps, runId, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [
-        line(
-          1,
-          "2026-01-15T09:00:00.000Z",
-          null,
-          "run_start",
-          runStartData("kvfcu/open_sub@1.0.0", runId),
-        ),
-        line(2, "2026-01-15T09:00:01.000Z", "type_member_id", "gate", {}),
-      ],
-    });
+  test("the sweep reads each row of the commit-state table: not_sent, confirmed, uncertain, and the lines that prove nothing", async () => {
+    // no commit_intent: failed, internal_error, commit not_sent, safe_to_retry true
+    {
+      const deps = await harness();
+      const runId = "run_2026-01-15_1000000010";
+      await seedCrashedRun(deps, runId, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [
+          line(
+            1,
+            "2026-01-15T09:00:00.000Z",
+            null,
+            "run_start",
+            runStartData("kvfcu/open_sub@1.0.0", runId),
+          ),
+          line(2, "2026-01-15T09:00:01.000Z", "type_member_id", "gate", {}),
+        ],
+      });
 
-    const report = await runSweep(deps, TENANT);
-    expect(report.closed).toBe(1);
-    expect(report.manual).toBe(0);
-    expect(report.runs?.[0]).toMatchObject({ runId, kind: "replay", commit: "not_sent" });
+      const report = await runSweep(deps, TENANT);
+      expect(report.closed).toBe(1);
+      expect(report.manual).toBe(0);
+      expect(report.runs?.[0]).toMatchObject({ runId, kind: "replay", commit: "not_sent" });
 
-    const runJson = await readBack(deps, runId);
-    const result = runJson.result as Record<string, unknown>;
-    expect(result.status).toBe("failed");
-    expect((result.failure as Record<string, unknown>).code).toBe("internal_error");
-    expect((result.failure as Record<string, unknown>).safe_to_retry).toBe(true);
-    expect(result.effect).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });
+      const runJson = await readBack(deps, runId);
+      const result = runJson.result as Record<string, unknown>;
+      expect(result.status).toBe("failed");
+      expect((result.failure as Record<string, unknown>).code).toBe("internal_error");
+      expect((result.failure as Record<string, unknown>).safe_to_retry).toBe(true);
+      expect(result.effect).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });
 
-    const events = await deps.evidence.events(TENANT, runId);
-    if (!events.ok) throw new Error("events failed");
-    const runEnd = events.value.find((e) => (e as { event: string }).event === "run_end");
-    expect(runEnd).toMatchObject({
-      data: { status: "failed", code: "internal_error", recovered_after_crash: true },
-    });
-  });
+      const events = await deps.evidence.events(TENANT, runId);
+      if (!events.ok) throw new Error("events failed");
+      const runEnd = events.value.find((e) => (e as { event: string }).event === "run_end");
+      expect(runEnd).toMatchObject({
+        data: { status: "failed", code: "internal_error", recovered_after_crash: true },
+      });
+    }
+    // commit_intent, then an allowed engine gate line on a later step: commit confirmed
+    {
+      const deps = await harness();
+      const runId = "run_2026-01-15_1000000011";
+      await seedCrashedRun(deps, runId, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [
+          line(
+            1,
+            "2026-01-15T09:00:00.000Z",
+            null,
+            "run_start",
+            runStartData("kvfcu/open_sub@1.0.0", runId),
+          ),
+          line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
+          line(3, "2026-01-15T09:00:02.000Z", "read_account_number", "gate", { actor: "engine", decision: "allowed" }),
+        ],
+      });
 
-  test("commit_intent, then an allowed engine gate line on a later step: commit confirmed", async () => {
-    const deps = await harness();
-    const runId = "run_2026-01-15_1000000011";
-    await seedCrashedRun(deps, runId, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [
-        line(
-          1,
-          "2026-01-15T09:00:00.000Z",
-          null,
-          "run_start",
-          runStartData("kvfcu/open_sub@1.0.0", runId),
-        ),
-        line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
-        line(3, "2026-01-15T09:00:02.000Z", "read_account_number", "gate", { actor: "engine", decision: "allowed" }),
-      ],
-    });
+      const report = await runSweep(deps, TENANT);
+      expect(report.manual).toBe(0);
+      expect(report.runs?.[0]).toMatchObject({ runId, commit: "confirmed" });
+      const runJson = await readBack(deps, runId);
+      const result = runJson.result as Record<string, unknown>;
+      expect((result.failure as Record<string, unknown>).safe_to_retry).toBe(false);
+      expect(result.effect).toMatchObject({ commit: "confirmed", performed_by: "bot" });
+    }
+    // commit_intent, then a line that proves no checkpoint passed: commit uncertain
+    {
+      const table: [string, string, string, unknown][] = [
+        ["a gate line with empty data", "read_account_number", "gate", {}],
+        ["a warning on a later step", "read_account_number", "warning", { code: "anything" }],
+        ["an escalation on a later step", "read_account_number", "escalation", { kind: "takeover", state: "open" }],
+        ["a human action line on a later step", "read_account_number", "action", { type: "click" }],
+        ["an allowed engine gate line on a step before the commit", "type_member_id", "gate", { actor: "engine", decision: "allowed" }],
+        ["a blocked engine gate line on a later step", "read_account_number", "gate", { actor: "engine", decision: "blocked" }],
+        ["an allowed human gate line on a later step", "read_account_number", "gate", { actor: "human", decision: "allowed" }],
+      ];
+      for (const [name, step, event, data] of table) {
+        const deps = await harness();
+        const runId = "run_2026-01-15_1000000019";
+        await seedCrashedRun(deps, runId, {
+          kind: "replay",
+          capability: "kvfcu/open_sub",
+          events: [
+            line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/open_sub@1.0.0", runId)),
+            line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
+            { ...(line(3, "2026-01-15T09:00:02.000Z", step, event, data) as object), by: event === "action" ? "human" : "engine" },
+          ],
+        });
+        const report = await runSweep(deps, TENANT);
+        expect(report.runs?.[0], name).toMatchObject({ runId, commit: "uncertain" });
+        expect(report.manual, name).toBe(1);
+      }
+    }
+    // commit_intent, nothing after: commit uncertain, safe_to_retry false, a manual case
+    {
+      const deps = await harness();
+      const runId = "run_2026-01-15_1000000012";
+      await seedCrashedRun(deps, runId, {
+        kind: "replay",
+        capability: "kvfcu/open_sub",
+        events: [
+          line(
+            1,
+            "2026-01-15T09:00:00.000Z",
+            null,
+            "run_start",
+            runStartData("kvfcu/open_sub@1.0.0", runId),
+          ),
+          line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
+        ],
+      });
 
-    const report = await runSweep(deps, TENANT);
-    expect(report.manual).toBe(0);
-    expect(report.runs?.[0]).toMatchObject({ runId, commit: "confirmed" });
-    const runJson = await readBack(deps, runId);
-    const result = runJson.result as Record<string, unknown>;
-    expect((result.failure as Record<string, unknown>).safe_to_retry).toBe(false);
-    expect(result.effect).toMatchObject({ commit: "confirmed", performed_by: "bot" });
+      const report = await runSweep(deps, TENANT);
+      expect(report.manual).toBe(1);
+      expect(report.runs?.[0]).toMatchObject({ runId, commit: "uncertain" });
+      const runJson = await readBack(deps, runId);
+      const result = runJson.result as Record<string, unknown>;
+      expect((result.failure as Record<string, unknown>).safe_to_retry).toBe(false);
+      expect(result.effect).toMatchObject({ commit: "uncertain", performed_by: "bot" });
+    }
   });
 
   // Why: only a step after the commit step, reached through the executor's own loop, proves the
   // checkpoint passed. A warning, an escalation, a human line, or an empty gate line proves nothing
   // (section 7 §17: "a passed commit checkpoint").
-  test.each<[string, string, string, unknown]>([
-    ["a gate line with empty data", "read_account_number", "gate", {}],
-    ["a warning on a later step", "read_account_number", "warning", { code: "anything" }],
-    ["an escalation on a later step", "read_account_number", "escalation", { kind: "takeover", state: "open" }],
-    ["a human action line on a later step", "read_account_number", "action", { type: "click" }],
-    ["an allowed engine gate line on a step before the commit", "type_member_id", "gate", { actor: "engine", decision: "allowed" }],
-    ["a blocked engine gate line on a later step", "read_account_number", "gate", { actor: "engine", decision: "blocked" }],
-    ["an allowed human gate line on a later step", "read_account_number", "gate", { actor: "human", decision: "allowed" }],
-  ])("commit_intent, then %s: commit uncertain", async (_name, step, event, data) => {
-    const deps = await harness();
-    const runId = "run_2026-01-15_1000000019";
-    await seedCrashedRun(deps, runId, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [
-        line(1, "2026-01-15T09:00:00.000Z", null, "run_start", runStartData("kvfcu/open_sub@1.0.0", runId)),
-        line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
-        { ...(line(3, "2026-01-15T09:00:02.000Z", step, event, data) as object), by: event === "action" ? "human" : "engine" },
-      ],
-    });
-    const report = await runSweep(deps, TENANT);
-    expect(report.runs?.[0]).toMatchObject({ runId, commit: "uncertain" });
-    expect(report.manual).toBe(1);
-  });
-
-  test("commit_intent, nothing after: commit uncertain, safe_to_retry false, a manual case", async () => {
-    const deps = await harness();
-    const runId = "run_2026-01-15_1000000012";
-    await seedCrashedRun(deps, runId, {
-      kind: "replay",
-      capability: "kvfcu/open_sub",
-      events: [
-        line(
-          1,
-          "2026-01-15T09:00:00.000Z",
-          null,
-          "run_start",
-          runStartData("kvfcu/open_sub@1.0.0", runId),
-        ),
-        line(2, "2026-01-15T09:00:01.000Z", "click_confirm", "commit_intent", {}),
-      ],
-    });
-
-    const report = await runSweep(deps, TENANT);
-    expect(report.manual).toBe(1);
-    expect(report.runs?.[0]).toMatchObject({ runId, commit: "uncertain" });
-    const runJson = await readBack(deps, runId);
-    const result = runJson.result as Record<string, unknown>;
-    expect((result.failure as Record<string, unknown>).safe_to_retry).toBe(false);
-    expect(result.effect).toMatchObject({ commit: "uncertain", performed_by: "bot" });
-  });
 });
 
 describe("runSweep: a read_only capability's crash carries no effect block", () => {

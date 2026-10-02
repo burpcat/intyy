@@ -182,121 +182,127 @@ async function approvalRejection(i: PrecheckInput): Promise<[string, string | un
 }
 
 describe("check 7, unattended: the task, then its session, then its check", () => {
-  test("task and check approved: the whole pipeline passes and the record is the approved one", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", APPROVED)] });
-    const { results, outcome } = await runPrechecks(input(w));
-    expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
-    expect(outcome.status).toBe("ok");
-    if (outcome.status === "ok") expect(outcome.record?.state).toBe("approved");
-  });
-
-  test("it runs the approved version, not the newest sealed one", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", APPROVED)] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
-    const { outcome } = await runPrechecks(input(w));
-    expect(outcome.status).toBe("ok");
-    if (outcome.status === "ok") expect(outcome.artifact.identity.version).toBe("1.0.0");
-  });
-
-  test("no record: context_not_approved, not_approved", async () => {
-    expect(await approvalRejection(input(world()))).toEqual([["context_not_approved", "not_approved"]]);
-  });
-
-  test("the latest approved key is degraded: context_not_approved, degraded", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", [...APPROVED, degraded(3)]), rec(CHECK, "1.0.0", APPROVED)] });
-    expect(await approvalRejection(input(w))).toEqual([["context_not_approved", "degraded"]]);
-  });
-
-  test("the key was retired with no successor: not_approved", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", [...APPROVED, retired(3)]), rec(CHECK, "1.0.0", APPROVED)] });
-    expect(await approvalRejection(input(w))).toEqual([["context_not_approved", "not_approved"]]);
-  });
-
-  test("a session with no approved key: context_not_approved, session_not_approved", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", APPROVED)] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withSession)];
-    expect(await approvalRejection(input(w))).toEqual([["context_not_approved", "session_not_approved"]]);
-    const fixed = world({ records: [...w.records, rec(SESSION, "1.0.0", APPROVED)], sealed: w.sealed });
-    expect((await runPrechecks(input(fixed))).outcome.status).toBe("ok");
-  });
-
-  test("a check with no approved key: reconciliation_not_approved, not_approved", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
-    expect(await approvalRejection(input(w))).toEqual([["reconciliation_not_approved", "not_approved"]]);
-  });
-
-  test("a degraded check: reconciliation_not_approved, degraded", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", [...APPROVED, degraded(3)])] });
-    expect(await approvalRejection(input(w))).toEqual([["reconciliation_not_approved", "degraded"]]);
-  });
-
-  test("a waiver needs no check key", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withWaiver)];
-    const { outcome } = await runPrechecks(input(w));
-    expect(outcome.status).toBe("ok");
-  });
-
-  test("it stops at the first rule: an unapproved task hides the session and the check", async () => {
-    const w = world();
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withSession)];
-    const rejection = await approvalRejection(input(w));
-    expect(rejection).toEqual([["context_not_approved", "not_approved"]]);
-  });
-
-  test("a read-only task has no check rule", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
-    w.sealed[CAP_LINK] = [
-      art(CAPABILITY, "1.0.0", (doc) => {
-        (doc.contract as Record<string, unknown>).effect = "read_only";
-        delete doc.recovery;
-      }),
-    ];
-    const { results } = await runPrechecks(input(w));
-    expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
+  test("unattended check 7 approves the task, session, and check in order, and names why it rejects", async () => {
+    // task and check approved: the whole pipeline passes and the record is the approved one
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", APPROVED)] });
+      const { results, outcome } = await runPrechecks(input(w));
+      expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
+      expect(outcome.status).toBe("ok");
+      if (outcome.status === "ok") expect(outcome.record?.state).toBe("approved");
+    }
+    // it runs the approved version, not the newest sealed one
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", APPROVED)] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
+      const { outcome } = await runPrechecks(input(w));
+      expect(outcome.status).toBe("ok");
+      if (outcome.status === "ok") expect(outcome.artifact.identity.version).toBe("1.0.0");
+    }
+    // no record: context_not_approved, not_approved
+    {
+      expect(await approvalRejection(input(world()))).toEqual([["context_not_approved", "not_approved"]]);
+    }
+    // the latest approved key is degraded: context_not_approved, degraded
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", [...APPROVED, degraded(3)]), rec(CHECK, "1.0.0", APPROVED)] });
+      expect(await approvalRejection(input(w))).toEqual([["context_not_approved", "degraded"]]);
+    }
+    // the key was retired with no successor: not_approved
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", [...APPROVED, retired(3)]), rec(CHECK, "1.0.0", APPROVED)] });
+      expect(await approvalRejection(input(w))).toEqual([["context_not_approved", "not_approved"]]);
+    }
+    // a session with no approved key: context_not_approved, session_not_approved
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", APPROVED)] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withSession)];
+      expect(await approvalRejection(input(w))).toEqual([["context_not_approved", "session_not_approved"]]);
+      const fixed = world({ records: [...w.records, rec(SESSION, "1.0.0", APPROVED)], sealed: w.sealed });
+      expect((await runPrechecks(input(fixed))).outcome.status).toBe("ok");
+    }
+    // a check with no approved key: reconciliation_not_approved, not_approved
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
+      expect(await approvalRejection(input(w))).toEqual([["reconciliation_not_approved", "not_approved"]]);
+    }
+    // a degraded check: reconciliation_not_approved, degraded
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(CHECK, "1.0.0", [...APPROVED, degraded(3)])] });
+      expect(await approvalRejection(input(w))).toEqual([["reconciliation_not_approved", "degraded"]]);
+    }
+    // a waiver needs no check key
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withWaiver)];
+      const { outcome } = await runPrechecks(input(w));
+      expect(outcome.status).toBe("ok");
+    }
+    // it stops at the first rule: an unapproved task hides the session and the check
+    {
+      const w = world();
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withSession)];
+      const rejection = await approvalRejection(input(w));
+      expect(rejection).toEqual([["context_not_approved", "not_approved"]]);
+    }
+    // a read-only task has no check rule
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
+      w.sealed[CAP_LINK] = [
+        art(CAPABILITY, "1.0.0", (doc) => {
+          (doc.contract as Record<string, unknown>).effect = "read_only";
+          delete doc.recovery;
+        }),
+      ];
+      const { results } = await runPrechecks(input(w));
+      expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
+    }
   });
 });
 
 describe("check 7, supervised", () => {
-  test("always passes, with no records at all", async () => {
-    const { results, outcome } = await runPrechecks(input(world(), {}, "supervised"));
-    expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
-    expect(outcome.status).toBe("ok");
-  });
-
-  test("picks by the supervised rules: approved, then certified, then the newest without a wrong verdict", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(TASK, "1.1.0", [batch(1, "batch_b")])] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
-    const version = async (records: ScoreRecord[]): Promise<string | null | undefined> => {
-      const { outcome } = await runPrechecks(input({ ...w, records }, {}, "supervised"));
-      return outcome.status === "ok" ? outcome.artifact.identity.version : outcome.status;
-    };
-    expect(await version(w.records)).toBe("1.0.0");
-    expect(await version([rec(TASK, "1.0.0", [batch(1, "batch_a")]), rec(TASK, "1.1.0", [batch(1, "batch_b")])])).toBe("1.1.0");
-    expect(await version([])).toBe("1.1.0");
-    expect(await version([rec(TASK, "1.1.0", [batch(1, "batch_b", { gate: "failed", scores: failedScores() })])])).toBe("1.0.0");
-  });
-
-  test("every version had a wrong verdict: rejected, no_version_for_context", async () => {
-    const lied = (v: string) => rec(TASK, v, [batch(1, `batch_${v}`, { gate: "failed", scores: failedScores() })]);
-    const w = world({ records: [lied("1.0.0"), lied("1.1.0")] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
-    expect(await approvalRejection(input(w, {}, "supervised"))).toEqual([["no_version_for_context", undefined]]);
-  });
-
-  test("a retired key is skipped", async () => {
-    const w = world({ records: [rec(TASK, "1.1.0", [...APPROVED, retired(3)])] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
-    const { outcome } = await runPrechecks(input(w, {}, "supervised"));
-    expect(outcome.status === "ok" ? outcome.artifact.identity.version : outcome.status).toBe("1.0.0");
-  });
-
-  test("the session resolves by the same rules: its approved version, not its newest", async () => {
-    const w = world({ records: [rec(SESSION, "1.0.0", APPROVED)] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withSession)];
-    w.sealed[SESSION_LINK] = [art("sign_in", "1.1.0"), art("sign_in", "1.0.0")];
-    const { outcome } = await runPrechecks(input(w, {}, "supervised"));
-    expect(outcome.status === "ok" ? outcome.sessionArtifact?.identity.version : outcome.status).toBe("1.0.0");
+  test("supervised check 7 passes and picks by the supervised rules", async () => {
+    // always passes, with no records at all
+    {
+      const { results, outcome } = await runPrechecks(input(world(), {}, "supervised"));
+      expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
+      expect(outcome.status).toBe("ok");
+    }
+    // picks by the supervised rules: approved, then certified, then the newest without a wrong verdict
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", APPROVED), rec(TASK, "1.1.0", [batch(1, "batch_b")])] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
+      const version = async (records: ScoreRecord[]): Promise<string | null | undefined> => {
+        const { outcome } = await runPrechecks(input({ ...w, records }, {}, "supervised"));
+        return outcome.status === "ok" ? outcome.artifact.identity.version : outcome.status;
+      };
+      expect(await version(w.records)).toBe("1.0.0");
+      expect(await version([rec(TASK, "1.0.0", [batch(1, "batch_a")]), rec(TASK, "1.1.0", [batch(1, "batch_b")])])).toBe("1.1.0");
+      expect(await version([])).toBe("1.1.0");
+      expect(await version([rec(TASK, "1.1.0", [batch(1, "batch_b", { gate: "failed", scores: failedScores() })])])).toBe("1.0.0");
+    }
+    // every version had a wrong verdict: rejected, no_version_for_context
+    {
+      const lied = (v: string) => rec(TASK, v, [batch(1, `batch_${v}`, { gate: "failed", scores: failedScores() })]);
+      const w = world({ records: [lied("1.0.0"), lied("1.1.0")] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
+      expect(await approvalRejection(input(w, {}, "supervised"))).toEqual([["no_version_for_context", undefined]]);
+    }
+    // a retired key is skipped
+    {
+      const w = world({ records: [rec(TASK, "1.1.0", [...APPROVED, retired(3)])] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
+      const { outcome } = await runPrechecks(input(w, {}, "supervised"));
+      expect(outcome.status === "ok" ? outcome.artifact.identity.version : outcome.status).toBe("1.0.0");
+    }
+    // the session resolves by the same rules: its approved version, not its newest
+    {
+      const w = world({ records: [rec(SESSION, "1.0.0", APPROVED)] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withSession)];
+      w.sealed[SESSION_LINK] = [art("sign_in", "1.1.0"), art("sign_in", "1.0.0")];
+      const { outcome } = await runPrechecks(input(w, {}, "supervised"));
+      expect(outcome.status === "ok" ? outcome.sessionArtifact?.identity.version : outcome.status).toBe("1.0.0");
+    }
   });
 });
 
@@ -308,47 +314,53 @@ function failedScores() {
 describe("a pinned run", () => {
   const RETIRED = [...APPROVED, retired(3)];
 
-  test("supervised: runs that exact key, even a retired one, and skips check 7", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", RETIRED)] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0")];
-    const { results, outcome } = await runPrechecks(input(w, { pinned: true }, "supervised"));
-    expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
-    expect(outcome.status).toBe("ok");
-    if (outcome.status === "ok") {
-      expect(outcome.artifact.identity.version).toBe("1.0.0");
-      expect(outcome.record?.state).toBe("retired");
+  test("a pinned run uses its exact key and is refused in unattended mode", async () => {
+    // supervised: runs that exact key, even a retired one, and skips check 7
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", RETIRED)] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0")];
+      const { results, outcome } = await runPrechecks(input(w, { pinned: true }, "supervised"));
+      expect(results.find((r) => r.check === "approval")).toMatchObject({ passed: true });
+      expect(outcome.status).toBe("ok");
+      if (outcome.status === "ok") {
+        expect(outcome.artifact.identity.version).toBe("1.0.0");
+        expect(outcome.record?.state).toBe("retired");
+      }
     }
-  });
-
-  test("the pin wins over a newer approved version (the injected resolver returns the pinned one)", async () => {
-    const w = world({ records: [rec(TASK, "1.1.0", APPROVED), rec(TASK, "1.0.0", RETIRED)] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
-    const pinnedOne = art(CAPABILITY, "1.0.0");
-    const { outcome } = await runPrechecks(input(w, { pinned: true, resolve: () => Promise.resolve(pinnedOne) }, "supervised"));
-    expect(outcome.status).toBe("ok");
-    if (outcome.status === "ok") expect(outcome.artifact.identity.version).toBe("1.0.0");
-  });
-
-  test("SAFETY: a pin in unattended mode is refused in core, so a retired key can never run unattended", async () => {
-    const w = world({ records: [rec(TASK, "1.0.0", RETIRED)] });
-    const { outcome } = await runPrechecks(input(w, { pinned: true }, "unattended"));
-    expect(outcome.status).not.toBe("ok");
+    // the pin wins over a newer approved version (the injected resolver returns the pinned one)
+    {
+      const w = world({ records: [rec(TASK, "1.1.0", APPROVED), rec(TASK, "1.0.0", RETIRED)] });
+      w.sealed[CAP_LINK] = [art(CAPABILITY, "1.1.0"), art(CAPABILITY, "1.0.0")];
+      const pinnedOne = art(CAPABILITY, "1.0.0");
+      const { outcome } = await runPrechecks(input(w, { pinned: true, resolve: () => Promise.resolve(pinnedOne) }, "supervised"));
+      expect(outcome.status).toBe("ok");
+      if (outcome.status === "ok") expect(outcome.artifact.identity.version).toBe("1.0.0");
+    }
+    // SAFETY: a pin in unattended mode is refused in core, so a retired key can never run unattended
+    {
+      const w = world({ records: [rec(TASK, "1.0.0", RETIRED)] });
+      const { outcome } = await runPrechecks(input(w, { pinned: true }, "unattended"));
+      expect(outcome.status).not.toBe("ok");
+    }
   });
 });
 
 describe("with no trust view (the old thin check)", () => {
-  test("unattended is context_not_approved, not_approved", async () => {
-    const i = input(world());
-    delete i.trust;
-    expect(await approvalRejection(i)).toEqual([["context_not_approved", "not_approved"]]);
-  });
-
-  test("supervised passes and gets the newest fitting version", async () => {
-    const i = input(world(), {}, "supervised");
-    delete i.trust;
-    const { outcome } = await runPrechecks(i);
-    expect(outcome.status).toBe("ok");
-    if (outcome.status === "ok") expect(outcome.record).toBeNull();
+  test("with no trust view, unattended is not approved and supervised passes", async () => {
+    // unattended is context_not_approved, not_approved
+    {
+      const i = input(world());
+      delete i.trust;
+      expect(await approvalRejection(i)).toEqual([["context_not_approved", "not_approved"]]);
+    }
+    // supervised passes and gets the newest fitting version
+    {
+      const i = input(world(), {}, "supervised");
+      delete i.trust;
+      const { outcome } = await runPrechecks(i);
+      expect(outcome.status).toBe("ok");
+      if (outcome.status === "ok") expect(outcome.record).toBeNull();
+    }
   });
 });
 
@@ -388,58 +400,69 @@ describe("check 9: the linked reconciliation check capability meets the policy",
     return outcome.status === "rejected" ? outcome.errors.map((e) => ({ code: outcome.code, reason: e.reason, message: e.message })) : null;
   }
 
-  test.each(["supervised", "unattended"] as const)("%s: a check capability the tenant does not list is policy_denied, capability_not_allowed", async (mode) => {
-    const errors = await policyErrors(mode, policyWith([CAP_LINK]));
-    expect(errors).toHaveLength(1);
-    expect(errors?.[0]).toMatchObject({ code: "policy_denied", reason: "capability_not_allowed" });
-    // The message names the CHECK capability, not the task.
-    expect(errors?.[0]?.message).toContain(CHECK_LINK);
-    expect(errors?.[0]?.message).not.toContain(CAP_LINK);
-  });
-
-  test.each(["supervised", "unattended"] as const)("%s: a deny rule that names the check capability is policy_denied, capability_denied", async (mode) => {
-    const errors = await policyErrors(mode, policyWith([CAP_LINK, CHECK_LINK], [CHECK_LINK]));
-    expect(errors).toHaveLength(1);
-    expect(errors?.[0]).toMatchObject({ code: "policy_denied", reason: "capability_denied" });
-    expect(errors?.[0]?.message).toContain(CHECK_LINK);
-  });
-
-  test("a wildcard allow covers the check, and a wildcard deny on the check's name denies it", async () => {
-    expect(await policyErrors("supervised", policyWith(["kvfcu/*@1"]))).toBeNull();
-    const denied = await policyErrors("supervised", policyWith(["kvfcu/*@1"], [`${CHECK}@*`]));
-    expect(denied?.map((e) => e.reason)).toEqual(["capability_denied"]);
-  });
-
-  test.each(["supervised", "unattended"] as const)("%s: a check capability the policy allows adds no error", async (mode) => {
-    const { outcome } = await runPrechecks(input(bothApproved(), {}, mode));
-    expect(outcome.status).toBe("ok");
-  });
-
-  test.each(["supervised", "unattended"] as const)("%s: a waiver has no check, so a policy that omits the check capability adds no error", async (mode) => {
-    const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
-    w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withWaiver)];
-    const policy = policyWith([CAP_LINK]);
-    const { outcome } = await runPrechecks(input(w, { policy, secretSources: baseSecretSources(policy) }, mode));
-    expect(outcome.status).toBe("ok");
-  });
-
-  test("the task's own missing allow and the check's missing allow are both reported at once", async () => {
-    const errors = await policyErrors("supervised", policyWith([]));
-    expect(errors?.map((e) => e.reason)).toEqual(["capability_not_allowed", "capability_not_allowed"]);
-    expect(errors?.[1]?.message).toContain(CHECK_LINK);
-  });
-
-  test("a count_diff check capability is tested the same way", async () => {
-    const w = bothApproved();
-    w.sealed[CAP_LINK] = [
-      art(CAPABILITY, "1.0.0", (doc) => {
-        const recon = (doc.recovery as Record<string, unknown>).reconciliation as { check: Record<string, unknown> };
-        recon.check = { capability: "kvfcu/count_sub@1", mode: "count_diff", count_output: "n", inputs: {}, not_found_outcomes: [], outputs: {} };
-      }),
-    ];
-    // Only the task is listed: the count capability is the one that is missing. Supervised needs no key.
-    const errors = await policyErrors("supervised", policyWith([CAP_LINK]), w);
-    expect(errors?.[0]).toMatchObject({ code: "policy_denied", reason: "capability_not_allowed" });
-    expect(errors?.[0]?.message).toContain("kvfcu/count_sub@1");
+  test("check 9 applies the policy to the linked check capability in both modes", async () => {
+    // a check capability the tenant does not list is policy_denied, capability_not_allowed
+    {
+      for (const mode of ["supervised", "unattended"] as const) {
+        const errors = await policyErrors(mode, policyWith([CAP_LINK]));
+        expect(errors, mode).toHaveLength(1);
+        expect(errors?.[0], mode).toMatchObject({ code: "policy_denied", reason: "capability_not_allowed" });
+        // The message names the CHECK capability, not the task.
+        expect(errors?.[0]?.message, mode).toContain(CHECK_LINK);
+        expect(errors?.[0]?.message, mode).not.toContain(CAP_LINK);
+      }
+    }
+    // a deny rule that names the check capability is policy_denied, capability_denied
+    {
+      for (const mode of ["supervised", "unattended"] as const) {
+        const errors = await policyErrors(mode, policyWith([CAP_LINK, CHECK_LINK], [CHECK_LINK]));
+        expect(errors, mode).toHaveLength(1);
+        expect(errors?.[0], mode).toMatchObject({ code: "policy_denied", reason: "capability_denied" });
+        expect(errors?.[0]?.message, mode).toContain(CHECK_LINK);
+      }
+    }
+    // a wildcard allow covers the check, and a wildcard deny on the check's name denies it
+    {
+      expect(await policyErrors("supervised", policyWith(["kvfcu/*@1"]))).toBeNull();
+      const denied = await policyErrors("supervised", policyWith(["kvfcu/*@1"], [`${CHECK}@*`]));
+      expect(denied?.map((e) => e.reason)).toEqual(["capability_denied"]);
+    }
+    // a check capability the policy allows adds no error
+    {
+      for (const mode of ["supervised", "unattended"] as const) {
+        const { outcome } = await runPrechecks(input(bothApproved(), {}, mode));
+        expect(outcome.status, mode).toBe("ok");
+      }
+    }
+    // a waiver has no check, so a policy that omits the check capability adds no error
+    {
+      for (const mode of ["supervised", "unattended"] as const) {
+        const w = world({ records: [rec(TASK, "1.0.0", APPROVED)] });
+        w.sealed[CAP_LINK] = [art(CAPABILITY, "1.0.0", withWaiver)];
+        const policy = policyWith([CAP_LINK]);
+        const { outcome } = await runPrechecks(input(w, { policy, secretSources: baseSecretSources(policy) }, mode));
+        expect(outcome.status, mode).toBe("ok");
+      }
+    }
+    // the task's own missing allow and the check's missing allow are both reported at once
+    {
+      const errors = await policyErrors("supervised", policyWith([]));
+      expect(errors?.map((e) => e.reason)).toEqual(["capability_not_allowed", "capability_not_allowed"]);
+      expect(errors?.[1]?.message).toContain(CHECK_LINK);
+    }
+    // a count_diff check capability is tested the same way
+    {
+      const w = bothApproved();
+      w.sealed[CAP_LINK] = [
+        art(CAPABILITY, "1.0.0", (doc) => {
+          const recon = (doc.recovery as Record<string, unknown>).reconciliation as { check: Record<string, unknown> };
+          recon.check = { capability: "kvfcu/count_sub@1", mode: "count_diff", count_output: "n", inputs: {}, not_found_outcomes: [], outputs: {} };
+        }),
+      ];
+      // Only the task is listed: the count capability is the one that is missing. Supervised needs no key.
+      const errors = await policyErrors("supervised", policyWith([CAP_LINK]), w);
+      expect(errors?.[0]).toMatchObject({ code: "policy_denied", reason: "capability_not_allowed" });
+      expect(errors?.[0]?.message).toContain("kvfcu/count_sub@1");
+    }
   });
 });

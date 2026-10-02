@@ -97,59 +97,62 @@ const closedHow = (s: Setup): unknown =>
   (JSON.parse(readFileSync(join(s.box(FOLDER), "closed.json"), "utf8")) as { how: string }).how;
 
 describe("the desk's claim (section 9 §10.5: exclusive create)", () => {
-  test("the first claim is ok, the second is already_claimed, and the first stays", async () => {
-    const s = await setup();
-    await openTakeover(s);
-    expect(await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"))).toEqual({ ok: true, value: undefined });
-    expect(await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_022"))).toMatchObject({
-      ok: false,
-      failure: "already_claimed",
-    });
-    const file = JSON.parse(readFileSync(join(s.box(FOLDER), "claim.json"), "utf8")) as { staff_id: string };
-    expect(file.staff_id).toBe("op_017");
-  });
-
-  test("a concurrent pair of claims has exactly one winner", async () => {
-    const s = await setup();
-    await openTakeover(s);
-    const staff = ["op_017", "op_022", "op_031", "op_040", "op_041", "op_042"];
-    const results = await Promise.all(staff.map((id) => s.desk.claim("keystone", RUN, FOLDER, claimBody(id))));
-    expect(results.filter((r) => r.ok)).toHaveLength(1);
-    expect(results.filter((r) => !r.ok && r.failure === "already_claimed")).toHaveLength(staff.length - 1);
-    const winner = staff[results.findIndex((r) => r.ok)];
-    const file = JSON.parse(readFileSync(join(s.box(FOLDER), "claim.json"), "utf8")) as { staff_id: string };
-    expect(file.staff_id).toBe(winner);
-  });
-
-  test("release is written once; a second release is already_released", async () => {
-    const s = await setup();
-    await openTakeover(s);
-    expect(await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"))).toEqual({ ok: true, value: undefined });
-    expect(await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"))).toMatchObject({
-      ok: false,
-      failure: "already_released",
-    });
-  });
-
-  test("dialog answers append, one line each, in order", async () => {
-    const s = await setup();
-    await openTakeover(s);
-    await s.desk.dialog("keystone", RUN, FOLDER, dialogBody("op_017", "accept"));
-    await s.desk.dialog("keystone", RUN, FOLDER, dialogBody("op_017", "dismiss"));
-    const lines = readFileSync(join(s.box(FOLDER), "dialogs.jsonl"), "utf8").trim().split("\n");
-    expect(lines.map((l) => (JSON.parse(l) as { answer: string }).answer)).toEqual(["accept", "dismiss"]);
-  });
-
-  test("openRequest reports the claim and the release", async () => {
-    const s = await setup();
-    await openTakeover(s);
-    expect(await s.desk.openRequest("keystone", RUN)).toMatchObject({ ok: true, value: { claim: null, released: false } });
-    await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"));
-    await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"));
-    expect(await s.desk.openRequest("keystone", RUN)).toMatchObject({
-      ok: true,
-      value: { claim: { staff_id: "op_017" }, released: true },
-    });
+  test("the desk claims once, releases once, appends dialogs in order, and reports both in openRequest", async () => {
+    // the first claim is ok, the second is already_claimed, and the first stays
+    {
+      const s = await setup();
+      await openTakeover(s);
+      expect(await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"))).toEqual({ ok: true, value: undefined });
+      expect(await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_022"))).toMatchObject({
+        ok: false,
+        failure: "already_claimed",
+      });
+      const file = JSON.parse(readFileSync(join(s.box(FOLDER), "claim.json"), "utf8")) as { staff_id: string };
+      expect(file.staff_id).toBe("op_017");
+    }
+    // a concurrent pair of claims has exactly one winner
+    {
+      const s = await setup();
+      await openTakeover(s);
+      const staff = ["op_017", "op_022", "op_031", "op_040", "op_041", "op_042"];
+      const results = await Promise.all(staff.map((id) => s.desk.claim("keystone", RUN, FOLDER, claimBody(id))));
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok && r.failure === "already_claimed")).toHaveLength(staff.length - 1);
+      const winner = staff[results.findIndex((r) => r.ok)];
+      const file = JSON.parse(readFileSync(join(s.box(FOLDER), "claim.json"), "utf8")) as { staff_id: string };
+      expect(file.staff_id).toBe(winner);
+    }
+    // release is written once; a second release is already_released
+    {
+      const s = await setup();
+      await openTakeover(s);
+      expect(await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"))).toEqual({ ok: true, value: undefined });
+      expect(await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"))).toMatchObject({
+        ok: false,
+        failure: "already_released",
+      });
+    }
+    // dialog answers append, one line each, in order
+    {
+      const s = await setup();
+      await openTakeover(s);
+      await s.desk.dialog("keystone", RUN, FOLDER, dialogBody("op_017", "accept"));
+      await s.desk.dialog("keystone", RUN, FOLDER, dialogBody("op_017", "dismiss"));
+      const lines = readFileSync(join(s.box(FOLDER), "dialogs.jsonl"), "utf8").trim().split("\n");
+      expect(lines.map((l) => (JSON.parse(l) as { answer: string }).answer)).toEqual(["accept", "dismiss"]);
+    }
+    // openRequest reports the claim and the release
+    {
+      const s = await setup();
+      await openTakeover(s);
+      expect(await s.desk.openRequest("keystone", RUN)).toMatchObject({ ok: true, value: { claim: null, released: false } });
+      await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"));
+      await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"));
+      expect(await s.desk.openRequest("keystone", RUN)).toMatchObject({
+        ok: true,
+        value: { claim: { staff_id: "op_017" }, released: true },
+      });
+    }
   });
 });
 
@@ -175,18 +178,21 @@ describe("a claim moves the takeover's deadline (section 7 §13.3)", () => {
     expect(closedHow(s)).toBe("timed_out");
   });
 
-  test.each([
-    [5, "2026-09-28T14:15:00.000Z"],
-    [999, "2026-09-28T18:00:00.000Z"],
-    [90, "2026-09-28T15:30:00.000Z"],
-  ])("a policy value of %i minutes is clamped to 15 to 240: the deadline is %s", async (minutes, deadline) => {
-    const s = await setup({ claimedMinutes: minutes });
-    await openTakeover(s);
-    await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"));
-    await vi.waitFor(() => {
-      expect(s.heard.claims).toHaveLength(1);
-    });
-    expect(s.heard.claims[0]?.deadline).toBe(deadline);
+  test("a policy value in minutes is clamped to 15 to 240: the deadline follows", async () => {
+    const rows: [number, string][] = [
+      [5, "2026-09-28T14:15:00.000Z"],
+      [999, "2026-09-28T18:00:00.000Z"],
+      [90, "2026-09-28T15:30:00.000Z"],
+    ];
+    for (const [minutes, deadline] of rows) {
+      const s = await setup({ claimedMinutes: minutes });
+      await openTakeover(s);
+      await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"));
+      await vi.waitFor(() => {
+        expect(s.heard.claims).toHaveLength(1);
+      });
+      expect(s.heard.claims[0]?.deadline, String(minutes)).toBe(deadline);
+    }
   });
 
   test("an implicit claim is reported implicit", async () => {
@@ -235,21 +241,24 @@ describe("dialog answers (section 7 §13.4)", () => {
 });
 
 describe("the takeover's decisions (section 7 §13.2)", () => {
-  test("the request is claimable (lease nobody) and offers end_run alone, when no outcome is declared", async () => {
-    const s = await setup();
-    await openTakeover(s);
-    const open = await s.desk.openRequest("keystone", RUN);
-    expect(open.ok && open.value?.request).toMatchObject({ kind: "takeover", lease: "nobody", decisions: ["end_run"], outcomes: [] });
-  });
-
-  test("with a declared outcome the request also offers set_outcome, and lists the codes", async () => {
-    const s = await setup();
-    await openTakeover(s, ["member_not_found"]);
-    const open = await s.desk.openRequest("keystone", RUN);
-    expect(open.ok && open.value?.request).toMatchObject({
-      decisions: ["end_run", "set_outcome"],
-      outcomes: ["member_not_found"],
-    });
+  test("the takeover request offers end_run, plus set_outcome and its codes when declared", async () => {
+    // the request is claimable (lease nobody) and offers end_run alone, when no outcome is declared
+    {
+      const s = await setup();
+      await openTakeover(s);
+      const open = await s.desk.openRequest("keystone", RUN);
+      expect(open.ok && open.value?.request).toMatchObject({ kind: "takeover", lease: "nobody", decisions: ["end_run"], outcomes: [] });
+    }
+    // with a declared outcome the request also offers set_outcome, and lists the codes
+    {
+      const s = await setup();
+      await openTakeover(s, ["member_not_found"]);
+      const open = await s.desk.openRequest("keystone", RUN);
+      expect(open.ok && open.value?.request).toMatchObject({
+        decisions: ["end_run", "set_outcome"],
+        outcomes: ["member_not_found"],
+      });
+    }
   });
 
   test("set_outcome with a declared code resolves set_outcome with that code", async () => {
@@ -261,37 +270,42 @@ describe("the takeover's decisions (section 7 §13.2)", () => {
     expect(closedHow(s)).toBe("resolved");
   });
 
-  test.each([
-    ["an undeclared code", "something_else"],
-    ["no code at all", null],
-  ])("set_outcome with %s ends the run as end_run", async (_name, code) => {
-    const s = await setup();
-    const { answer } = await openTakeover(s, ["member_not_found"]);
-    await s.desk.decide("keystone", RUN, FOLDER, decisionBody("set_outcome", code));
-    expect(await answer).toEqual({ kind: "ended_run", staff: "op_017" });
+  test("set_outcome without a declared matching code ends the run as end_run", async () => {
+    // set_outcome with an undeclared code or no code at all ends the run as end_run
+    {
+      for (const code of ["something_else", null]) {
+        const s = await setup();
+        const { answer } = await openTakeover(s, ["member_not_found"]);
+        await s.desk.decide("keystone", RUN, FOLDER, decisionBody("set_outcome", code));
+        expect(await answer, String(code)).toEqual({ kind: "ended_run", staff: "op_017" });
+      }
+    }
+    // set_outcome when nothing is declared ends the run as end_run
+    {
+      const s = await setup();
+      const { answer } = await openTakeover(s);
+      await s.desk.decide("keystone", RUN, FOLDER, decisionBody("set_outcome", "member_not_found"));
+      expect(await answer).toEqual({ kind: "ended_run", staff: "op_017" });
+    }
   });
 
-  test("set_outcome when nothing is declared ends the run as end_run", async () => {
-    const s = await setup();
-    const { answer } = await openTakeover(s);
-    await s.desk.decide("keystone", RUN, FOLDER, decisionBody("set_outcome", "member_not_found"));
-    expect(await answer).toEqual({ kind: "ended_run", staff: "op_017" });
-  });
-
-  test("a release hands back: the supervisor returns released with the note, and closes resolved", async () => {
-    const s = await setup();
-    const { answer } = await openTakeover(s);
-    await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"));
-    await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017", "Filled the form."));
-    expect(await answer).toEqual({ kind: "released", staff: "op_017", note: "Filled the form." });
-    expect(closedHow(s)).toBe("resolved");
-  });
-
-  test("a release with no note returns note null", async () => {
-    const s = await setup();
-    const { answer } = await openTakeover(s);
-    await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"));
-    expect(await answer).toEqual({ kind: "released", staff: "op_017", note: null });
+  test("a release hands back the supervisor with or without a note", async () => {
+    // a release hands back: the supervisor returns released with the note, and closes resolved
+    {
+      const s = await setup();
+      const { answer } = await openTakeover(s);
+      await s.desk.claim("keystone", RUN, FOLDER, claimBody("op_017"));
+      await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017", "Filled the form."));
+      expect(await answer).toEqual({ kind: "released", staff: "op_017", note: "Filled the form." });
+      expect(closedHow(s)).toBe("resolved");
+    }
+    // a release with no note returns note null
+    {
+      const s = await setup();
+      const { answer } = await openTakeover(s);
+      await s.desk.release("keystone", RUN, FOLDER, releaseBody("op_017"));
+      expect(await answer).toEqual({ kind: "released", staff: "op_017", note: null });
+    }
   });
 
   test("a release on an approval is ignored: only the decision ends it", async () => {

@@ -49,81 +49,84 @@ function deps(overrides: Partial<RequestIndexDeps> = {}): RequestIndexDeps {
 }
 
 describe("lookupRequestIndex and recordRequestIndex", () => {
-  test("a new request ID is new", async () => {
-    const got = await lookupRequestIndex(deps(), TENANT, AGENT, request());
-    expect(got).toEqual({ ok: true, value: { status: "new" } });
-  });
-
-  test("a true repeat returns the original run's ID", async () => {
-    const d = deps();
-    const recorded = await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
-    expect(recorded.ok).toBe(true);
-    const got = await lookupRequestIndex(d, TENANT, AGENT, request());
-    expect(got).toEqual({ ok: true, value: { status: "repeat", runId: "run_2026-09-24_7kq2m9x4tb" } });
-  });
-
-  test("the same request ID with different content is reused, not a repeat", async () => {
-    const d = deps();
-    await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
-    const got = await lookupRequestIndex(d, TENANT, AGENT, request({ inputs: { member_id: "999999", deposit: "1.00" } }));
-    expect(got).toEqual({ ok: true, value: { status: "reused" } });
-  });
-
-  test("a rejected request stores nothing, so a fixed retry with the same ID still runs", async () => {
-    const d = deps();
-    const first = await lookupRequestIndex(d, TENANT, AGENT, request());
-    expect(first).toEqual({ ok: true, value: { status: "new" } });
-    // The caller's checks 4 to 9 fail here; record() is never called.
-    const second = await lookupRequestIndex(d, TENANT, AGENT, request());
-    expect(second).toEqual({ ok: true, value: { status: "new" } });
-  });
-
-  test("an entry past expiry_days is ignored: the same ID starts a new run", async () => {
-    const clock = new ManualClock("2026-09-24T10:00:00.000Z");
-    const d = deps({ clock, expiryDays: 7 });
-    await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
-    clock.advance(8 * 24 * 60 * 60 * 1000);
-    const got = await lookupRequestIndex(d, TENANT, AGENT, request());
-    expect(got).toEqual({ ok: true, value: { status: "new" } });
-  });
-
-  test("a repeat still matches inside the expiry window", async () => {
-    const clock = new ManualClock("2026-09-24T10:00:00.000Z");
-    const d = deps({ clock, expiryDays: 7 });
-    await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
-    clock.advance(6 * 24 * 60 * 60 * 1000);
-    const got = await lookupRequestIndex(d, TENANT, AGENT, request());
-    expect(got).toEqual({ ok: true, value: { status: "repeat", runId: "run_2026-09-24_7kq2m9x4tb" } });
-  });
-
-  test("a lookup still tries the previous key, for an entry signed just before rotation", async () => {
-    const previousKeys = [
-      { keyId: "k0", status: "current" as const, binding: { source: "env" as const, key: "K0" } },
-    ];
-    const rotated = [
-      { keyId: "k1", status: "current" as const, binding: { source: "env" as const, key: "K1" } },
-      { keyId: "k0", status: "previous" as const, binding: { source: "env" as const, key: "K0" } },
-    ];
-    const store = new FakeLogStore({ line: RequestIndexLine, record: z.never() });
-    const clock = new ManualClock("2026-09-24T10:00:00.000Z");
-    const secrets = new MapSecrets({ K1: "current-key-value", K0: "previous-key-value" });
-    await recordRequestIndex({ store, clock, secrets, keys: previousKeys }, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
-    const got = await lookupRequestIndex({ store, clock, secrets, keys: rotated }, TENANT, AGENT, request());
-    expect(got).toEqual({ ok: true, value: { status: "repeat", runId: "run_2026-09-24_7kq2m9x4tb" } });
-  });
-
-  test("a missing current key fails as secret_unavailable, on lookup and on record", async () => {
-    const d = deps({ secrets: new MapSecrets({}) });
-    expect(await lookupRequestIndex(d, TENANT, AGENT, request())).toMatchObject({ ok: false, failure: "secret_unavailable" });
-    expect(await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb")).toMatchObject({
-      ok: false,
-      failure: "secret_unavailable",
-    });
-  });
-
-  test("no current key bound at all fails as secret_unavailable", async () => {
-    const d = deps({ keys: [] });
-    expect(await lookupRequestIndex(d, TENANT, AGENT, request())).toMatchObject({ ok: false, failure: "secret_unavailable" });
+  test("the request index tells new, repeat, and reused IDs, expires entries, tries the previous key, and fails without K1", async () => {
+    // a new request ID is new
+    {
+      const got = await lookupRequestIndex(deps(), TENANT, AGENT, request());
+      expect(got).toEqual({ ok: true, value: { status: "new" } });
+    }
+    // a true repeat returns the original run's ID
+    {
+      const d = deps();
+      const recorded = await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
+      expect(recorded.ok).toBe(true);
+      const got = await lookupRequestIndex(d, TENANT, AGENT, request());
+      expect(got).toEqual({ ok: true, value: { status: "repeat", runId: "run_2026-09-24_7kq2m9x4tb" } });
+    }
+    // the same request ID with different content is reused, not a repeat
+    {
+      const d = deps();
+      await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
+      const got = await lookupRequestIndex(d, TENANT, AGENT, request({ inputs: { member_id: "999999", deposit: "1.00" } }));
+      expect(got).toEqual({ ok: true, value: { status: "reused" } });
+    }
+    // a rejected request stores nothing, so a fixed retry with the same ID still runs
+    {
+      const d = deps();
+      const first = await lookupRequestIndex(d, TENANT, AGENT, request());
+      expect(first).toEqual({ ok: true, value: { status: "new" } });
+      // The caller's checks 4 to 9 fail here; record() is never called.
+      const second = await lookupRequestIndex(d, TENANT, AGENT, request());
+      expect(second).toEqual({ ok: true, value: { status: "new" } });
+    }
+    // an entry past expiry_days is ignored: the same ID starts a new run
+    {
+      const clock = new ManualClock("2026-09-24T10:00:00.000Z");
+      const d = deps({ clock, expiryDays: 7 });
+      await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
+      clock.advance(8 * 24 * 60 * 60 * 1000);
+      const got = await lookupRequestIndex(d, TENANT, AGENT, request());
+      expect(got).toEqual({ ok: true, value: { status: "new" } });
+    }
+    // a repeat still matches inside the expiry window
+    {
+      const clock = new ManualClock("2026-09-24T10:00:00.000Z");
+      const d = deps({ clock, expiryDays: 7 });
+      await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
+      clock.advance(6 * 24 * 60 * 60 * 1000);
+      const got = await lookupRequestIndex(d, TENANT, AGENT, request());
+      expect(got).toEqual({ ok: true, value: { status: "repeat", runId: "run_2026-09-24_7kq2m9x4tb" } });
+    }
+    // a lookup still tries the previous key, for an entry signed just before rotation
+    {
+      const previousKeys = [
+        { keyId: "k0", status: "current" as const, binding: { source: "env" as const, key: "K0" } },
+      ];
+      const rotated = [
+        { keyId: "k1", status: "current" as const, binding: { source: "env" as const, key: "K1" } },
+        { keyId: "k0", status: "previous" as const, binding: { source: "env" as const, key: "K0" } },
+      ];
+      const store = new FakeLogStore({ line: RequestIndexLine, record: z.never() });
+      const clock = new ManualClock("2026-09-24T10:00:00.000Z");
+      const secrets = new MapSecrets({ K1: "current-key-value", K0: "previous-key-value" });
+      await recordRequestIndex({ store, clock, secrets, keys: previousKeys }, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb");
+      const got = await lookupRequestIndex({ store, clock, secrets, keys: rotated }, TENANT, AGENT, request());
+      expect(got).toEqual({ ok: true, value: { status: "repeat", runId: "run_2026-09-24_7kq2m9x4tb" } });
+    }
+    // a missing current key fails as secret_unavailable, on lookup and on record
+    {
+      const d = deps({ secrets: new MapSecrets({}) });
+      expect(await lookupRequestIndex(d, TENANT, AGENT, request())).toMatchObject({ ok: false, failure: "secret_unavailable" });
+      expect(await recordRequestIndex(d, TENANT, AGENT, request(), "run_2026-09-24_7kq2m9x4tb")).toMatchObject({
+        ok: false,
+        failure: "secret_unavailable",
+      });
+    }
+    // no current key bound at all fails as secret_unavailable
+    {
+      const d = deps({ keys: [] });
+      expect(await lookupRequestIndex(d, TENANT, AGENT, request())).toMatchObject({ ok: false, failure: "secret_unavailable" });
+    }
   });
 });
 
