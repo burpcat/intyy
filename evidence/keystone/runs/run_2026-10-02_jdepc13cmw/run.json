@@ -1,0 +1,255 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-02_jdepc13cmw",
+  "tenant": "keystone",
+  "kind": "replay",
+  "capability": "kvfcu/open_share_subaccount",
+  "parent_run_id": null,
+  "batch_id": "batch_2026-10-02_s0dmedha63",
+  "case_id": "baseline",
+  "request_id": "run_2026-10-02_jdepc13cmw",
+  "status": "failed",
+  "result": {
+    "schema": "intyy.result/1.0",
+    "run_id": "run_2026-10-02_jdepc13cmw",
+    "request_id": null,
+    "capability": {
+      "name": "kvfcu/open_share_subaccount",
+      "version": "1.0.3",
+      "patch_revision": null
+    },
+    "effect": {
+      "commit": "not_sent",
+      "performed_by": null,
+      "sent_at": null,
+      "attempts": []
+    },
+    "warnings": [],
+    "recoveries": [
+      {
+        "step": "click_search",
+        "rung": 1,
+        "via": "retry",
+        "ref": "retry.idempotent",
+        "resumed_at": "type_member_no",
+        "at": "2026-10-02T17:51:00.335Z"
+      },
+      {
+        "step": "click_search",
+        "rung": 1,
+        "via": "retry",
+        "ref": "retry.idempotent",
+        "resumed_at": "type_member_no",
+        "at": "2026-10-02T17:51:11.703Z"
+      }
+    ],
+    "interventions": [
+      {
+        "kind": "takeover",
+        "reason": "unsafe_state",
+        "step": "click_search",
+        "staff_id": "certify",
+        "decision": "ended_run",
+        "requested_at": "2026-10-02T17:51:26.446Z",
+        "resolved_at": "2026-10-02T17:51:26.450Z",
+        "human_actions": 0,
+        "resumed_at_step": null
+      }
+    ],
+    "timing": {
+      "started_at": "2026-10-02T17:50:18.454Z",
+      "ended_at": "2026-10-02T17:51:26.549Z",
+      "duration_ms": 0,
+      "human_ms": 0
+    },
+    "evidence": "runs/run_2026-10-02_jdepc13cmw",
+    "status": "failed",
+    "failure": {
+      "code": "ended_by_operator",
+      "message": "the operator ended the run",
+      "step": "click_search",
+      "phase": "escalation",
+      "expected": {
+        "condition": "escalation",
+        "description": "the operator ended the run"
+      },
+      "observed": {
+        "location": "http://127.0.0.1:8080/main.do",
+        "checks": []
+      },
+      "attempts": 0,
+      "ladder": {
+        "rung": 4,
+        "verdict": "needs_human",
+        "ref": "takeover"
+      },
+      "transient": false,
+      "safe_to_retry": true,
+      "files": [
+        "screens/[digits#3]_click_search_ladder.png",
+        "a11y/[digits#3]_click_search_ladder.yaml",
+        "screens/[digits#4]_click_search_ladder.png",
+        "a11y/[digits#4]_click_search_ladder.yaml",
+        "screens/[digits#5]_click_search_ladder.png",
+        "a11y/[digits#5]_click_search_ladder.yaml",
+        "llm/[digits#1]_jev_request.json",
+        "llm/[digits#1]_jev_reply.json",
+        "llm/[digits#2]_reviewer_request.json",
+        "llm/[digits#2]_reviewer_reply.json",
+        "screens/[digits#6]_click_search_takeover_ended.png",
+        "dom/[digits#6]_click_search_takeover_ended.html",
+        "a11y/[digits#6]_click_search_takeover_ended.yaml"
+      ]
+    }
+  },
+  "frozen": {
+    "schema": "intyy.log/1.0",
+    "kind": "replay",
+    "parent_run_id": null,
+    "purpose": null,
+    "batch_id": "batch_2026-10-02_s0dmedha63",
+    "case_id": "baseline",
+    "pin": "kvfcu/open_share_subaccount@1.0.3",
+    "request_id": "run_2026-10-02_jdepc13cmw",
+    "tenant": "keystone",
+    "agent_id": "certify",
+    "mode": "supervised",
+    "inputs": {
+      "member_id": "[pii]",
+      "deposit": "[financial]"
+    },
+    "authorization": {
+      "consent_ref": "certify:batch_2026-10-02_s0dmedha63",
+      "granted_by": "staff",
+      "staff_id": "op_017",
+      "granted_at": "2026-10-02T17:50:18.447Z",
+      "expires_at": "2026-10-02T18:20:18.447Z",
+      "capability": "kvfcu/open_share_subaccount@1"
+    },
+    "frozen": {
+      "artifact": {
+        "id": "kvfcu/open_share_subaccount@1.0.3",
+        "hash": "sha256:11778d7dedde65f8186a4b1ef94a75bd8727d1b73d6ec3daf16393d99bc55d86"
+      },
+      "patch": null,
+      "session": {
+        "id": "kvfcu/sign_in@1.0.0",
+        "hash": "sha256:83db39113e1f1e23c1225e5d8b4bb70513523d1dc8fff9d4ef4e4fffaed26dc3",
+        "patch": null
+      },
+      "app_version": "9.2",
+      "engine_version": "0.2.0",
+      "handler_set": "sha256:b0211edd75d932e8a9d32bab2ae66cf064d4ab56facb68c41ad5ef4b93b6a061",
+      "handler_packs": {
+        "global": 1,
+        "app:kvfcu": 2
+      },
+      "policy": {
+        "layers": {
+          "global": 1,
+          "app:kvfcu": 5,
+          "tenant:keystone": 2
+        },
+        "hash": "sha256:bd92d97225b2997bc5c7a5b916e31f88a5426ceca42b831a6055b6ec4988a358"
+      },
+      "settings": {
+        "revision": 1,
+        "hash": "sha256:3a7aa65741da5c87404035afc9f9c4ccb82df8c99746da40f8be5a98f5f2d7de"
+      },
+      "evidence_level": "standard",
+      "timeouts": {},
+      "timeouts_from": null,
+      "approval": {
+        "state": "draft",
+        "batch": null,
+        "record": null
+      },
+      "ladder": {
+        "jev": true,
+        "reviewer": true,
+        "handler_min": 0.8,
+        "outcome_min": 0.95,
+        "reconciliation_min": 0.9,
+        "reconciliation_autonomy": false
+      }
+    },
+    "fault_profile": null,
+    "outputs_revealed": true
+  },
+  "files": [
+    {
+      "path": "screens/00012_click_search_ladder.png",
+      "sha256": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+      "bytes": 43102
+    },
+    {
+      "path": "a11y/00012_click_search_ladder.yaml",
+      "sha256": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+      "bytes": 5950
+    },
+    {
+      "path": "screens/00017_click_search_ladder.png",
+      "sha256": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+      "bytes": 43102
+    },
+    {
+      "path": "a11y/00017_click_search_ladder.yaml",
+      "sha256": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+      "bytes": 5950
+    },
+    {
+      "path": "screens/00022_click_search_ladder.png",
+      "sha256": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+      "bytes": 43102
+    },
+    {
+      "path": "a11y/00022_click_search_ladder.yaml",
+      "sha256": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+      "bytes": 5950
+    },
+    {
+      "path": "llm/00024_jev_request.json",
+      "sha256": "sha256:44f519b9e57ff461144e3d64b74f6d77e8167a9f3e7999bdd2d4e5a86d140c9e",
+      "bytes": 6233
+    },
+    {
+      "path": "llm/00024_jev_reply.json",
+      "sha256": "sha256:afbe2149cefb7a70fcb64e978d32660b1994632a3452a282ca1eb32e102c9d94",
+      "bytes": 413
+    },
+    {
+      "path": "llm/00025_reviewer_request.json",
+      "sha256": "sha256:59971357ee9d613385cefd1803e5912dc62b7e7f3b9d9609259127ba1321892a",
+      "bytes": 64701
+    },
+    {
+      "path": "llm/00025_reviewer_reply.json",
+      "sha256": "sha256:7c93197e712c1dd42c6370bca46a2dfb291934a2038cf00807a3b8b529eb39b2",
+      "bytes": 1024
+    },
+    {
+      "path": "screens/00030_click_search_takeover_ended.png",
+      "sha256": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+      "bytes": 43102
+    },
+    {
+      "path": "dom/00030_click_search_takeover_ended.html",
+      "sha256": "sha256:a840c08b14af738e5f300a94595129aae614a18f399058c2ea0bcdd7208b16d6",
+      "bytes": 4808
+    },
+    {
+      "path": "a11y/00030_click_search_takeover_ended.yaml",
+      "sha256": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+      "bytes": 5950
+    },
+    {
+      "path": "events.jsonl",
+      "sha256": "sha256:e8185d9b6fe9991dd524f7365fdfed1f0a8601f33cce517dd24f8bd40e6b3b1f",
+      "bytes": 10650
+    }
+  ],
+  "retention": {
+    "debug_until": "2026-11-01",
+    "audit_until": "2027-10-02"
+  }
+}

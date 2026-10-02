@@ -27,6 +27,11 @@
       "tenant": "keystone"
     },
     {
+      "kind": "batch",
+      "id": "batch_2026-10-02_s0dmedha63",
+      "tenant": "keystone"
+    },
+    {
       "kind": "run",
       "id": "run_2026-09-29_qhkn64cebx",
       "tenant": "keystone"
@@ -78,6 +83,11 @@
     },
     {
       "kind": "run",
+      "id": "run_2026-10-02_jdepc13cmw",
+      "tenant": "keystone"
+    },
+    {
+      "kind": "run",
       "id": "run_2026-10-02_psb98k0ynt",
       "tenant": "keystone"
     },
@@ -88,7 +98,7 @@
     }
   ],
   "by": "op_017",
-  "at": "2026-10-02T16:33:38.413Z",
+  "at": "2026-10-02T17:52:41.580Z",
   "source_hashes": {
     "artifacts/kvfcu/open_share_subaccount/1.0.3/artifact.json": "sha256:9a6e0d4a5dafd58705d6f5542bf40d8f487104116e55c05bd6692732795eab98",
     "artifacts/kvfcu/open_share_subaccount/1.0.3/crops/confirm_button.png": "sha256:ebeab06f62d4d31940bb7d9b6a2ce40726aa180017a6c8f8aa6cdcc9e08846dd",
@@ -106,6 +116,8 @@
     "keystone/batches/batch_2026-10-02_jk66pk4qsg/report.json": "sha256:44a32a901495678e34001f494db08e6b19dc942adbc42a3f0b3ad1fba8223417",
     "keystone/batches/batch_2026-10-02_mr0a5z9d55/plan.json": "sha256:ede1db51380f66ec8ea7cb092217b9b65802b6c00041d50e1c7b18d2aeedd215",
     "keystone/batches/batch_2026-10-02_mr0a5z9d55/report.json": "sha256:b399d815eebf8238c56ab443ed8b0fe5f189ab17d669f2d39efbcb5a5a464a5f",
+    "keystone/batches/batch_2026-10-02_s0dmedha63/plan.json": "sha256:6fc415f1eac643a67eedc9eb40bc770934aab68c4e173e0633d9410c46b160de",
+    "keystone/batches/batch_2026-10-02_s0dmedha63/report.json": "sha256:02d58f66f8ee2267a532ac2dea87fbdb93e39747824aa329fa64ea19436882a0",
     "keystone/runs/run_2026-09-29_qhkn64cebx/a11y/00004_observation.yaml": "sha256:649cc9b3ad6b376df467feaec800df4fe64af971e6e3ec9012710ec5ae1454da",
     "keystone/runs/run_2026-09-29_qhkn64cebx/a11y/00008_observation.yaml": "sha256:649cc9b3ad6b376df467feaec800df4fe64af971e6e3ec9012710ec5ae1454da",
     "keystone/runs/run_2026-09-29_qhkn64cebx/a11y/00012_observation.yaml": "sha256:649cc9b3ad6b376df467feaec800df4fe64af971e6e3ec9012710ec5ae1454da",
@@ -295,6 +307,21 @@
     "keystone/runs/run_2026-10-02_htxx6z5q9d/faults.jsonl": "sha256:f2ea58beb9f1ab4d38d394f7a8d6563e42d72d6a5d9f6662476d11ea03f3859d",
     "keystone/runs/run_2026-10-02_htxx6z5q9d/run.json": "sha256:9fc20881b7fdb91e566cf559ba11088423414854d2438ab1bb6acf2489e927df",
     "keystone/runs/run_2026-10-02_htxx6z5q9d/screens/00014_click_search_ladder.png": "sha256:0da8f79ce9935e5f52ca60265c734f9575c65d2437aa825a5a2194a2053c34b5",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/a11y/00012_click_search_ladder.yaml": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/a11y/00017_click_search_ladder.yaml": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/a11y/00022_click_search_ladder.yaml": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/a11y/00030_click_search_takeover_ended.yaml": "sha256:011cfa4409db5a3eb8f23940deb2960dc63b3aa1a79b03004088b28715a7f927",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/dom/00030_click_search_takeover_ended.html": "sha256:a840c08b14af738e5f300a94595129aae614a18f399058c2ea0bcdd7208b16d6",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/events.jsonl": "sha256:e8185d9b6fe9991dd524f7365fdfed1f0a8601f33cce517dd24f8bd40e6b3b1f",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/llm/00024_jev_reply.json": "sha256:afbe2149cefb7a70fcb64e978d32660b1994632a3452a282ca1eb32e102c9d94",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/llm/00024_jev_request.json": "sha256:44f519b9e57ff461144e3d64b74f6d77e8167a9f3e7999bdd2d4e5a86d140c9e",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/llm/00025_reviewer_reply.json": "sha256:7c93197e712c1dd42c6370bca46a2dfb291934a2038cf00807a3b8b529eb39b2",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/llm/00025_reviewer_request.json": "sha256:59971357ee9d613385cefd1803e5912dc62b7e7f3b9d9609259127ba1321892a",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/run.json": "sha256:aeec00ef53c2455d613f1aadab9e648b918a39a6e7ec437a655fb4067f6fa036",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/screens/00012_click_search_ladder.png": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/screens/00017_click_search_ladder.png": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/screens/00022_click_search_ladder.png": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+    "keystone/runs/run_2026-10-02_jdepc13cmw/screens/00030_click_search_takeover_ended.png": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
     "keystone/runs/run_2026-10-02_psb98k0ynt/a11y/00040_click_ok_commit_after.yaml": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
     "keystone/runs/run_2026-10-02_psb98k0ynt/a11y/00042_click_ok_unclear.yaml": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
     "keystone/runs/run_2026-10-02_psb98k0ynt/dom/00040_click_ok_commit_after.html": "sha256:68ed36ab7038d1e2a29e4f011ef91401b4682f698cf92c484e55082f82711463",
