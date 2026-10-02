@@ -61,7 +61,7 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 
 ### Live (`npm run test:live`)
 
-- [ ] The full live suite passes on the pinned bank app commit.
+- [x] The full live suite passes on the pinned bank app commit. (2026-10-02: 15 files, 69 tests, bank at 3652883e)
 
 ### Owner checks
 
