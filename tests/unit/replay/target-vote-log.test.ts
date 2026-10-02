@@ -34,8 +34,9 @@ async function logOf(site: SiteOpts = {}): Promise<Line[]> {
 const votes = (lines: Line[]): Line[] => lines.filter((l) => l.event === "target_vote");
 
 describe("target_vote lines", () => {
-  test("one line per target find, in step order, before that step's gate line", async () => {
+  test("one run's vote lines are in step order, hold the vote's facts, and hold no raw value", async () => {
     const lines = await logOf();
+    // One line per target find, in step order, before that step's gate line.
     expect(votes(lines).map((l) => [l.step, l.data.target])).toEqual([
       ["type_member_id", "member_id_box"],
       ["click_search", "search_button"],
@@ -47,40 +48,35 @@ describe("target_vote lines", () => {
       const gate = lines.find((l) => l.event === "gate" && l.step === v.step);
       if (gate !== undefined) expect(v.seq).toBeLessThan(gate.seq);
     }
-  });
 
-  test("prelude steps (session:*) write none", async () => {
-    const lines = await logOf();
+    // Prelude steps (session:*) write none.
     expect(lines.some((l) => l.step?.startsWith("session:") === true)).toBe(true);
     expect(votes(lines).filter((l) => l.step?.startsWith("session:") === true)).toEqual([]);
-  });
 
-  test("each line holds the vote's facts: counts, winner, score, margin, clue names", async () => {
-    const [first] = votes(await logOf());
+    // Each line holds the vote's facts: counts, winner, score, margin, clue names.
+    const [first] = votes(lines);
     expect(Object.keys(first?.data ?? {}).sort()).toEqual([
       "agree", "candidates", "disagree", "margin", "missing", "score", "target", "winner",
     ]);
     expect(first?.data).toMatchObject({ candidates: 1, margin: 1, score: 1, disagree: [], missing: [] });
     expect(first?.data.agree).toEqual(expect.arrayContaining(["label"]));
     expect(typeof first?.data.winner).toBe("string");
-  });
 
-  test("the scorer can read what the replay wrote", async () => {
-    const samples = votesOf(await logOf());
+    // The scorer can read what the replay wrote.
+    const samples = votesOf(lines);
     expect(samples.map((s) => [s.step, s.target, s.margin, s.score])).toEqual([
       ["type_member_id", "member_id_box", 1, 1],
       ["click_search", "search_button", 1, 1],
       ["click_confirm", "confirm_button", 1, 1],
       ["read_account_number", "account_number_display", 1, 1],
     ]);
-  });
 
-  test("a vote line holds no input value and no screen value", async () => {
-    const text = votes(await logOf()).map((l) => JSON.stringify(l)).join("\n");
+    // A vote line holds no input value and no screen value.
+    const text = votes(lines).map((l) => JSON.stringify(l)).join("\n");
     expect(text).not.toContain(MEMBER_FOUND);
     expect(text).not.toContain(ACCOUNT_NUMBER);
     // Only clue names and numbers: every value is a string name, a number, null, or a list of names.
-    for (const v of votes(await logOf())) {
+    for (const v of votes(lines)) {
       for (const list of [v.data.agree, v.data.disagree, v.data.missing]) {
         expect(Array.isArray(list) && list.every((c) => typeof c === "string" && /^[a-z_]+$/.test(c))).toBe(true);
       }

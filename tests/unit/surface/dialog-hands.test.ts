@@ -42,17 +42,16 @@ describe("answering a native box", () => {
     expect(await kinds(events, 2)).toEqual(["dialog_closed", "page_changed"]);
   });
 
-  test.each(["accept", "dismiss"] as const)(
-    "%s throws as the page jumps away: the box still clears and it counts as dispatched",
-    async (part) => {
+  test("accept or dismiss throws as the page jumps away: the box still clears and counts as dispatched", async () => {
+    for (const part of ["accept", "dismiss"] as const) {
       const { s, click, events } = setup(() =>
         Promise.reject(new Error("Dialog.accept: Cannot accept dialog which is already handled!")),
       );
-      expect(await click(part)).toEqual({ ok: true, value: { dispatched: true } });
-      expect(s.dialog).toBeNull();
-      expect(await kinds(events, 2)).toEqual(["dialog_closed", "page_changed"]);
-    },
-  );
+      expect(await click(part), part).toEqual({ ok: true, value: { dispatched: true } });
+      expect(s.dialog, part).toBeNull();
+      expect(await kinds(events, 2), part).toEqual(["dialog_closed", "page_changed"]);
+    }
+  });
 
   test("a lost connection stays unknown, and the box still clears", async () => {
     const { s, click, events } = setup(() => Promise.reject(new Error("Target page has been closed")));

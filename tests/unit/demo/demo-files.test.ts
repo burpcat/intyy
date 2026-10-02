@@ -114,12 +114,11 @@ function precheckInputFor(inputs: Record<string, unknown>): PrecheckInput {
 describe("the demo files match section 2 §21's contract", () => {
   const contractInputNames = baseArtifact().contract.inputs.map((i) => i.name).sort();
 
-  test.each(["valid.json", "missing.json", "at_limit.json", "bad.json"])(
-    "%s's field names are exactly the contract's own inputs",
-    (name) => {
-      expect(Object.keys(demoFile(name)).sort()).toEqual(contractInputNames);
-    },
-  );
+  test("each input file's field names are exactly the contract's own inputs", () => {
+    for (const name of ["valid.json", "missing.json", "at_limit.json", "bad.json"]) {
+      expect(Object.keys(demoFile(name)).sort(), name).toEqual(contractInputNames);
+    }
+  });
 
   test("auth.json parses as an intyy.request/1.0 authorization block", () => {
     const parsed = Authorization.safeParse(demoFile("auth.json"));
@@ -128,18 +127,22 @@ describe("the demo files match section 2 §21's contract", () => {
 });
 
 describe("bad.json is rejected before any browser opens", () => {
-  test("member_id's bad format is rejected invalid_input, reason bad_format", async () => {
-    const { outcome } = await runPrechecks(precheckInputFor(demoFile("bad.json")));
-    expect(outcome).toMatchObject({ status: "rejected", code: "invalid_input" });
-    if (outcome.status !== "rejected") throw new Error("expected a rejection");
-    expect(outcome.errors).toContainEqual(
-      expect.objectContaining({ field: "member_id", reason: "bad_format" }),
-    );
-  });
+  test("bad.json is rejected on member_id and valid.json passes the same inputs check", async () => {
+    // member_id's bad format is rejected invalid_input, reason bad_format.
+    {
+      const { outcome } = await runPrechecks(precheckInputFor(demoFile("bad.json")));
+      expect(outcome).toMatchObject({ status: "rejected", code: "invalid_input" });
+      if (outcome.status !== "rejected") throw new Error("expected a rejection");
+      expect(outcome.errors).toContainEqual(
+        expect.objectContaining({ field: "member_id", reason: "bad_format" }),
+      );
+    }
 
-  test("valid.json passes the same inputs check", async () => {
-    const { results } = await runPrechecks(precheckInputFor(demoFile("valid.json")));
-    expect(results.find((r) => r.check === "inputs")).toMatchObject({ passed: true });
+    // valid.json passes the same inputs check.
+    {
+      const { results } = await runPrechecks(precheckInputFor(demoFile("valid.json")));
+      expect(results.find((r) => r.check === "inputs")).toMatchObject({ passed: true });
+    }
   });
 });
 

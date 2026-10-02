@@ -75,31 +75,35 @@ function pictures(crops: Record<string, Uint8Array>, recorded = RECORDED): Pictu
 }
 
 describe("a stripped button (section 7 §6.9)", () => {
-  test("wins on region + image + path; the other bare image differs and scores low", async () => {
-    const o: Observation = screen([
-      button("bare_a", { clues: { path: "good" } }),
-      button("bare_b", { clues: { path: "other" }, box: FAR_BOX }),
-    ]);
-    const l = await candidateLikenesses(
-      pictures({ bare_a: SAME, bare_b: INVERSE }),
-      o,
-      FULL,
-      byId(FULL),
-      redactor(),
-    );
-    expect(l.get("search_button")?.get("0")).toBe(1);
-    expect(l.get("search_button")?.get("1")).toBe(0);
-    const v = vote(FULL, fromObservation(o), byId(FULL), undefined, l);
-    expect(v.kind).toBe("winner");
-    expect(v.facts.score).toBe(1);
-    expect(v.facts.agreeing).toEqual(expect.arrayContaining(["region", "image", "path"]));
-    expect(v.facts.missing).toEqual(expect.arrayContaining(["name", "text"]));
-  });
+  test("a stripped button wins on pictures and stays under the floor without them", async () => {
+    // wins on region + image + path; the other bare image differs and scores low.
+    {
+      const o: Observation = screen([
+        button("bare_a", { clues: { path: "good" } }),
+        button("bare_b", { clues: { path: "other" }, box: FAR_BOX }),
+      ]);
+      const l = await candidateLikenesses(
+        pictures({ bare_a: SAME, bare_b: INVERSE }),
+        o,
+        FULL,
+        byId(FULL),
+        redactor(),
+      );
+      expect(l.get("search_button")?.get("0")).toBe(1);
+      expect(l.get("search_button")?.get("1")).toBe(0);
+      const v = vote(FULL, fromObservation(o), byId(FULL), undefined, l);
+      expect(v.kind).toBe("winner");
+      expect(v.facts.score).toBe(1);
+      expect(v.facts.agreeing).toEqual(expect.arrayContaining(["region", "image", "path"]));
+      expect(v.facts.missing).toEqual(expect.arrayContaining(["name", "text"]));
+    }
 
-  test("without pictures, region + path alone stay under the 0.20 evidence floor", () => {
-    const o = screen([button("bare_a", { clues: { path: "good" } })]);
-    const v = vote(FULL, fromObservation(o), byId(FULL));
-    expect(v.kind).toBe("not_found");
+    // without pictures, region + path alone stay under the 0.20 evidence floor.
+    {
+      const o = screen([button("bare_a", { clues: { path: "good" } })]);
+      const v = vote(FULL, fromObservation(o), byId(FULL));
+      expect(v.kind).toBe("not_found");
+    }
   });
 });
 
@@ -133,10 +137,31 @@ describe("ties and a lone winner (section 7 §6.6)", () => {
   const T = target({ role: "button", region: { x: 0.5, y: 0.4, w: 0.05, h: 0.03 }, image: "search_button.png" });
   const two = screen([button("a"), button("b")]);
 
-  test("two candidates that both match, margin under 0.15: ambiguous", async () => {
-    const l = await candidateLikenesses(pictures({ a: SAME, b: SAME }), two, T, byId(T), redactor());
-    const v = vote(T, fromObservation(two), byId(T), undefined, l);
-    expect(v.kind).toBe("ambiguous");
+  test("ties and a lone winner follow the margin rule", async () => {
+    // two candidates that both match, margin under 0.15: ambiguous.
+    {
+      const l = await candidateLikenesses(pictures({ a: SAME, b: SAME }), two, T, byId(T), redactor());
+      const v = vote(T, fromObservation(two), byId(T), undefined, l);
+      expect(v.kind).toBe("ambiguous");
+    }
+
+    // best 0.75, second 0.65, margin 0.10: the only one at 0.70 wins.
+    {
+      // A: region 0.5 (distance 0.115), image 0.25 (likeness 0.675). B: region 0.25 (0.1575), image 0.
+      const o = screen([shifted("a", 0.115), shifted("b", 0.1575)]);
+      const v = vote(N, fromObservation(o), byId(N), undefined, likenessOf(0.675, 0.6));
+      expect(v.kind).toBe("winner");
+      expect(v.facts.score).toBeCloseTo(0.75, 10);
+      expect(v.facts.margin).toBeCloseTo(0.1, 10);
+    }
+
+    // best 0.75, second 0.72: both reach 0.70, margin 0.03: ambiguous.
+    {
+      // B: region 0.25, image 0.35 (likeness 0.705).
+      const o = screen([shifted("a", 0.115), shifted("b", 0.1575)]);
+      const v = vote(N, fromObservation(o), byId(N), undefined, likenessOf(0.675, 0.705));
+      expect(v.kind).toBe("ambiguous");
+    }
   });
 
   /**
@@ -150,22 +175,6 @@ describe("ties and a lone winner (section 7 §6.6)", () => {
     button(id, { clues: { name: "Search", path: id }, box: { ...SEARCH_BOX, x: 640 + dx * 1280 } });
   const likenessOf = (a: number, b: number) =>
     new Map([["search_button", new Map([["0", a], ["1", b]])]]);
-
-  test("best 0.75, second 0.65, margin 0.10: the only one at 0.70 wins", () => {
-    // A: region 0.5 (distance 0.115), image 0.25 (likeness 0.675). B: region 0.25 (0.1575), image 0.
-    const o = screen([shifted("a", 0.115), shifted("b", 0.1575)]);
-    const v = vote(N, fromObservation(o), byId(N), undefined, likenessOf(0.675, 0.6));
-    expect(v.kind).toBe("winner");
-    expect(v.facts.score).toBeCloseTo(0.75, 10);
-    expect(v.facts.margin).toBeCloseTo(0.1, 10);
-  });
-
-  test("best 0.75, second 0.72: both reach 0.70, margin 0.03: ambiguous", () => {
-    // B: region 0.25, image 0.35 (likeness 0.705).
-    const o = screen([shifted("a", 0.115), shifted("b", 0.1575)]);
-    const v = vote(N, fromObservation(o), byId(N), undefined, likenessOf(0.675, 0.705));
-    expect(v.kind).toBe("ambiguous");
-  });
 });
 
 describe("a masked candidate crop is dropped (section 4 §9.12)", () => {
@@ -200,25 +209,30 @@ describe("loadRecordedPictures", () => {
   const run = (files: Record<string, Uint8Array>, ...targets: Target[]) =>
     loadRecordedPictures(sealed(files), "app/cap", "1.0.0", targets);
 
-  test("reads and decodes each target's crop", async () => {
-    const got = await run({ search_button: SAME }, FULL);
-    expect(Array.from(got.get("search_button")?.data ?? [])).toEqual(Array.from(RECORDED.data));
-  });
+  test("loadRecordedPictures reads crops and leaves no entry for missing or bad ones", async () => {
+    // reads and decodes each target's crop.
+    {
+      const got = await run({ search_button: SAME }, FULL);
+      expect(Array.from(got.get("search_button")?.data ?? [])).toEqual(Array.from(RECORDED.data));
+    }
 
-  test("a missing crop, an undecodable crop, and a target with no image clue leave no entry", async () => {
-    const other: Target = { id: "other", description: "x", clues: { name: "Other" } };
-    expect((await run({}, FULL)).size).toBe(0);
-    expect((await run({ search_button: Uint8Array.from([1, 2, 3]) }, FULL)).size).toBe(0);
-    expect((await run({ other: SAME }, other)).size).toBe(0);
-  });
+    // a missing crop, an undecodable crop, and a target with no image clue leave no entry.
+    {
+      const other: Target = { id: "other", description: "x", clues: { name: "Other" } };
+      expect((await run({}, FULL)).size).toBe(0);
+      expect((await run({ search_button: Uint8Array.from([1, 2, 3]) }, FULL)).size).toBe(0);
+      expect((await run({ other: SAME }, other)).size).toBe(0);
+    }
 
-  test("with no recorded picture, image is missing for every candidate", async () => {
-    const o = screen([button("bare", { clues: { name: "Search", text: "Search", path: "good" } })]);
-    const none: Pictures = { eyes: eyesWith({ bare: SAME }), recorded: new Map() };
-    const l = await candidateLikenesses(none, o, FULL, byId(FULL), redactor());
-    expect(l.size).toBe(0);
-    const v = vote(FULL, fromObservation(o), byId(FULL), undefined, l);
-    expect(v.kind).toBe("winner");
-    expect(v.facts.missing).toContain("image");
+    // with no recorded picture, image is missing for every candidate.
+    {
+      const o = screen([button("bare", { clues: { name: "Search", text: "Search", path: "good" } })]);
+      const none: Pictures = { eyes: eyesWith({ bare: SAME }), recorded: new Map() };
+      const l = await candidateLikenesses(none, o, FULL, byId(FULL), redactor());
+      expect(l.size).toBe(0);
+      const v = vote(FULL, fromObservation(o), byId(FULL), undefined, l);
+      expect(v.kind).toBe("winner");
+      expect(v.facts.missing).toContain("image");
+    }
   });
 });

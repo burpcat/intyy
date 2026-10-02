@@ -85,54 +85,60 @@ class Session {
 }
 
 describe("actStep (section 7 §7, §7.2, §9)", () => {
-  test("click acts through the gate: Search navigates to /members", async () => {
-    const s = await Session.open();
-    const c = await s.ctx(target("search_button", { role: "button", name: "Search" }));
-    const action: StepAction = { type: "click", target: "search_button" };
-    const r = await actStep(action, c);
-    if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
-    expect(r.outcome.gate).toMatchObject({
-      ok: true,
-      value: { decision: "allowed", act: { dispatched: true } },
-    });
-    expect((await look(s.eyes)).url).toBe(`${FAKE_ORIGIN}/members`);
-    await s.close();
-  });
+  test("click, type, select, and set_checked act through the gate", async () => {
+    // click acts through the gate: Search navigates to /members.
+    {
+      const s = await Session.open();
+      const c = await s.ctx(target("search_button", { role: "button", name: "Search" }));
+      const action: StepAction = { type: "click", target: "search_button" };
+      const r = await actStep(action, c);
+      if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
+      expect(r.outcome.gate).toMatchObject({
+        ok: true,
+        value: { decision: "allowed", act: { dispatched: true } },
+      });
+      expect((await look(s.eyes)).url).toBe(`${FAKE_ORIGIN}/members`);
+      await s.close();
+    }
 
-  test("type resolves an {input.*} value before the gate ever sees it", async () => {
-    const s = await Session.open();
-    const c = await s.ctx(target("member_id", { role: "textbox", label: "Member ID" }), {
-      refs: new Map([["input.member_id", "100107"]]),
-    });
-    const action: StepAction = { type: "type", target: "member_id", value: "{input.member_id}" };
-    const r = await actStep(action, c);
-    if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
-    expect(r.outcome.gate).toMatchObject({ ok: true, value: { decision: "allowed" } });
-    const o = await look(s.eyes);
-    expect(o.elements.find((e) => e.clues.label === "Member ID")?.field?.value).toBe("100107");
-    await s.close();
-  });
+    // type resolves an {input.*} value before the gate ever sees it.
+    {
+      const s = await Session.open();
+      const c = await s.ctx(target("member_id", { role: "textbox", label: "Member ID" }), {
+        refs: new Map([["input.member_id", "100107"]]),
+      });
+      const action: StepAction = { type: "type", target: "member_id", value: "{input.member_id}" };
+      const r = await actStep(action, c);
+      if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
+      expect(r.outcome.gate).toMatchObject({ ok: true, value: { decision: "allowed" } });
+      const o = await look(s.eyes);
+      expect(o.elements.find((e) => e.clues.label === "Member ID")?.field?.value).toBe("100107");
+      await s.close();
+    }
 
-  test("select acts through the gate: Kind becomes Checking", async () => {
-    const s = await Session.open();
-    const c = await s.ctx(target("kind", { role: "combobox", label: "Kind" }));
-    const r = await actStep({ type: "select", target: "kind", value: "Checking" }, c);
-    if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
-    expect(r.outcome.gate).toMatchObject({ ok: true, value: { decision: "allowed" } });
-    const o = await look(s.eyes);
-    expect(o.elements.find((e) => e.clues.label === "Kind")?.field?.value).toBe("Checking");
-    await s.close();
-  });
+    // select acts through the gate: Kind becomes Checking.
+    {
+      const s = await Session.open();
+      const c = await s.ctx(target("kind", { role: "combobox", label: "Kind" }));
+      const r = await actStep({ type: "select", target: "kind", value: "Checking" }, c);
+      if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
+      expect(r.outcome.gate).toMatchObject({ ok: true, value: { decision: "allowed" } });
+      const o = await look(s.eyes);
+      expect(o.elements.find((e) => e.clues.label === "Kind")?.field?.value).toBe("Checking");
+      await s.close();
+    }
 
-  test("set_checked acts through the gate: Joint becomes checked", async () => {
-    const s = await Session.open();
-    const c = await s.ctx(target("joint", { role: "checkbox", label: "Joint" }));
-    const r = await actStep({ type: "set_checked", target: "joint", checked: true }, c);
-    if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
-    expect(r.outcome.gate).toMatchObject({ ok: true, value: { decision: "allowed" } });
-    const o = await look(s.eyes);
-    expect(o.elements.find((e) => e.clues.label === "Joint")?.field?.checked).toBe(true);
-    await s.close();
+    // set_checked acts through the gate: Joint becomes checked.
+    {
+      const s = await Session.open();
+      const c = await s.ctx(target("joint", { role: "checkbox", label: "Joint" }));
+      const r = await actStep({ type: "set_checked", target: "joint", checked: true }, c);
+      if (r.outcome.kind !== "acted") throw new Error(`expected acted, got ${r.outcome.kind}`);
+      expect(r.outcome.gate).toMatchObject({ ok: true, value: { decision: "allowed" } });
+      const o = await look(s.eyes);
+      expect(o.elements.find((e) => e.clues.label === "Joint")?.field?.checked).toBe(true);
+      await s.close();
+    }
   });
 
   test("navigate and press need no target: facts stay null", async () => {

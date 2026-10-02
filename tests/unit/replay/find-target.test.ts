@@ -66,103 +66,112 @@ const SEARCH_CLUES: Target["clues"] = {
 const SEARCH_BOX = { x: 640, y: 320, width: 64, height: 24 };
 
 describe("findTarget (section 7 §6, §21 'Clue voting')", () => {
-  test("a stripped button: region and path alone don't clear the evidence floor", async () => {
-    // Why not_found, not winner: section 7 §21's worked example scores the image clue too, but
-    // M08 has no picture likeness yet, so image is always missing (docs/decisions.md, M04).
-    // Region (0.10) + path (0.05) cap at 0.15, under the 0.20 evidence floor.
-    const t = target("search_button", SEARCH_CLUES);
-    const site = siteOf([
-      { id: "btn", role: "button", roleGroup: "button_like", box: SEARCH_BOX },
-    ]);
-    const found = findTarget(t, await observe(site), byId(t), NO_REFS, redactor());
-    expect(found.kind).toBe("not_found");
-    expect(found.facts.score).toBe(1);
-    expect(found.facts.missing).toEqual(expect.arrayContaining(["name", "text"]));
-    expect(found.facts.differing).toEqual([]);
+  test("findTarget fails a stripped button, a renamed button, and a tie", async () => {
+    // a stripped button: region and path alone don't clear the evidence floor.
+    {
+      // Why not_found, not winner: section 7 §21's worked example scores the image clue too, but
+      // M08 has no picture likeness yet, so image is always missing (docs/decisions.md, M04).
+      // Region (0.10) + path (0.05) cap at 0.15, under the 0.20 evidence floor.
+      const t = target("search_button", SEARCH_CLUES);
+      const site = siteOf([
+        { id: "btn", role: "button", roleGroup: "button_like", box: SEARCH_BOX },
+      ]);
+      const found = findTarget(t, await observe(site), byId(t), NO_REFS, redactor());
+      expect(found.kind).toBe("not_found");
+      expect(found.facts.score).toBe(1);
+      expect(found.facts.missing).toEqual(expect.arrayContaining(["name", "text"]));
+      expect(found.facts.differing).toEqual([]);
+    }
+
+    // a renamed button fails: name and text differ, so target_not_found.
+    {
+      const t = target("search_button", SEARCH_CLUES);
+      const site = siteOf([
+        {
+          id: "btn",
+          role: "button",
+          roleGroup: "button_like",
+          name: "Find",
+          text: "Find",
+          box: SEARCH_BOX,
+        },
+      ]);
+      const found = findTarget(t, await observe(site), byId(t), NO_REFS, redactor());
+      expect(found.kind).toBe("not_found");
+      expect(found.facts.score).toBeLessThan(0.7);
+      // Why button-like carries a value: section 4 §9.10, names only for button-like candidates.
+      expect(found.facts.differing).toEqual([
+        { clue: "name", value: "Find" },
+        { clue: "text", value: "Find" },
+      ]);
+    }
+
+    // a tie is target_ambiguous.
+    {
+      const t = target("open_button", { role: "button", name: "Open" });
+      const site = siteOf([
+        { id: "a", role: "button", roleGroup: "button_like", name: "Open" },
+        { id: "b", role: "button", roleGroup: "button_like", name: "Open" },
+      ]);
+      const found = findTarget(t, await observe(site), byId(t), NO_REFS, redactor());
+      expect(found.kind).toBe("ambiguous");
+      expect(found.facts.margin).toBe(0);
+      expect(found.facts.candidates).toBe(2);
+    }
   });
 
-  test("a renamed button fails: name and text differ, so target_not_found", async () => {
-    const t = target("search_button", SEARCH_CLUES);
-    const site = siteOf([
-      {
-        id: "btn",
-        role: "button",
-        roleGroup: "button_like",
-        name: "Find",
-        text: "Find",
-        box: SEARCH_BOX,
-      },
-    ]);
-    const found = findTarget(t, await observe(site), byId(t), NO_REFS, redactor());
-    expect(found.kind).toBe("not_found");
-    expect(found.facts.score).toBeLessThan(0.7);
-    // Why button-like carries a value: section 4 §9.10, names only for button-like candidates.
-    expect(found.facts.differing).toEqual([
-      { clue: "name", value: "Find" },
-      { clue: "text", value: "Find" },
-    ]);
-  });
+  test("a clear winner gives a live ref and a target_vote line with no raw text", async () => {
+    // a clear winner: its live ref is ready to act on, and the shape is a target_vote line.
+    {
+      const t = target("search_button", { role: "button", name: "Search" });
+      const site = siteOf([
+        { id: "btn", role: "button", roleGroup: "button_like", name: "Search", box: SEARCH_BOX },
+        { id: "other", role: "button", roleGroup: "button_like", name: "Cancel" },
+      ]);
+      const o = await observe(site);
+      const found = findTarget(t, o, byId(t), NO_REFS, redactor());
+      expect(found.kind).toBe("winner");
+      if (found.kind !== "winner") return;
+      expect(found.ref).toBe(o.elements.find((e) => e.clues.name === "Search")?.ref);
+      expect(found.facts).toEqual({
+        candidates: 2,
+        winner: "0",
+        score: 1,
+        margin: 1,
+        agreeing: ["name"],
+        differing: [],
+        missing: [],
+      });
+    }
 
-  test("a tie is target_ambiguous", async () => {
-    const t = target("open_button", { role: "button", name: "Open" });
-    const site = siteOf([
-      { id: "a", role: "button", roleGroup: "button_like", name: "Open" },
-      { id: "b", role: "button", roleGroup: "button_like", name: "Open" },
-    ]);
-    const found = findTarget(t, await observe(site), byId(t), NO_REFS, redactor());
-    expect(found.kind).toBe("ambiguous");
-    expect(found.facts.margin).toBe(0);
-    expect(found.facts.candidates).toBe(2);
-  });
+    // target_vote line: no raw known value or unmasked screen text reaches the logged bytes.
+    {
+      const r = redactor(); // knows input.member_id = "100107" (docs/discovery/kit.js)
+      const t = target("search_button", { role: "button", name: "Search" });
+      const site = siteOf([
+        { id: "btn", role: "button", roleGroup: "button_like", name: "Search 100107" },
+      ]);
+      const found = findTarget(t, await observe(site), byId(t), NO_REFS, r);
+      expect(found.kind).toBe("not_found"); // the only clue, `name`, differs
+      expect(found.facts.differing).toEqual([{ clue: "name", value: "Search {input.member_id}" }]);
 
-  test("a clear winner: its live ref is ready to act on, and the shape is a target_vote line", async () => {
-    const t = target("search_button", { role: "button", name: "Search" });
-    const site = siteOf([
-      { id: "btn", role: "button", roleGroup: "button_like", name: "Search", box: SEARCH_BOX },
-      { id: "other", role: "button", roleGroup: "button_like", name: "Cancel" },
-    ]);
-    const o = await observe(site);
-    const found = findTarget(t, o, byId(t), NO_REFS, redactor());
-    expect(found.kind).toBe("winner");
-    if (found.kind !== "winner") return;
-    expect(found.ref).toBe(o.elements.find((e) => e.clues.name === "Search")?.ref);
-    expect(found.facts).toEqual({
-      candidates: 2,
-      winner: "0",
-      score: 1,
-      margin: 1,
-      agreeing: ["name"],
-      differing: [],
-      missing: [],
-    });
-  });
+      const store = new FakeEvidenceStore();
+      const created = await store.createRun("kvfcu", "run_2026-01-15_0000000000");
+      if (!created.ok) throw new Error("createRun failed");
+      const log = new RunLog(created.value, r, new SteppingClock());
+      const wrote = await log.append({
+        event: "target_vote",
+        step: "click_search",
+        by: "engine",
+        data: found.facts,
+      });
+      expect(wrote).toBe(true);
 
-  test("target_vote line: no raw known value or unmasked screen text reaches the logged bytes", async () => {
-    const r = redactor(); // knows input.member_id = "100107" (docs/discovery/kit.js)
-    const t = target("search_button", { role: "button", name: "Search" });
-    const site = siteOf([
-      { id: "btn", role: "button", roleGroup: "button_like", name: "Search 100107" },
-    ]);
-    const found = findTarget(t, await observe(site), byId(t), NO_REFS, r);
-    expect(found.kind).toBe("not_found"); // the only clue, `name`, differs
-    expect(found.facts.differing).toEqual([{ clue: "name", value: "Search {input.member_id}" }]);
-
-    const store = new FakeEvidenceStore();
-    const created = await store.createRun("kvfcu", "run_2026-01-15_0000000000");
-    if (!created.ok) throw new Error("createRun failed");
-    const log = new RunLog(created.value, r, new SteppingClock());
-    const wrote = await log.append({
-      event: "target_vote",
-      step: "click_search",
-      by: "engine",
-      data: found.facts,
-    });
-    expect(wrote).toBe(true);
-
-    const events = await store.events("kvfcu", created.value.runId);
-    if (!events.ok) throw new Error("events failed");
-    const bytes = JSON.stringify(events.value);
-    expect(bytes).not.toContain("100107");
-    expect(bytes).toContain("{input.member_id}");
+      const events = await store.events("kvfcu", created.value.runId);
+      if (!events.ok) throw new Error("events failed");
+      const bytes = JSON.stringify(events.value);
+      expect(bytes).not.toContain("100107");
+      expect(bytes).toContain("{input.member_id}");
+    }
   });
 });

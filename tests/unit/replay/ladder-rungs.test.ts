@@ -315,7 +315,8 @@ const ladderLines = (r: Ran) =>
   r.lines.filter((l) => l.event === "ladder").map((l) => l.data as Record<string, unknown>);
 
 describe("the helper window (section 5 §8.2, section 4 §7.9)", () => {
-  test("a closed window skips both rungs: no model is called", async () => {
+  test("the helper window gates both rungs, and no rungs climbs to rung 4", async () => {
+    // a closed window skips both rungs: no model is called.
     await withScene(async (s) => {
       const r = await run(s, {
         trouble: { ...TROUBLE, risk: "reversible", dispatched: true },
@@ -327,9 +328,8 @@ describe("the helper window (section 5 §8.2, section 4 §7.9)", () => {
       expect(r.rev?.seen).toEqual([]);
       expect(r.reviewerCalled()).toBe(0);
     });
-  });
 
-  test("dispatched:false opens the window even for a reversible step", async () => {
+    // dispatched:false opens the window even for a reversible step.
     await withScene(async (s) => {
       const r = await run(s, {
         trouble: { ...TROUBLE, risk: "reversible", dispatched: false },
@@ -337,9 +337,8 @@ describe("the helper window (section 5 §8.2, section 4 §7.9)", () => {
       });
       expect(r.jev?.seen).toHaveLength(1);
     });
-  });
 
-  test("with no rungs at all a climb goes straight to rung 4", async () => {
+    // with no rungs at all a climb goes straight to rung 4.
     await withScene(async (s) => {
       const r = await run(s, { noRungs: true });
       expect(r.result.kind).toBe("climb");
@@ -348,7 +347,8 @@ describe("the helper window (section 5 §8.2, section 4 §7.9)", () => {
 });
 
 describe("rung 2: jev (section 5 §8.7)", () => {
-  test("an outcome at 0.97 ends the run as business_outcome, decided by jev", async () => {
+  test("jev decides outcomes and handlers by their cutoffs, and the tie rule reaches it", async () => {
+    // an outcome at 0.97 ends the run as business_outcome, decided by jev.
     await withScene(async (s) => {
       const r = await run(s, {
         jev: jevRow(answer({ bucket: "outcome", outcome: "x", confidence: 0.97 })),
@@ -365,9 +365,8 @@ describe("rung 2: jev (section 5 §8.7)", () => {
         }),
       );
     });
-  });
 
-  test("an outcome at 0.94 climbs to the reviewer", async () => {
+    // an outcome at 0.94 climbs to the reviewer.
     await withScene(async (s) => {
       const r = await run(s, {
         jev: jevRow(answer({ bucket: "outcome", outcome: "x", confidence: 0.94 })),
@@ -376,40 +375,40 @@ describe("rung 2: jev (section 5 §8.7)", () => {
       expect(r.result.kind).toBe("climb");
       expect(r.rev?.seen).toHaveLength(1);
     });
-  });
 
-  test("a handler at 0.79 climbs; at 0.80 it applies and recovers via jev on rung 2", async () => {
-    await withScene(async (s) => {
-      const low = await run(s, {
-        jev: jevRow(answer({ bucket: "handler", handler: "kyc_reminder", confidence: 0.79 })),
+    // a handler at 0.79 climbs; at 0.80 it applies and recovers via jev on rung 2.
+    {
+      await withScene(async (s) => {
+        const low = await run(s, {
+          jev: jevRow(answer({ bucket: "handler", handler: "kyc_reminder", confidence: 0.79 })),
+        });
+        expect(low.result.kind).toBe("climb");
       });
-      expect(low.result.kind).toBe("climb");
-    });
-    await withScene(async (s) => {
-      const r = await run(s, {
-        jev: jevRow(answer({ bucket: "handler", handler: "kyc_reminder", confidence: 0.8 })),
+      await withScene(async (s) => {
+        const r = await run(s, {
+          jev: jevRow(answer({ bucket: "handler", handler: "kyc_reminder", confidence: 0.8 })),
+        });
+        expect(r.result).toMatchObject({
+          kind: "recovered",
+          recovery: { via: "jev", ref: "kyc_reminder" },
+        });
+        expect(ladderLines(r)).toContainEqual(
+          expect.objectContaining({
+            rung: 2,
+            verdict: "recovered",
+            handler: "kyc_reminder",
+            bucket: "handler",
+            confidence: 0.8,
+            threshold: 0.8,
+            input: "llm/00041_jev_request.json",
+          }),
+        );
+        // Why: section 5 §8.7, "jev may pick a handler whose detector did not match."
+        expect(warnings(r)).toContain("detector_missed");
       });
-      expect(r.result).toMatchObject({
-        kind: "recovered",
-        recovery: { via: "jev", ref: "kyc_reminder" },
-      });
-      expect(ladderLines(r)).toContainEqual(
-        expect.objectContaining({
-          rung: 2,
-          verdict: "recovered",
-          handler: "kyc_reminder",
-          bucket: "handler",
-          confidence: 0.8,
-          threshold: 0.8,
-          input: "llm/00041_jev_request.json",
-        }),
-      );
-      // Why: section 5 §8.7, "jev may pick a handler whose detector did not match."
-      expect(warnings(r)).toContain("detector_missed");
-    });
-  });
+    }
 
-  test("a handler picked out of attempts uses its own on_exhausted", async () => {
+    // a handler picked out of attempts uses its own on_exhausted.
     await withScene(async (s) => {
       const r = await run(s, {
         jev: jevRow(answer({ bucket: "handler", handler: "kyc_reminder", confidence: 0.9 })),
@@ -421,9 +420,8 @@ describe("rung 2: jev (section 5 §8.7)", () => {
         ladderRef: "on_exhausted",
       });
     });
-  });
 
-  test("a tie at rung 1 reaches jev, which sees the tied IDs; picking one logs no detector_missed", async () => {
+    // a tie at rung 1 reaches jev, which sees the tied IDs; picking one logs no detector_missed.
     await withScene(async (s) => {
       const twin: Handler = { ...KYC, id: "kyc_twin" };
       const both = new Map<string, Condition>([
@@ -444,37 +442,39 @@ describe("rung 2: jev (section 5 §8.7)", () => {
     });
   });
 
-  test.each([
-    ["an unknown handler", answer({ bucket: "handler", handler: "nope", confidence: 1 })],
-    ["an undeclared outcome", answer({ bucket: "outcome", outcome: "nope", confidence: 1 })],
-  ])("%s warns classifier_invalid_output and climbs to the reviewer", async (_n, a) => {
-    await withScene(async (s) => {
-      const r = await run(s, {
-        jev: jevRow(a),
-        reviewer: { fixStep: [{ when: {}, reply: { answer: { give_up: true, reason: "no" } } }] },
+  test("an unknown handler or an undeclared outcome warns classifier_invalid_output and climbs to the reviewer", async () => {
+    const rows = [
+      ["an unknown handler", answer({ bucket: "handler", handler: "nope", confidence: 1 })],
+      ["an undeclared outcome", answer({ bucket: "outcome", outcome: "nope", confidence: 1 })],
+    ] as const;
+    for (const [n, a] of rows) {
+      await withScene(async (s) => {
+        const r = await run(s, {
+          jev: jevRow(a),
+          reviewer: { fixStep: [{ when: {}, reply: { answer: { give_up: true, reason: "no" } } }] },
+        });
+        expect(warnings(r), n).toContain("classifier_invalid_output");
+        expect(r.rev?.seen, n).toHaveLength(1);
+        expect(reviewerSeen(r).jev, n).toBeNull();
       });
-      expect(warnings(r)).toContain("classifier_invalid_output");
-      expect(r.rev?.seen).toHaveLength(1);
-      expect(reviewerSeen(r).jev).toBeNull();
-    });
+    }
   });
 
-  test("with the reviewer off, a jev climb is a rung 4 climb", async () => {
+  test("jev climbs, unsafe, and needs_review keep their meaning, and its request is recorded first", async () => {
+    // with the reviewer off, a jev climb is a rung 4 climb.
     await withScene(async (s) => {
       const r = await run(s, { jev: jevRow(answer({ bucket: "needs_review", confidence: 0.6 })) });
       expect(r.result.kind).toBe("climb");
       expect(ladderLines(r).at(-1)).toMatchObject({ rung: 2, next: "takeover" });
     });
-  });
 
-  test("unsafe at a low confidence is a takeover for unsafe_state", async () => {
+    // unsafe at a low confidence is a takeover for unsafe_state.
     await withScene(async (s) => {
       const r = await run(s, { jev: jevRow(answer({ bucket: "unsafe", confidence: 0.1 })) });
       expect(r.result.kind).toBe("unsafe");
     });
-  });
 
-  test("needs_review passes jev's bucket and confidence to the reviewer as a hint", async () => {
+    // needs_review passes jev's bucket and confidence to the reviewer as a hint.
     await withScene(async (s) => {
       const r = await run(s, {
         jev: jevRow(answer({ bucket: "needs_review", confidence: 0.71 })),
@@ -485,29 +485,31 @@ describe("rung 2: jev (section 5 §8.7)", () => {
         confidence: 0.71,
       });
     });
-  });
 
-  test.each([
-    ["timeout", { failure: "timeout" }, "classifier_unavailable"],
-    ["unavailable", { failure: "unavailable" }, "classifier_unavailable"],
-    ["invalid_output", { failure: "invalid_output" }, "classifier_invalid_output"],
-    ["bad raw output", { raw: { bucket: "x" } }, "classifier_invalid_output"],
-  ])("a jev %s warns %s, gives no hint, and the ladder goes on", async (_n, reply, code) => {
-    await withScene(async (s) => {
-      const r = await run(s, {
-        jev: { trouble: [{ when: {}, reply: reply as { failure: "timeout" } }] },
-        reviewer: { fixStep: [{ when: {}, reply: { answer: { give_up: true, reason: "no" } } }] },
-      });
-      expect(warnings(r)).toContain(code);
-      expect(reviewerSeen(r).jev).toBeNull();
-    });
-  });
-
-  test("the jev request is recorded before its reply", async () => {
+    // the jev request is recorded before its reply.
     await withScene(async (s) => {
       const r = await run(s, { jev: jevRow(answer({ bucket: "unsafe", confidence: 0.1 })) });
       expect(r.recorded).toEqual(["jev:request", "jev:reply"]);
     });
+  });
+
+  test("a failed or malformed jev call warns, gives no hint, and the ladder goes on", async () => {
+    const rows = [
+      ["timeout", { failure: "timeout" }, "classifier_unavailable"],
+      ["unavailable", { failure: "unavailable" }, "classifier_unavailable"],
+      ["invalid_output", { failure: "invalid_output" }, "classifier_invalid_output"],
+      ["bad raw output", { raw: { bucket: "x" } }, "classifier_invalid_output"],
+    ] as const;
+    for (const [n, reply, code] of rows) {
+      await withScene(async (s) => {
+        const r = await run(s, {
+          jev: { trouble: [{ when: {}, reply }] },
+          reviewer: { fixStep: [{ when: {}, reply: { answer: { give_up: true, reason: "no" } } }] },
+        });
+        expect(warnings(r), n).toContain(code);
+        expect(reviewerSeen(r).jev, n).toBeNull();
+      });
+    }
   });
 });
 
@@ -556,14 +558,14 @@ describe("rung 3: the reviewer (section 5 §8.8, §11)", () => {
     });
   });
 
-  test("navigate to an undeclared path is blocked: unsafe", async () => {
+  test("the gate blocks an undeclared path and a free-text value", async () => {
+    // navigate to an undeclared path is blocked: unsafe.
     await withScene(async (s) => {
       const r = await run(s, { reviewer: act({ type: "navigate", location: "/other" }) });
       expect(r.result.kind).toBe("unsafe");
     });
-  });
 
-  test("a type value that is not {input.x} is blocked: unsafe", async () => {
+    // a type value that is not {input.x} is blocked: unsafe.
     await withScene(async (s) => {
       const r = await run(s, {
         reviewer: act({ type: "type", element: s.boxId, value: "free text" }),
@@ -572,7 +574,8 @@ describe("rung 3: the reviewer (section 5 §8.8, §11)", () => {
     });
   });
 
-  test("give_up climbs", async () => {
+  test("a give_up, a missing element, and a press with no landing all climb", async () => {
+    // give_up climbs.
     await withScene(async (s) => {
       const r = await run(s, {
         reviewer: { fixStep: [{ when: {}, reply: { answer: { give_up: true, reason: "no" } } }] },
@@ -580,33 +583,34 @@ describe("rung 3: the reviewer (section 5 §8.8, §11)", () => {
       expect(r.result.kind).toBe("climb");
       expect(ladderLines(r).at(-1)).toMatchObject({ rung: 3, verdict: "climb", next: "takeover" });
     });
-  });
 
-  test.each([
-    ["a failed call", { failure: "timeout" }],
-    ["an invalid answer", { raw: { nope: 1 } }],
-  ])("%s climbs", async (_n, reply) => {
-    await withScene(async (s) => {
-      const r = await run(s, {
-        reviewer: { fixStep: [{ when: {}, reply: reply as { failure: "timeout" } }] },
-      });
-      expect(r.result.kind).toBe("climb");
-    });
-  });
-
-  test("an element that is not on the screen climbs", async () => {
+    // an element that is not on the screen climbs.
     await withScene(async (s) => {
       const r = await run(s, { reviewer: act({ type: "click", element: "e999" }) });
       expect(r.result.kind).toBe("climb");
     });
-  });
 
-  test("a press that lands nowhere climbs (no landing)", async () => {
+    // a press that lands nowhere climbs (no landing).
     await withScene(async (s) => {
       const r = await run(s, { reviewer: act({ type: "press", key: "Tab" }) });
       expect(r.result.kind).toBe("climb");
       expect(r.lines.filter((l) => l.event === "warning")).toEqual([]);
     });
+  });
+
+  test("a failed call or an invalid answer climbs", async () => {
+    const rows = [
+      ["a failed call", { failure: "timeout" }],
+      ["an invalid answer", { raw: { nope: 1 } }],
+    ] as const;
+    for (const [n, reply] of rows) {
+      await withScene(async (s) => {
+        const r = await run(s, {
+          reviewer: { fixStep: [{ when: {}, reply }] },
+        });
+        expect(r.result.kind, n).toBe("climb");
+      });
+    }
   });
 
   test("a press that leaves the precondition showing counts as landed (rerun the step)", async () => {
@@ -659,7 +663,8 @@ describe("rung 3: the reviewer (section 5 §8.8, §11)", () => {
     });
   });
 
-  test("the reviewer reads element IDs, the allowed lists, and the commit state", async () => {
+  test("the reviewer reads element IDs and limits, and onReviewerCall fires on failure too", async () => {
+    // the reviewer reads element IDs, the allowed lists, and the commit state.
     await withScene(async (s) => {
       const r = await run(s, { reviewer: act({ type: "click", element: s.closeId }) });
       const i = reviewerSeen(r);
@@ -668,30 +673,32 @@ describe("rung 3: the reviewer (section 5 §8.8, §11)", () => {
       expect(i.commit).toBe("not_sent");
       expect(i.screenshot).toBeNull();
     });
-  });
 
-  test.each([
-    ["one call already used on this step", { step: 1, run: 1 }],
-    ["two calls already used in this run", { step: 0, run: 2 }],
-  ])("%s: no reviewer call", async (_n, calls) => {
-    await withScene(async (s) => {
-      const r = await run(s, {
-        reviewer: act({ type: "click", element: s.closeId }),
-        reviewerCalls: calls,
-      });
-      expect(r.result.kind).toBe("climb");
-      expect(r.rev?.seen).toEqual([]);
-      expect(r.reviewerCalled()).toBe(0);
-    });
-  });
-
-  test("onReviewerCall fires once per call, even when the call fails", async () => {
+    // onReviewerCall fires once per call, even when the call fails.
     await withScene(async (s) => {
       const r = await run(s, {
         reviewer: { fixStep: [{ when: {}, reply: { failure: "unavailable" } }] },
       });
       expect(r.reviewerCalled()).toBe(1);
     });
+  });
+
+  test("a used-up step or run call limit stops the reviewer call", async () => {
+    const rows = [
+      ["one call already used on this step", { step: 1, run: 1 }],
+      ["two calls already used in this run", { step: 0, run: 2 }],
+    ] as const;
+    for (const [n, calls] of rows) {
+      await withScene(async (s) => {
+        const r = await run(s, {
+          reviewer: act({ type: "click", element: s.closeId }),
+          reviewerCalls: calls,
+        });
+        expect(r.result.kind, n).toBe("climb");
+        expect(r.rev?.seen, n).toEqual([]);
+        expect(r.reviewerCalled(), n).toBe(0);
+      });
+    }
   });
 });
 

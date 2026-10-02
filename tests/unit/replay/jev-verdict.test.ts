@@ -33,7 +33,7 @@ const reconcile = (v: ReconcileOut["verdict"], confidence: number) =>
   reconcileVerdict(ok({ verdict: v, confidence }), cutoffs);
 
 describe("troubleVerdict: thresholds", () => {
-  test("a handler passes at its cutoff and climbs just under it", () => {
+  test("handler, outcome, unsafe, and needs_review answers follow their cutoffs", () => {
     const h = { bucket: "handler", handler: "kyc_reminder" } as const;
     expect(trouble(answer({ ...h, confidence: 0.8 }))).toEqual({
       kind: "handler",
@@ -44,9 +44,7 @@ describe("troubleVerdict: thresholds", () => {
       kind: "needs_review",
       confidence: 0.79,
     });
-  });
 
-  test("an outcome passes at its cutoff and climbs just under it", () => {
     const o = { bucket: "outcome", outcome: "x" } as const;
     expect(trouble(answer({ ...o, confidence: 0.95 }))).toEqual({
       kind: "outcome",
@@ -57,18 +55,14 @@ describe("troubleVerdict: thresholds", () => {
       kind: "needs_review",
       confidence: 0.94,
     });
-  });
 
-  test("unsafe holds at any confidence", () => {
     for (const confidence of [0, 1]) {
       expect(trouble(answer({ bucket: "unsafe", confidence }))).toEqual({
         kind: "unsafe",
         confidence,
       });
     }
-  });
 
-  test("needs_review passes through with its confidence and no warning", () => {
     expect(trouble(answer({ bucket: "needs_review", confidence: 0.71 }))).toEqual({
       kind: "needs_review",
       confidence: 0.71,
@@ -79,29 +73,19 @@ describe("troubleVerdict: thresholds", () => {
 describe("troubleVerdict: jev fails (section 5 §10.7)", () => {
   const invalid = { kind: "needs_review", confidence: 0, warning: "classifier_invalid_output" };
 
-  test("an unknown handler, an undeclared outcome, or a bucket with no name is invalid output", () => {
+  test("bad names, failures, and off-schema values give invalid or no answer", () => {
     expect(trouble(answer({ bucket: "handler", handler: "nope", confidence: 1 }))).toEqual(invalid);
     expect(trouble(answer({ bucket: "outcome", outcome: "nope", confidence: 1 }))).toEqual(invalid);
     expect(trouble(answer({ bucket: "handler", handler: null, confidence: 1 }))).toEqual(invalid);
     expect(trouble(answer({ bucket: "outcome", outcome: null, confidence: 1 }))).toEqual(invalid);
-  });
-
-  test.each(["timeout", "unavailable", "refused", "write_failed"] as const)(
-    "a %s failure is no answer",
-    (failure) => {
-      expect(troubleVerdict(fail<CallFailure>(failure), choices, cutoffs)).toEqual({
+    for (const failure of ["timeout", "unavailable", "refused", "write_failed"] as const) {
+      expect(troubleVerdict(fail<CallFailure>(failure), choices, cutoffs), failure).toEqual({
         kind: "needs_review",
         confidence: 0,
         warning: "classifier_unavailable",
       });
-    },
-  );
-
-  test("an invalid_output failure is invalid output", () => {
+    }
     expect(troubleVerdict(fail<CallFailure>("invalid_output"), choices, cutoffs)).toEqual(invalid);
-  });
-
-  test("an off-schema value that slipped past the adapter is invalid output", () => {
     const bad = [
       { ...answer({ bucket: "unsafe" }), confidence: 1.5 },
       { ...answer({ bucket: "unsafe" }), extra: true },
@@ -111,20 +95,17 @@ describe("troubleVerdict: jev fails (section 5 §10.7)", () => {
 });
 
 describe("reconcileVerdict (section 5 §10.5)", () => {
-  test("found and not_found count at the cutoff and are unclear just under it", () => {
+  test("found and not_found follow the cutoff", () => {
     expect(reconcile("found", 0.9)).toEqual({ verdict: "found", confidence: 0.9 });
     expect(reconcile("found", 0.89)).toEqual({ verdict: "unclear", confidence: 0.89 });
     expect(reconcile("not_found", 0.9)).toEqual({ verdict: "not_found", confidence: 0.9 });
     expect(reconcile("not_found", 0.89)).toEqual({ verdict: "unclear", confidence: 0.89 });
   });
 
-  test("unclear passes through", () => {
+  test("unclear passes through, and any failure is unclear with confidence 0 and the right warning", () => {
     expect(reconcile("unclear", 0.3)).toEqual({ verdict: "unclear", confidence: 0.3 });
-  });
-
-  test("any failure is unclear, confidence 0, with the right warning", () => {
     for (const failure of ["timeout", "unavailable", "refused", "write_failed"] as const) {
-      expect(reconcileVerdict(fail<CallFailure>(failure), cutoffs)).toEqual({
+      expect(reconcileVerdict(fail<CallFailure>(failure), cutoffs), failure).toEqual({
         verdict: "unclear",
         confidence: 0,
         warning: "classifier_unavailable",
@@ -253,7 +234,7 @@ describe("schemas accept the design examples and reject extra fields", () => {
     screenshot: null,
   };
 
-  test.each([
+  const examples = [
     ["JevTroubleInput", JevTroubleInput, troubleIn],
     ["JevReconcileInput", JevReconcileInput, reconcileIn],
     ["ReviewerInput", ReviewerInput, reviewerIn],
@@ -277,16 +258,16 @@ describe("schemas accept the design examples and reject extra fields", () => {
       ReviewerOutput,
       { give_up: true, reason: "The screen asks for an approval I cannot give." },
     ],
-  ] as const)("%s", (_name, schema, example) => {
-    expect(schema.safeParse(example).success).toBe(true);
-    expect(schema.safeParse({ ...example, extra: 1 }).success).toBe(false);
-  });
+  ] as const;
 
-  test("the optional screenshot field is accepted on jev's input", () => {
+  test("each schema accepts its example and rejects an extra field, and input rules hold", () => {
+    for (const [name, schema, example] of examples) {
+      expect(schema.safeParse(example).success, name).toBe(true);
+      expect(schema.safeParse({ ...example, extra: 1 }).success, name).toBe(false);
+    }
+    // The optional screenshot field is accepted on jev's input.
     expect(JevTroubleInput.safeParse({ ...troubleIn, screenshot: "aGk=" }).success).toBe(true);
-  });
-
-  test("an input with the wrong schema string is rejected", () => {
+    // An input with the wrong schema string is rejected.
     expect(JevTroubleInput.safeParse({ ...troubleIn, schema: "intyy.jev.step/2.0" }).success).toBe(
       false,
     );

@@ -45,30 +45,35 @@ async function open() {
 }
 
 describe("snapshot fake crop", () => {
-  test("an element with `image` returns exactly those bytes, and decodePng reads them", async () => {
-    const { eyes, ref } = await open();
-    const got = await eyes.crop(ref("Go"));
-    expect(got.ok).toBe(true);
-    if (!got.ok) return;
-    expect(Array.from(got.value)).toEqual(Array.from(IMAGE));
-    const px = decodePng(got.value);
-    expect(px.ok && Array.from(px.value.data)).toEqual(Array.from(PICTURE.data));
-  });
+  test("the fake crop returns image bytes, the old image, and stale_element", async () => {
+    // an element with `image` returns exactly those bytes, and decodePng reads them.
+    {
+      const { eyes, ref } = await open();
+      const got = await eyes.crop(ref("Go"));
+      expect(got.ok).toBe(true);
+      if (!got.ok) return;
+      expect(Array.from(got.value)).toEqual(Array.from(IMAGE));
+      const px = decodePng(got.value);
+      expect(px.ok && Array.from(px.value.data)).toEqual(Array.from(PICTURE.data));
+    }
 
-  test("an element without `image` returns the old fake image, not a real PNG", async () => {
-    const { eyes, ref } = await open();
-    const got = await eyes.crop(ref("Stop"));
-    expect(got.ok).toBe(true);
-    if (!got.ok) return;
-    expect(Array.from(got.value)).not.toEqual(Array.from(IMAGE));
-    expect(decodePng(got.value).ok).toBe(false);
-  });
+    // an element without `image` returns the old fake image, not a real PNG.
+    {
+      const { eyes, ref } = await open();
+      const got = await eyes.crop(ref("Stop"));
+      expect(got.ok).toBe(true);
+      if (!got.ok) return;
+      expect(Array.from(got.value)).not.toEqual(Array.from(IMAGE));
+      expect(decodePng(got.value).ok).toBe(false);
+    }
 
-  test("a stale ref is stale_element", async () => {
-    const { eyes } = await open();
-    expect(await eyes.crop("999/with" as unknown as ElementRef)).toEqual({
-      ok: false,
-      failure: "stale_element",
-    });
+    // a stale ref is stale_element.
+    {
+      const { eyes } = await open();
+      expect(await eyes.crop("999/with" as unknown as ElementRef)).toEqual({
+        ok: false,
+        failure: "stale_element",
+      });
+    }
   });
 });

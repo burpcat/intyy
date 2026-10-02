@@ -110,73 +110,87 @@ beforeAll(async () => {
 const llmOf = (r: { files: ScanFile[] }) => r.files.filter((f) => f.path.startsWith("llm/"));
 
 describe("the run drove both rungs, with the canary on screen", () => {
-  test("jev said needs_review, the reviewer's click recovered, and four llm/ files exist", () => {
-    expect(CANARY).toMatch(/^\d+$/);
-    expect(on.result.status).toBe("success");
-    expect(on.jev.seen).toHaveLength(1);
-    expect(on.reviewer.seen).toHaveLength(1);
-    expect(llmOf(on).map((f) => f.path)).toEqual([
-      expect.stringMatching(/_jev_request\.json$/),
-      expect.stringMatching(/_jev_reply\.json$/),
-      expect.stringMatching(/_reviewer_request\.json$/),
-      expect.stringMatching(/_reviewer_reply\.json$/),
-    ]);
-  });
+  test("the run drove both rungs, and the screen text reached the requests as masked references", () => {
+    // jev said needs_review, the reviewer's click recovered, and four llm/ files exist.
+    {
+      expect(CANARY).toMatch(/^\d+$/);
+      expect(on.result.status).toBe("success");
+      expect(on.jev.seen).toHaveLength(1);
+      expect(on.reviewer.seen).toHaveLength(1);
+      expect(llmOf(on).map((f) => f.path)).toEqual([
+        expect.stringMatching(/_jev_request\.json$/),
+        expect.stringMatching(/_jev_reply\.json$/),
+        expect.stringMatching(/_reviewer_request\.json$/),
+        expect.stringMatching(/_reviewer_reply\.json$/),
+      ]);
+    }
 
-  test("the screen's text did reach the requests, as masked references", () => {
-    const jevReq = text(llmOf(on)[0]);
-    expect(jevReq).toContain("Branch review pending");
-    expect(jevReq).toContain("{input.member_id}");
+    // the screen's text did reach the requests, as masked references.
+    {
+      const jevReq = text(llmOf(on)[0]);
+      expect(jevReq).toContain("Branch review pending");
+      expect(jevReq).toContain("{input.member_id}");
+    }
   });
 });
 
 describe("no canary in any stored file (section 4 §10, §14)", () => {
-  test("every llm/ file and every other run file is clean in all four forms", () => {
-    for (const r of [on, off]) expect(scanForCanaries(r.files, [CANARY])).toEqual([]);
-  });
+  test("no canary is in any stored file, and planted controls prove the scan finds it", () => {
+    // every llm/ file and every other run file is clean in all four forms.
+    {
+      for (const r of [on, off]) expect(scanForCanaries(r.files, [CANARY])).toEqual([]);
+    }
 
-  test("a planted control under llm/ is found, so a clean scan means clean", () => {
-    const planted = [...on.files, { path: "llm/99999_planted.json", bytes: new TextEncoder().encode(`{"x":"${CANARY}"}`) }];
-    expect(scanForCanaries(planted, [CANARY])).toEqual([{ path: "llm/99999_planted.json", marker: 0, form: "raw" }]);
-    expect(scanForCanaries(on.files, [CANARY])).toEqual([]);
-  });
+    // a planted control under llm/ is found, so a clean scan means clean.
+    {
+      const planted = [...on.files, { path: "llm/99999_planted.json", bytes: new TextEncoder().encode(`{"x":"${CANARY}"}`) }];
+      expect(scanForCanaries(planted, [CANARY])).toEqual([{ path: "llm/99999_planted.json", marker: 0, form: "raw" }]);
+      expect(scanForCanaries(on.files, [CANARY])).toEqual([]);
+    }
 
-  test("the planted control is also found in the other three forms", () => {
-    const forms = [
-      Buffer.from(CANARY).toString("base64"),
-      encodeURIComponent(CANARY),
-      CANARY.split("").map((c) => `&#${String(c.codePointAt(0))};`).join(""),
-    ];
-    for (const form of forms) {
-      const planted = [{ path: "llm/99999_planted.json", bytes: new TextEncoder().encode(form) }];
-      expect(scanForCanaries(planted, [CANARY])).toHaveLength(1);
+    // the planted control is also found in the other three forms.
+    {
+      const forms = [
+        Buffer.from(CANARY).toString("base64"),
+        encodeURIComponent(CANARY),
+        CANARY.split("").map((c) => `&#${String(c.codePointAt(0))};`).join(""),
+      ];
+      for (const form of forms) {
+        const planted = [{ path: "llm/99999_planted.json", bytes: new TextEncoder().encode(form) }];
+        expect(scanForCanaries(planted, [CANARY])).toHaveLength(1);
+      }
     }
   });
 });
 
 describe("what each model sees (section 4 §10.8)", () => {
-  test("jev's request has no element id and no screenshot", () => {
-    for (const r of [on, off]) {
-      const raw = text(llmOf(r)[0]);
-      const req = JSON.parse(raw) as { screen: { elements: Record<string, unknown>[] } };
-      expect(req.screen.elements.length).toBeGreaterThan(0);
-      for (const e of req.screen.elements) expect(Object.keys(e)).not.toContain("id");
-      expect(raw).not.toContain('"screenshot"');
+  test("each model sees the fields the design gives it, with screenshots on and off", () => {
+    // jev's request has no element id and no screenshot.
+    {
+      for (const r of [on, off]) {
+        const raw = text(llmOf(r)[0]);
+        const req = JSON.parse(raw) as { screen: { elements: Record<string, unknown>[] } };
+        expect(req.screen.elements.length).toBeGreaterThan(0);
+        for (const e of req.screen.elements) expect(Object.keys(e)).not.toContain("id");
+        expect(raw).not.toContain('"screenshot"');
+      }
     }
-  });
 
-  test("the reviewer's request has an id on every element, and a screenshot when send_screenshots is on", () => {
-    const req = JSON.parse(text(llmOf(on)[2])) as { screen: { elements: { id?: unknown }[] }; screenshot: string | null };
-    expect(req.screen.elements.length).toBeGreaterThan(0);
-    for (const e of req.screen.elements) expect(e.id).toMatch(/^e\d+$/);
-    expect(typeof req.screenshot).toBe("string");
-    expect(req.screenshot?.length).toBeGreaterThan(0);
-  });
+    // the reviewer's request has an id on every element, and a screenshot when send_screenshots is on.
+    {
+      const req = JSON.parse(text(llmOf(on)[2])) as { screen: { elements: { id?: unknown }[] }; screenshot: string | null };
+      expect(req.screen.elements.length).toBeGreaterThan(0);
+      for (const e of req.screen.elements) expect(e.id).toMatch(/^e\d+$/);
+      expect(typeof req.screenshot).toBe("string");
+      expect(req.screenshot?.length).toBeGreaterThan(0);
+    }
 
-  test("send_screenshots off: the reviewer's screenshot is null, and ids stay", () => {
-    const req = JSON.parse(text(llmOf(off)[2])) as { screen: { elements: { id?: unknown }[] }; screenshot: string | null };
-    expect(req.screenshot).toBeNull();
-    for (const e of req.screen.elements) expect(e.id).toMatch(/^e\d+$/);
+    // send_screenshots off: the reviewer's screenshot is null, and ids stay.
+    {
+      const req = JSON.parse(text(llmOf(off)[2])) as { screen: { elements: { id?: unknown }[] }; screenshot: string | null };
+      expect(req.screenshot).toBeNull();
+      for (const e of req.screen.elements) expect(e.id).toMatch(/^e\d+$/);
+    }
   });
 });
 
