@@ -79,7 +79,7 @@ A human takes over the live browser session and hands it back, set A is publishe
 - [x] 10. Write `evidence publish | verify` and `npm run test:safety`.
 - [x] 11. Stop. Ask the owner to run the live handoff (A11) with two terminals.
 - [x] 12. Draft `README.md`, `REPORT.md`, and `evidence/README.md` from the outlines.
-- [ ] 13. Stop. Ask the owner to publish set A, run `evidence verify`, and tag `v0.1-thin-slice`.
+- [x] 13. Stop. Ask the owner to publish set A, run `evidence verify`, and tag `v0.1-thin-slice`.
 
 **The live handoff (A11), for the owner:**
 
@@ -107,8 +107,8 @@ A human takes over the live browser session and hands it back, set A is publishe
 ### Owner checks
 
 - [x] A11 ran as above. The mailbox shows the claim, the release, and the captured human actions, masked.
-- [ ] `intyy evidence verify` is clean on the published set A.
-- [ ] You ran every README command once, from the top.
+- [x] `intyy evidence verify` is clean on the published set A. (2026-10-02: 17 items, 227 files; tag `v0.1-thin-slice` at a2fc01b)
+- [x] You ran every README command once, from the top. (2026-10-02; discovery and sign-offs not re-run, M10 commands wait on M10 approvals)
 - [x] `REPORT.md` has the brief's seven headings, in order.
 
 ## Evidence produced
