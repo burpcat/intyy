@@ -61,18 +61,8 @@ async function editWith(
 
 const ID = "keystone/kvfcu";
 
-describe("testdata edit, check", () => {
-  test("edit saves a valid candidate; check passes", async () => {
-    const r = tempRoot();
-    const edited = await editWith(r, "op_017", ["testdata", "edit", "kvfcu"], testdataBody());
-    expect(edited.code).toBe(EXIT.ok);
-    const checked = await cli(r, "op_017", ["testdata", "check", "kvfcu"]);
-    expect(checked.code).toBe(EXIT.ok);
-  });
-});
-
 describe("testdata refuses an app whose settings say environment: production", () => {
-  test("edit itself refuses, since it validates before saving", async () => {
+  test("edit itself refuses, since it validates before saving; environment: test is fine", async () => {
     const r = tempRoot();
     await editWith(r, "op_017", ["settings", "edit"], settingsBody("production"));
     await cli(r, "op_017", ["settings", "seal"]);
@@ -81,25 +71,31 @@ describe("testdata refuses an app whose settings say environment: production", (
     const edited = await editWith(r, "op_017", ["testdata", "edit", "kvfcu"], testdataBody());
     expect(edited.code).toBe(EXIT.invalid);
     expect(edited.stderr).toContain("production_app");
-  });
 
-  test("environment: test is fine", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", ["settings", "edit"], settingsBody("test"));
-    await cli(r, "op_017", ["settings", "seal"]);
-    await cli(r, "op_022", ["settings", "approve", "--rev", "1"]);
+    const testRoot = tempRoot();
+    await editWith(testRoot, "op_017", ["settings", "edit"], settingsBody("test"));
+    await cli(testRoot, "op_017", ["settings", "seal"]);
+    await cli(testRoot, "op_022", ["settings", "approve", "--rev", "1"]);
 
-    const edited = await editWith(r, "op_017", ["testdata", "edit", "kvfcu"], testdataBody());
-    expect(edited.code).toBe(EXIT.ok);
+    const fine = await editWith(testRoot, "op_017", ["testdata", "edit", "kvfcu"], testdataBody());
+    expect(fine.code).toBe(EXIT.ok);
   });
 });
 
-describe("testdata seal, approve: roles per tenant, and four eyes", () => {
-  test("op_017 seals (reviewer via *); op_022 approves (approver at keystone)", async () => {
+describe("testdata edit, check, seal, approve: roles per tenant, and four eyes", () => {
+  test("edit saves a valid candidate and check passes; op_017 seals (reviewer via *) but has no approver role; op_022 approves (approver at keystone)", async () => {
     const r = tempRoot();
-    await editWith(r, "op_017", ["testdata", "edit", "kvfcu"], testdataBody());
+    const edited = await editWith(r, "op_017", ["testdata", "edit", "kvfcu"], testdataBody());
+    expect(edited.code).toBe(EXIT.ok);
+    const checked = await cli(r, "op_017", ["testdata", "check", "kvfcu"]);
+    expect(checked.code).toBe(EXIT.ok);
+
     const sealed = await cli(r, "op_017", ["testdata", "seal", "kvfcu"]);
     expect(sealed.code).toBe(EXIT.ok);
+    // op_017 has no approver role at keystone or anywhere
+    const wrongRole = await cli(r, "op_017", ["testdata", "approve", "kvfcu", "--rev", "1"]);
+    expect(wrongRole.code).toBe(EXIT.refused);
+    expect(wrongRole.stderr).toContain("lacks the approver role for tenant keystone");
     const approved = await cli(r, "op_022", ["testdata", "approve", "kvfcu", "--rev", "1"]);
     expect(approved.code).toBe(EXIT.ok);
   });
@@ -111,14 +107,5 @@ describe("testdata seal, approve: roles per tenant, and four eyes", () => {
     const selfApprove = await cli(r, "op_022", ["testdata", "approve", "kvfcu", "--rev", "1"]);
     expect(selfApprove.code).toBe(EXIT.refused);
     expect(selfApprove.stderr).toContain(`four eyes: op_022 sealed testdata ${ID} 1`);
-  });
-
-  test("op_017 has no approver role at keystone or anywhere", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", ["testdata", "edit", "kvfcu"], testdataBody());
-    await cli(r, "op_017", ["testdata", "seal", "kvfcu"]);
-    const wrongRole = await cli(r, "op_017", ["testdata", "approve", "kvfcu", "--rev", "1"]);
-    expect(wrongRole.code).toBe(EXIT.refused);
-    expect(wrongRole.stderr).toContain("lacks the approver role for tenant keystone");
   });
 });

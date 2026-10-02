@@ -54,58 +54,39 @@ async function editWith(
 const CAP = "kvfcu/open_share_subaccount@1";
 
 describe("suite edit, check", () => {
-  test("edit saves a valid candidate; check passes", async () => {
+  test("edit refuses an unknown class named by the matrix and saves nothing; then edit saves a valid candidate and check passes", async () => {
     const r = tempRoot();
+    const bad = { ...suiteBody(), matrix: { class: "no_such_class", profiles: "standard" } };
+    const refused = await editWith(r, "op_017", CAP, bad);
+    expect(refused.code).toBe(EXIT.invalid);
+    expect(refused.stderr).toContain("unknown_class");
+    const none = await cli(r, "op_017", ["suite", "check", CAP]);
+    expect(none.code).toBe(EXIT.usage);
+
     const edited = await editWith(r, "op_017", CAP, suiteBody());
     expect(edited.code).toBe(EXIT.ok);
     const checked = await cli(r, "op_017", ["suite", "check", CAP]);
     expect(checked.code).toBe(EXIT.ok);
   });
-
-  test("edit refuses an unknown class named by the matrix; nothing is saved", async () => {
-    const r = tempRoot();
-    const bad = { ...suiteBody(), matrix: { class: "no_such_class", profiles: "standard" } };
-    const edited = await editWith(r, "op_017", CAP, bad);
-    expect(edited.code).toBe(EXIT.invalid);
-    expect(edited.stderr).toContain("unknown_class");
-    const checked = await cli(r, "op_017", ["suite", "check", CAP]);
-    expect(checked.code).toBe(EXIT.usage);
-  });
 });
 
 describe("suite seal, approve: roles (scope * has no staff with both reviewer and approver)", () => {
-  test("op_017 seals; op_031 approves", async () => {
+  test("op_017 seals but has no approver role; op_022 lacks the * scope; op_031 approves, once", async () => {
     const r = tempRoot();
     await editWith(r, "op_017", CAP, suiteBody());
     const sealed = await cli(r, "op_017", ["suite", "seal", CAP]);
     expect(sealed.code).toBe(EXIT.ok);
-    const approved = await cli(r, "op_031", ["suite", "approve", CAP, "--rev", "1"]);
-    expect(approved.code).toBe(EXIT.ok);
-  });
-
-  test("the sealer op_017 has no approver role at all; the role check refuses first", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", CAP, suiteBody());
-    await cli(r, "op_017", ["suite", "seal", CAP]);
+    // the sealer op_017 has no approver role at all; the role check refuses first
     const selfApprove = await cli(r, "op_017", ["suite", "approve", CAP, "--rev", "1"]);
     expect(selfApprove.code).toBe(EXIT.refused);
     expect(selfApprove.stderr).toContain("lacks the approver role for every tenant (*)");
-  });
-
-  test("op_022 approves only at keystone and lakeshore; a suite needs the * scope", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", CAP, suiteBody());
-    await cli(r, "op_017", ["suite", "seal", CAP]);
+    // op_022 approves only at keystone and lakeshore; a suite needs the * scope
     const wrongScope = await cli(r, "op_022", ["suite", "approve", CAP, "--rev", "1"]);
     expect(wrongScope.code).toBe(EXIT.refused);
     expect(wrongScope.stderr).toContain("lacks the approver role for every tenant (*)");
-  });
-
-  test("approving twice is refused the second time", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", CAP, suiteBody());
-    await cli(r, "op_017", ["suite", "seal", CAP]);
-    await cli(r, "op_031", ["suite", "approve", CAP, "--rev", "1"]);
+    const approved = await cli(r, "op_031", ["suite", "approve", CAP, "--rev", "1"]);
+    expect(approved.code).toBe(EXIT.ok);
+    // approving twice is refused the second time
     const again = await cli(r, "op_031", ["suite", "approve", CAP, "--rev", "1"]);
     expect(again.code).toBe(EXIT.refused);
     expect(again.stderr).toContain("already approved");
@@ -134,9 +115,8 @@ async function sealSignInArtifact(r: string): Promise<void> {
 const SIGN_IN_CAP = "kvfcu/sign_in@1";
 
 describe("suite check: the void-step warning against a sealed artifact (section 9 §8.7)", () => {
-  test("an extra case naming a step missing from the sealed version warns, but still passes", async () => {
+  test("with no sealed artifact the check runs clean; an extra case naming a step missing from the sealed version then warns, but still passes", async () => {
     const r = tempRoot();
-    await sealSignInArtifact(r);
     // sign_in's own real steps hold only `click_login` (tests/fixtures/replay/sign_in.json):
     // `click_confirm` is missing from it.
     await editWith(r, "op_017", SIGN_IN_CAP, {
@@ -151,29 +131,16 @@ describe("suite check: the void-step warning against a sealed artifact (section 
         },
       ],
     });
+    // no sealed artifact yet: the check runs clean, with no void-step warning
+    const clean = await cli(r, "op_017", ["suite", "check", SIGN_IN_CAP]);
+    expect(clean.code).toBe(EXIT.ok);
+    expect(clean.stdout).not.toContain("warning:");
+
+    await sealSignInArtifact(r);
     const checked = await cli(r, "op_017", ["suite", "check", SIGN_IN_CAP]);
     expect(checked.code).toBe(EXIT.ok);
     expect(checked.stdout).toContain(
       "warning: void_step: extra extra_missing_step names step click_confirm, missing from the sealed version",
     );
-  });
-
-  test("no sealed artifact yet: the check runs clean, with no void-step warning", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", SIGN_IN_CAP, {
-      ...suiteBody(),
-      capability: SIGN_IN_CAP,
-      extra: [
-        {
-          id: "extra_missing_step",
-          class: "valid",
-          faults: [{ kind: "server_error", at: "@step:click_confirm" }],
-          expect: { status: "success" },
-        },
-      ],
-    });
-    const checked = await cli(r, "op_017", ["suite", "check", SIGN_IN_CAP]);
-    expect(checked.code).toBe(EXIT.ok);
-    expect(checked.stdout).not.toContain("warning:");
   });
 });

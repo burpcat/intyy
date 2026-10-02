@@ -59,40 +59,29 @@ function decisionsWithoutAt(cand: Record<string, unknown>): Record<string, unkno
   return decisions.map((d) => ({ what: d.what, subject: d.subject, value: d.value, by: d.by }));
 }
 
-describe("pack edit: the auto-stamp (docs/decisions.md, M06)", () => {
-  test("a new response-action risk gets a fresh risk decision, stamped by the editing staff", async () => {
+describe("pack edit: the auto-stamp (docs/decisions.md, M06); pack check needs no second look", () => {
+  test("a new risk gets a stamp by the editing staff; an unchanged risk adds none; a forged entry is dropped; a changed risk gets a new stamp and the old one stands", async () => {
     const r = tempRoot();
+    // a new response-action risk gets a fresh risk decision, stamped by the editing staff
     const edited = await editWith(r, "op_017", packBody());
     expect(edited.code).toBe(EXIT.ok);
     expect(decisionsWithoutAt(readCandidate(r))).toEqual([
       { what: "risk", subject: "popup_handler.response[0]", value: "idempotent", by: "op_017" },
     ]);
-  });
 
-  test("an unchanged risk on a second edit adds no new stamp", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody());
+    // pack check: a candidate with an unconfirmed risk still passes check
+    const got = await cli(r, "op_017", ["pack", "check", "global"]);
+    expect(got.code).toBe(EXIT.ok);
+
+    // an unchanged risk on a second edit adds no new stamp
     const before = readCandidate(r);
     await editWith(r, "op_017", { ...packBody(), reason: "Widened the description only." });
     const after = readCandidate(r);
     expect((after.provenance as { decisions: unknown[] }).decisions).toEqual(
       (before.provenance as { decisions: unknown[] }).decisions,
     );
-  });
 
-  test("a changed risk gets a new stamp; the old one still stands in provenance", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody("idempotent"));
-    await editWith(r, "op_022", packBody("reversible"));
-    expect(decisionsWithoutAt(readCandidate(r))).toEqual([
-      { what: "risk", subject: "popup_handler.response[0]", value: "idempotent", by: "op_017" },
-      { what: "risk", subject: "popup_handler.response[0]", value: "reversible", by: "op_022" },
-    ]);
-  });
-
-  test("a forged provenance.decisions entry in the edited file is dropped, never trusted", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody());
+    // a forged provenance.decisions entry in the edited file is dropped, never trusted
     const forged = {
       ...packBody(),
       provenance: {
@@ -109,55 +98,17 @@ describe("pack edit: the auto-stamp (docs/decisions.md, M06)", () => {
     expect(decisions).toEqual([
       { what: "risk", subject: "popup_handler.response[0]", value: "idempotent", by: "op_017" },
     ]);
-  });
-});
 
-describe("pack check: loader checks only, no second-look needed", () => {
-  test("a candidate with an unconfirmed risk still passes check", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody());
-    const got = await cli(r, "op_017", ["pack", "check", "global"]);
-    expect(got.code).toBe(EXIT.ok);
+    // a changed risk gets a new stamp; the old one still stands in provenance
+    await editWith(r, "op_022", packBody("reversible"));
+    expect(decisionsWithoutAt(readCandidate(r))).toEqual([
+      { what: "risk", subject: "popup_handler.response[0]", value: "idempotent", by: "op_017" },
+      { what: "risk", subject: "popup_handler.response[0]", value: "reversible", by: "op_022" },
+    ]);
   });
 });
 
 describe("pack seal: refuses an unstamped risk without a second look", () => {
-  test("seal is refused until another reviewer agrees", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody());
-    const refused = await cli(r, "op_022", ["pack", "seal", "global"]);
-    expect(refused.code).toBe(EXIT.invalid);
-    expect(refused.stderr).toContain("missing_second_look");
-  });
-
-  test("second-look --agree by another staff, then seal succeeds", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody());
-    const looked = await cli(r, "op_022", ["pack", "second-look", "global", "popup_handler.response[0]", "--agree"]);
-    expect(looked.code).toBe(EXIT.ok);
-    const sealed = await cli(r, "op_022", ["pack", "seal", "global"]);
-    expect(sealed.code).toBe(EXIT.ok);
-  });
-
-  test("second-look by the same staff who made the risk decision is refused", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody());
-    const looked = await cli(r, "op_017", ["pack", "second-look", "global", "popup_handler.response[0]", "--agree"]);
-    expect(looked.code).toBe(EXIT.refused);
-    expect(looked.stderr).toContain("another staff ID must give the second look");
-  });
-
-  test("--disagree records a dispute; seal still refuses", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", packBody());
-    const disagreed = await cli(r, "op_022", ["pack", "second-look", "global", "popup_handler.response[0]", "--disagree"]);
-    expect(disagreed.code).toBe(EXIT.ok);
-    const sealed = await cli(r, "op_022", ["pack", "seal", "global"]);
-    expect(sealed.code).toBe(EXIT.invalid);
-  });
-});
-
-describe("pack dry-run --fixtures", () => {
   /** Writes one fixture folder directly (no discovery run needed for this offline check). */
   function writeFixture(r: string, id: string, a11y: string, location = "/home"): void {
     const dir = join(r, "library", "fixtures", "kvfcu", id);
@@ -180,19 +131,42 @@ describe("pack dry-run --fixtures", () => {
     writeFileSync(join(dir, "a11y.yaml"), a11y);
   }
 
-  test("shows which fixtures fire, and which do not, for the sealed pack", async () => {
+  test("seal is refused until another reviewer agrees; the same staff cannot give the second look; then seal succeeds and dry-run --fixtures shows which fixtures fire", async () => {
     const r = tempRoot();
     await editWith(r, "op_017", packBody());
-    await cli(r, "op_022", ["pack", "second-look", "global", "popup_handler.response[0]", "--agree"]);
-    await cli(r, "op_022", ["pack", "seal", "global"]);
+    // seal is refused until another reviewer agrees
+    const refused = await cli(r, "op_022", ["pack", "seal", "global"]);
+    expect(refused.code).toBe(EXIT.invalid);
+    expect(refused.stderr).toContain("missing_second_look");
+
+    // second-look by the same staff who made the risk decision is refused
+    const same = await cli(r, "op_017", ["pack", "second-look", "global", "popup_handler.response[0]", "--agree"]);
+    expect(same.code).toBe(EXIT.refused);
+    expect(same.stderr).toContain("another staff ID must give the second look");
+
+    // second-look --agree by another staff, then seal succeeds
+    const looked = await cli(r, "op_022", ["pack", "second-look", "global", "popup_handler.response[0]", "--agree"]);
+    expect(looked.code).toBe(EXIT.ok);
+    const sealed = await cli(r, "op_022", ["pack", "seal", "global"]);
+    expect(sealed.code).toBe(EXIT.ok);
+
+    // pack dry-run --fixtures shows which fixtures fire, and which do not, for the sealed pack
     writeFixture(r, "popup_fire_01", '- heading "x"\n- button "OK"');
     writeFixture(r, "quiet_home_01", '- heading "Welcome"');
-
     const got = await cli(r, "op_017", ["pack", "dry-run", "global", "--fixtures", "--json"]);
     expect(got.code).toBe(EXIT.ok);
     const rows = (JSON.parse(got.stdout) as { fixtures: { fixtureId: string; fires: string[] }[] }).fixtures;
     const byId = new Map(rows.map((row) => [row.fixtureId, row.fires]));
     expect(byId.get("popup_fire_01")).toEqual(["popup_handler"]);
     expect(byId.get("quiet_home_01")).toEqual([]);
+  });
+
+  test("--disagree records a dispute; seal still refuses", async () => {
+    const r = tempRoot();
+    await editWith(r, "op_017", packBody());
+    const disagreed = await cli(r, "op_022", ["pack", "second-look", "global", "popup_handler.response[0]", "--disagree"]);
+    expect(disagreed.code).toBe(EXIT.ok);
+    const sealed = await cli(r, "op_022", ["pack", "seal", "global"]);
+    expect(sealed.code).toBe(EXIT.invalid);
   });
 });

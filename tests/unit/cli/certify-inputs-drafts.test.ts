@@ -16,12 +16,10 @@ const REPO_ROOT = join(import.meta.dirname, "../../..");
 const libraryFile = (relPath: string): unknown =>
   JSON.parse(readFileSync(join(REPO_ROOT, "library", relPath), "utf8"));
 
-describe("the real testdata revision", () => {
-  test("parses with its schema", () => {
+describe("the real testdata and faults revisions", () => {
+  test("the testdata revision parses with its schema and holds no value from the real intyy.json's canary_members; the faults revision parses with its schema", () => {
     expect(Testdata.safeParse(libraryFile("testdata/keystone/kvfcu/1.json")).success).toBe(true);
-  });
 
-  test("holds no value from the real intyy.json's canary_members", () => {
     const config = Config.parse(JSON.parse(readFileSync(join(REPO_ROOT, "intyy.json"), "utf8")));
     const doc = Testdata.parse(libraryFile("testdata/keystone/kvfcu/1.json"));
     const canary = new Set(config.canary_members);
@@ -29,11 +27,7 @@ describe("the real testdata revision", () => {
       .flat()
       .filter((v) => canary.has(v));
     expect(hits).toEqual([]);
-  });
-});
 
-describe("the real faults revision", () => {
-  test("parses with its schema", () => {
     expect(Faults.safeParse(libraryFile("faults/kvfcu/1.json")).success).toBe(true);
   });
 });

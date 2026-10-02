@@ -89,11 +89,9 @@ function inputFlags(program: Command): string[] {
 }
 
 describe("no inputs on flags", () => {
-  test("no real command takes an input value as a flag", () => {
+  test("no real command takes an input value as a flag, and the check itself catches an input flag", () => {
     expect(inputFlags(commandTree(commands))).toEqual([]);
-  });
 
-  test("the check itself catches an input flag", () => {
     const program = commandTree([
       (p) => {
         // Why not `--mode`: M05 task 9 adds it to the real allow list (a place/choice flag on

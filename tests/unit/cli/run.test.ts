@@ -47,8 +47,8 @@ describe("intyy run status: not final (section 9 §10.2)", () => {
   });
 });
 
-describe("intyy run status | show: a final run (section 3 §5.13)", () => {
-  test("status re-reads run.json masked to the literal [financial], with warning outputs_masked", async () => {
+describe("intyy run status | show | list: a final run (section 3 §5.13)", () => {
+  test("status re-reads run.json masked to the literal [financial], with warning outputs_masked; show prints the same masked result; list shows the run in one document", async () => {
     const env = await replayRoot();
     const ran = await runSupervisedToEnd(env, openSubArgv(env));
     expect(ran.code).toBe(0);
@@ -65,28 +65,19 @@ describe("intyy run status | show: a final run (section 3 §5.13)", () => {
     // A re-read never shows the raw value: a live delivery already happened once.
     // open_sub.json's account_number output is declared `sensitivity: "financial"`.
     expect(data.outputs?.account_number).toBe("[financial]");
-  });
 
-  test("show prints the same stored result, masked the same way", async () => {
-    const env = await replayRoot();
-    const ran = await runSupervisedToEnd(env, openSubArgv(env));
+    // show prints the same stored result, masked the same way
     const shown = await replayCall(env, ["run", "show", ran.runId, "--json"]);
     expect(shown.code).toBe(0);
-    const data = JSON.parse(shown.stdout) as { status: string; outputs?: Record<string, unknown> };
-    expect(data.status).toBe("success");
-    expect(data.outputs?.account_number).toBe("[financial]");
-  });
-});
+    const shownData = JSON.parse(shown.stdout) as { status: string; outputs?: Record<string, unknown> };
+    expect(shownData.status).toBe("success");
+    expect(shownData.outputs?.account_number).toBe("[financial]");
 
-describe("intyy run list", () => {
-  test("shows the run, and --json prints exactly one document", async () => {
-    const env = await replayRoot();
-    const ran = await runSupervisedToEnd(env, openSubArgv(env));
-
+    // list shows the run, and --json prints exactly one document
     const listed = await replayCall(env, ["run", "list", "--json"]);
     expect(listed.code).toBe(0);
     // Exactly one JSON document: parsing the whole of stdout succeeds, with nothing left over.
-    const data = JSON.parse(listed.stdout) as { runs: { run_id: string; status: string }[] };
-    expect(data.runs.some((r) => r.run_id === ran.runId && r.status === "success")).toBe(true);
+    const listData = JSON.parse(listed.stdout) as { runs: { run_id: string; status: string }[] };
+    expect(listData.runs.some((r) => r.run_id === ran.runId && r.status === "success")).toBe(true);
   });
 });

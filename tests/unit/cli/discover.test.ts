@@ -41,19 +41,18 @@ const call = (r: string, staff: string, argv: string[], env: Record<string, stri
   rawCall(argv, { cwd: r, env: { INTYY_STAFF: staff, ...env }, deps: { commands } });
 
 describe("discover", () => {
-  test("with no model key it stops before a browser opens, naming the variable", async () => {
-    const got = await call(root(), "op_017", ["discover", "kvfcu/sign_in"]);
+  test("it stops before a browser opens with no model key, a missing spec, or a missing role; the instance lock key follows section 9 §12.2", async () => {
+    // with no model key it stops before a browser opens, naming the variable
+    const r = root();
+    const got = await call(r, "op_017", ["discover", "kvfcu/sign_in"]);
     expect(got.code).toBe(EXIT.usage);
     expect(got.stderr).toContain("set ANTHROPIC_API_KEY to run discovery");
-  });
 
-  test("a missing spec and a missing role are refused", async () => {
-    const r = root();
+    // a missing spec and a missing role are refused
     expect((await call(r, "op_017", ["discover", "kvfcu/nope"])).code).toBe(EXIT.usage);
     expect((await call(r, "op_031", ["discover", "kvfcu/sign_in"])).code).toBe(EXIT.refused);
-  });
 
-  test("the instance lock key follows section 9 §12.2", () => {
+    // the instance lock key follows section 9 §12.2
     expect(instanceKey("http://127.0.0.1:8080")).toBe("http_127.0.0.1_8080");
   });
 });

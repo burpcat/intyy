@@ -97,15 +97,17 @@ describe("replay --pin", () => {
     return ["replay", capability, "--mode", mode, "--inputs", inputs, "--pin", pin, "--json"];
   };
 
-  test.each([
-    ["unattended mode", "kvfcu/open_sub@1.0.0", "unattended"],
-    ["another major", "kvfcu/open_sub@2.0.0", "supervised"],
-    ["another capability", "kvfcu/sign_in@1.0.0", "supervised"],
-    ["a patch pin", "kvfcu/open_sub@1.0.0+p3", "supervised"],
-  ])("%s is a usage error (exit 1)", LONG, async (_name, pin, mode) => {
+  test("an unattended pin, another major, another capability, and a patch pin are each a usage error (exit 1)", LONG, async () => {
     const env = await replayRoot();
-    const got = await replayCall(env, pinned(env, pin, mode));
-    expect(got.code).toBe(EXIT.usage);
+    for (const [name, pin, mode] of [
+      ["unattended mode", "kvfcu/open_sub@1.0.0", "unattended"],
+      ["another major", "kvfcu/open_sub@2.0.0", "supervised"],
+      ["another capability", "kvfcu/sign_in@1.0.0", "supervised"],
+      ["a patch pin", "kvfcu/open_sub@1.0.0+p3", "supervised"],
+    ] as [string, string, string][]) {
+      const got = await replayCall(env, pinned(env, pin, mode));
+      expect(got.code, name).toBe(EXIT.usage);
+    }
   });
 
   test("a supervised pin runs, and run.json freezes the pin", LONG, async () => {

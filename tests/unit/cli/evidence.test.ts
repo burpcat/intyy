@@ -23,31 +23,44 @@ const cli = (cwd: string, staff: string, argv: string[]) =>
   call(argv, { cwd, env: { INTYY_STAFF: staff }, deps: { commands } });
 
 describe("evidence publish", () => {
-  test("without the reviewer role it exits 6 and publishes nothing", async () => {
+  test("refusals publish nothing: no reviewer role, no approved settings, bad --with-runs or target", async () => {
     const root = tempRoot();
-    // op_031 is an approver only.
-    const r = await cli(root, "op_031", ["evidence", "publish", RUN]);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("reviewer");
+    // without the reviewer role it exits 6 and publishes nothing; op_031 is an approver only
+    const role = await cli(root, "op_031", ["evidence", "publish", RUN]);
+    expect(role.code).toBe(EXIT.refused);
+    expect(role.stderr).toContain("reviewer");
+
+    // a trust key with no approved settings exits 7: its app version comes from them
+    const key = await cli(root, "op_017", ["evidence", "publish", "kvfcu/open_sub@1.0.0"]);
+    expect(key.code).toBe(EXIT.invalid);
+    expect(key.stderr).toContain("settings");
+
+    // --with-runs takes only `all`
+    const withRuns = await cli(root, "op_017", ["evidence", "publish", RUN, "--with-runs", "x"]);
+    expect(withRuns.code).toBe(EXIT.usage);
+
+    // a target that is no run ID, batch ID, or key is a usage error
+    const target = await cli(root, "op_017", ["evidence", "publish", "not-a-target"]);
+    expect(target.code).toBe(EXIT.usage);
+
+    // a run with no approved settings stops before copying anything
+    const run = await cli(root, "op_017", ["evidence", "publish", RUN]);
+    expect(run.code).toBe(EXIT.invalid);
+    expect(run.stderr).toContain("settings");
+
+    // evidence verify with no approved settings exits 7: the secret canary could not run
+    const verify = await cli(root, "op_017", ["evidence", "verify"]);
+    expect(verify.code).toBe(EXIT.invalid);
+    expect(verify.stderr).toContain("settings");
   });
 
-  test("a trust key with no approved settings exits 7: its app version comes from them", async () => {
-    const root = tempRoot();
-    const r = await cli(root, "op_017", ["evidence", "publish", "kvfcu/open_sub@1.0.0"]);
-    expect(r.code).toBe(EXIT.invalid);
-    expect(r.stderr).toContain("settings");
-  });
-
-  test("a trust key with no score files is not_found (exit 1) and publishes nothing", LONG, async () => {
+  test("a trust key with no score files is not_found (exit 1); with score files it publishes the snapshot and the batches its history names, and verify is clean", LONG, async () => {
     const env = await replayRoot();
-    const r = await certifyCall(env, "op_017", ["evidence", "publish", "kvfcu/open_sub@1.0.0"]);
-    expect(r.code).toBe(EXIT.usage);
-    expect(r.stderr).toContain("not_found");
+    const none = await certifyCall(env, "op_017", ["evidence", "publish", "kvfcu/open_sub@1.0.0"]);
+    expect(none.code).toBe(EXIT.usage);
+    expect(none.stderr).toContain("not_found");
     expect(existsSync(join(env.root, "evidence", "manifest.json"))).toBe(false);
-  });
 
-  test("a trust key with score files publishes the snapshot and the batches its history names, and verify is clean", LONG, async () => {
-    const env = await replayRoot();
     await sealQuickInputs(env);
     const quick = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick", "--json"]);
     const batchId = (JSON.parse(quick.stdout) as { batch_id: string }).batch_id;
@@ -67,33 +80,5 @@ describe("evidence publish", () => {
     const verify = await certifyCall(env, "op_017", ["evidence", "verify"]);
     expect(verify.stderr).toBe("");
     expect(verify.code).toBe(EXIT.ok);
-  });
-
-  test("--with-runs takes only `all`", async () => {
-    const root = tempRoot();
-    const r = await cli(root, "op_017", ["evidence", "publish", RUN, "--with-runs", "x"]);
-    expect(r.code).toBe(EXIT.usage);
-  });
-
-  test("a target that is no run ID, batch ID, or key is a usage error", async () => {
-    const root = tempRoot();
-    const r = await cli(root, "op_017", ["evidence", "publish", "not-a-target"]);
-    expect(r.code).toBe(EXIT.usage);
-  });
-
-  test("a run with no approved settings stops before copying anything", async () => {
-    const root = tempRoot();
-    const r = await cli(root, "op_017", ["evidence", "publish", RUN]);
-    expect(r.code).toBe(EXIT.invalid);
-    expect(r.stderr).toContain("settings");
-  });
-});
-
-describe("evidence verify", () => {
-  test("with no approved settings it exits 7: the secret canary could not run", async () => {
-    const root = tempRoot();
-    const r = await cli(root, "op_017", ["evidence", "verify"]);
-    expect(r.code).toBe(EXIT.invalid);
-    expect(r.stderr).toContain("settings");
   });
 });

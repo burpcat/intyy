@@ -89,8 +89,31 @@ const restore = (env: ReplayEnv, staff: string, hash: string, stdin = "Outage ov
   trust(env, staff, ["restore", TEXT, "--after-exclusion", "--expect-record", hash, ...extra], stdin);
 
 describe("trust exclude", () => {
-  test("an approver excludes runs named as words, with the reason from standard input", LONG, async () => {
+  test("bad calls write nothing; then an approver excludes runs named as words, with the reason from standard input", LONG, async () => {
     const env = await degradedEnv();
+    // a person without the approver role exits 6 and writes nothing
+    const before = (await historyOf(env)).length;
+    const denied = await exclude(env, "op_017", [runId(1)]);
+    expect(denied.code).toBe(EXIT.refused);
+    expect(denied.stderr).toContain("approver");
+    expect(await historyOf(env)).toHaveLength(before);
+
+    // an unknown run exits 1 and writes nothing
+    const unknown = await exclude(env, "op_022", [runId(1), runId(77)]);
+    expect(unknown.code).toBe(EXIT.usage);
+    expect(unknown.stderr).toContain(runId(77));
+    expect(await historyOf(env)).toHaveLength(before);
+
+    // no run IDs, or no reason, exits 1
+    expect((await exclude(env, "op_022", [])).code).toBe(EXIT.usage);
+    expect((await exclude(env, "op_022", [runId(1)], "")).code).toBe(EXIT.usage);
+    expect((await historyOf(env)).filter((l) => l.event === "excluded")).toEqual([]);
+
+    // a run ID is never taken from a flag
+    const flag = await trust(env, "op_022", ["exclude", TEXT, "--runs", runId(1)], "Outage.");
+    expect(flag.code).toBe(EXIT.usage);
+    expect((await historyOf(env)).filter((l) => l.event === "excluded")).toEqual([]);
+
     const r = await trust(env, "op_022", ["exclude", TEXT, runId(1), runId(2), "--json"], "Known bank outage.\n");
     expect(r.stderr).toBe("");
     expect(r.code).toBe(EXIT.ok);
@@ -103,45 +126,40 @@ describe("trust exclude", () => {
     expect(lines.ok && lines.value).toHaveLength(3);
     expect((await shown(env)).record.live?.current).toMatchObject({ counted: 1, recipe_failures: 1 });
   });
-
-  test("a person without the approver role exits 6 and writes nothing", LONG, async () => {
-    const env = await degradedEnv();
-    const before = (await historyOf(env)).length;
-    const r = await exclude(env, "op_017", [runId(1)]);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("approver");
-    expect(await historyOf(env)).toHaveLength(before);
-  });
-
-  test("an unknown run exits 1 and writes nothing", LONG, async () => {
-    const env = await degradedEnv();
-    const before = (await historyOf(env)).length;
-    const r = await exclude(env, "op_022", [runId(1), runId(77)]);
-    expect(r.code).toBe(EXIT.usage);
-    expect(r.stderr).toContain(runId(77));
-    expect(await historyOf(env)).toHaveLength(before);
-  });
-
-  test("no run IDs, or no reason, exits 1", LONG, async () => {
-    const env = await degradedEnv();
-    expect((await exclude(env, "op_022", [])).code).toBe(EXIT.usage);
-    expect((await exclude(env, "op_022", [runId(1)], "")).code).toBe(EXIT.usage);
-    expect((await historyOf(env)).filter((l) => l.event === "excluded")).toEqual([]);
-  });
-
-  test("a run ID is never taken from a flag", LONG, async () => {
-    const env = await degradedEnv();
-    const r = await trust(env, "op_022", ["exclude", TEXT, "--runs", runId(1)], "Outage.");
-    expect(r.code).toBe(EXIT.usage);
-    expect((await historyOf(env)).filter((l) => l.event === "excluded")).toEqual([]);
-  });
 });
 
 describe("trust restore --after-exclusion", () => {
-  test("restores a key whose triggering runs were excluded, with batch null and the exclusion's time", LONG, async () => {
+  test("refusals write nothing (no exclusion, a changed record, a missing --expect-record, no approver role); then it restores, with batch null and the exclusion's time", LONG, async () => {
     const env = await degradedEnv();
     expect((await shown(env)).record.state).toBe("degraded");
-    expect((await exclude(env, "op_022", [runId(1), runId(2), runId(3)])).code).toBe(EXIT.ok);
+
+    // no exclusion exits 6 and says to exclude runs first
+    const stale = (await shown(env)).hash;
+    const none = await restore(env, "op_022", stale);
+    expect(none.code).toBe(EXIT.refused);
+    expect(none.stderr).toContain("trust exclude");
+
+    await exclude(env, "op_022", [runId(1), runId(2), runId(3)]);
+    // a changed record exits 6 with record_changed and writes nothing
+    expect((await shown(env)).hash).not.toBe(stale);
+    const before = (await historyOf(env)).length;
+    const changed = await restore(env, "op_022", stale);
+    expect(changed.code).toBe(EXIT.refused);
+    expect(changed.stderr).toContain("record_changed");
+    expect(await historyOf(env)).toHaveLength(before);
+
+    // without --expect-record it exits 1; with --batch as well it exits 1
+    expect((await trust(env, "op_022", ["restore", TEXT, "--after-exclusion"], "x")).code).toBe(EXIT.usage);
+    const both = await restore(env, "op_022", (await shown(env)).hash, "x", ["--batch", "batch_b"]);
+    expect(both.code).toBe(EXIT.usage);
+    expect((await shown(env)).record.state).toBe("degraded");
+
+    // a person without the approver role exits 6
+    const denied = await restore(env, "op_017", (await shown(env)).hash);
+    expect(denied.code).toBe(EXIT.refused);
+    expect((await shown(env)).record.state).toBe("degraded");
+
+    // restores a key whose triggering runs were excluded, with batch null and the exclusion's time
     const r = await restore(env, "op_022", (await shown(env)).hash, "Bank confirmed the outage.");
     expect(r.stderr).toBe("");
     expect(r.code).toBe(EXIT.ok);
@@ -152,43 +170,7 @@ describe("trust restore --after-exclusion", () => {
     expect(r.stdout).toContain("RECORD");
   });
 
-  test("a changed record exits 6 with record_changed and writes nothing", LONG, async () => {
-    const env = await degradedEnv();
-    const stale = (await shown(env)).hash;
-    await exclude(env, "op_022", [runId(1), runId(2), runId(3)]);
-    expect((await shown(env)).hash).not.toBe(stale);
-    const before = (await historyOf(env)).length;
-    const r = await restore(env, "op_022", stale);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("record_changed");
-    expect(await historyOf(env)).toHaveLength(before);
-  });
-
-  test("without --expect-record it exits 1; with --batch as well it exits 1", LONG, async () => {
-    const env = await degradedEnv();
-    await exclude(env, "op_022", [runId(1), runId(2), runId(3)]);
-    expect((await trust(env, "op_022", ["restore", TEXT, "--after-exclusion"], "x")).code).toBe(EXIT.usage);
-    const both = await restore(env, "op_022", (await shown(env)).hash, "x", ["--batch", "batch_b"]);
-    expect(both.code).toBe(EXIT.usage);
-    expect((await shown(env)).record.state).toBe("degraded");
-  });
-
-  test("a person without the approver role exits 6", LONG, async () => {
-    const env = await degradedEnv();
-    await exclude(env, "op_022", [runId(1), runId(2), runId(3)]);
-    const r = await restore(env, "op_017", (await shown(env)).hash);
-    expect(r.code).toBe(EXIT.refused);
-    expect((await shown(env)).record.state).toBe("degraded");
-  });
-
-  test("no exclusion exits 6 and says to exclude runs first", LONG, async () => {
-    const env = await degradedEnv();
-    const r = await restore(env, "op_022", (await shown(env)).hash);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("trust exclude");
-  });
-
-  test("a rule that still fires exits 6 naming the rule, and the key stays degraded", LONG, async () => {
+  test("a rule that still fires exits 6 naming the rule, and the key stays degraded; a key that is not degraded exits 6", LONG, async () => {
     // Run 4 failed too: with run 1 out, runs 2, 3, and 4 are still a streak.
     const env = await degradedEnv([failure(4)]);
     await exclude(env, "op_022", [runId(1)]);
@@ -197,12 +179,11 @@ describe("trust restore --after-exclusion", () => {
     expect(r.stderr).toContain("Streak rule");
     expect(r.stderr).toContain("Exclude more runs");
     expect((await shown(env)).record.state).toBe("degraded");
-  });
 
-  test("a key that is not degraded exits 6", LONG, async () => {
-    const env = await seeded(lives(1, 2));
-    const r = await restore(env, "op_022", (await shown(env)).hash);
-    expect(r.code).toBe(EXIT.refused);
+    // a key that is not degraded exits 6
+    const clean = await seeded(lives(1, 2));
+    const notDegraded = await restore(clean, "op_022", (await shown(clean)).hash);
+    expect(notDegraded.code).toBe(EXIT.refused);
   });
 });
 
@@ -239,16 +220,14 @@ describe("trust rebuild --from-evidence", () => {
   }
   const rebuild = (env: ReplayEnv, ...argv: string[]) => trust(env, "op_017", ["rebuild", ...argv]);
 
-  test("the failed write leaves the run's result alone and names the repair", LONG, async () => {
-    const { got } = await replayWithFailedWrite();
+  test("the failed write leaves the run's result alone and names the repair; --all recreates live.jsonl from the run files; a second run changes no bytes", LONG, async () => {
+    const { env, got } = await replayWithFailedWrite();
     expect(got.code).toBe(EXIT.ok);
     expect((JSON.parse(got.stdout) as { status: string }).status).toBe("success");
     expect(got.stderr).toContain("trust rebuild");
     expect(got.stderr).toContain("--from-evidence");
-  });
 
-  test("--all recreates live.jsonl for the task and session keys from the run files", LONG, async () => {
-    const { env, got } = await replayWithFailedWrite();
+    // --all recreates live.jsonl for the task and session keys from the run files
     expect(existsSync(liveFile(env, KEY))).toBe(false);
     const r = await rebuild(env, "--all", "--from-evidence");
     expect(r.stderr).toBe("");
@@ -258,11 +237,8 @@ describe("trust rebuild --from-evidence", () => {
     expect(liveOf(env, KEY)[0]?.under.handler_set).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect((await shown(env)).record.live?.current).toMatchObject({ counted: 1, clean: 1 });
     expect(r.stdout).toContain("1 new from evidence");
-  });
 
-  test("a second run changes no bytes and adds nothing", LONG, async () => {
-    const { env } = await replayWithFailedWrite();
-    await rebuild(env, "--all", "--from-evidence");
+    // a second run changes no bytes and adds nothing
     const before = readFileSync(liveFile(env, KEY), "utf8");
     const record = readFileSync(join(env.root, "state", "trust", "scores", keyPath(KEY), "record.json"), "utf8");
     const again = await rebuild(env, "--all", "--from-evidence");
@@ -272,20 +248,14 @@ describe("trust rebuild --from-evidence", () => {
     expect(readFileSync(join(env.root, "state", "trust", "scores", keyPath(KEY), "record.json"), "utf8")).toBe(record);
   });
 
-  test("one key repairs that key only", LONG, async () => {
-    const { env } = await replayWithFailedWrite();
-    const r = await rebuild(env, TEXT, "--from-evidence");
-    expect(r.code).toBe(EXIT.ok);
-    expect(existsSync(liveFile(env, KEY))).toBe(true);
-    expect(existsSync(liveFile(env, SESSION_KEY))).toBe(false);
-  });
-
-  test("a line whose run file is gone is kept", LONG, async () => {
+  test("one key repairs that key only, and a line whose run file is gone is kept", LONG, async () => {
     const { env, got } = await replayWithFailedWrite();
     const old = live(5, "assisted");
     await realWiringOf(env).scores.appendLive(keyPath(KEY), old);
     const r = await rebuild(env, TEXT, "--from-evidence");
     expect(r.code).toBe(EXIT.ok);
+    expect(existsSync(liveFile(env, KEY))).toBe(true);
+    expect(existsSync(liveFile(env, SESSION_KEY))).toBe(false);
     expect(liveOf(env, KEY).map((l) => l.run_id).sort()).toEqual([old.run_id, got.runId].sort());
   });
 

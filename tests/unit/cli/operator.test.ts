@@ -88,58 +88,39 @@ const decisionFile = (r: string) =>
   join(r, "state", "evidence", "keystone", "runs", RUN, "mailbox", "01_approval", "decision.json");
 
 describe("operator commands", () => {
-  test("list shows the open request", async () => {
+  test("list shows the open request; show prints the control, screenshot path, and decisions; a bad word, a missing role, and a second answer are refused; decide writes once", async () => {
     const r = await root();
     const got = await call(r, "op_017", ["operator", "list"]);
     expect(got.code).toBe(0);
     expect(got.stdout).toBe(
       `${RUN}  kvfcu/transfer  approval  discovery_irreversible  t7  2026-09-28T14:30:00.000Z  -\n`,
     );
-  });
 
-  test("show prints the control, the screenshot path, and the allowed decisions", async () => {
-    const r = await root();
-    const got = await call(r, "op_017", ["operator", "show", RUN]);
-    expect(got.stdout).toContain('control: "Submit Transfer", risk irreversible');
-    expect(got.stdout).toContain(
+    // show prints the control, the screenshot path, and the allowed decisions
+    const shown = await call(r, "op_017", ["operator", "show", RUN]);
+    expect(shown.stdout).toContain('control: "Submit Transfer", risk irreversible');
+    expect(shown.stdout).toContain(
       join(r, "state", "evidence", "keystone", "runs", RUN, "screens", "00031_observation.png"),
     );
-    expect(got.stdout).toContain(
+    expect(shown.stdout).toContain(
       "decisions: approve_irreversible | approve_reversible | approve_idempotent | decline",
     );
-  });
+    // show prints no action or note line for a request without them
+    expect(shown.stdout).not.toContain("action:");
+    expect(shown.stdout).not.toContain("note:");
 
-  test("show prints the gate's action, rule, path, and the note when they are set", async () => {
-    const r = await root({
-      ...PLAIN_APPROVAL,
-      action: "click",
-      rule: "risk.needs_approval",
-      path: "/home",
-      detail: 'The gate classified "Submit Transfer", but the model named "Transfers".',
-    });
-    const got = await call(r, "op_017", ["operator", "show", RUN]);
-    expect(got.stdout).toContain('control: "Submit Transfer", risk irreversible');
-    expect(got.stdout).toContain("action: click, rule risk.needs_approval, path /home");
-    expect(got.stdout).toContain(
-      'note: The gate classified "Submit Transfer", but the model named "Transfers".',
+    // a word the request does not allow is a usage error, and nothing is written
+    const badWord = await call(r, "op_017", ["operator", "decide", RUN, "approve"]);
+    expect(badWord.code).toBe(EXIT.usage);
+    expect(badWord.stderr).toContain("write one of approve_irreversible");
+    expect(existsSync(decisionFile(r))).toBe(false);
+
+    // decide needs the operator role
+    expect((await call(r, "op_031", ["operator", "decide", RUN, "decline"])).code).toBe(
+      EXIT.refused,
     );
-  });
 
-  test("show prints no action or note line for a request without them, or with a null note", async () => {
-    const old = await call(await root(), "op_017", ["operator", "show", RUN]);
-    expect(old.stdout).not.toContain("action:");
-    expect(old.stdout).not.toContain("note:");
-    const same = await call(
-      await root({ ...PLAIN_APPROVAL, action: "click", rule: "risk.unsure", path: null, detail: null }),
-      "op_017",
-      ["operator", "show", RUN],
-    );
-    expect(same.stdout).toContain("action: click, rule risk.unsure, path unknown");
-    expect(same.stdout).not.toContain("note:");
-  });
-
-  test("decide writes decision.json once; a second answer exits 6", async () => {
-    const r = await root();
+    // decide writes decision.json once; a second answer exits 6
     const first = await call(r, "op_017", ["operator", "decide", RUN, "approve_idempotent"]);
     expect(first.code).toBe(0);
     expect(JSON.parse(readFileSync(decisionFile(r), "utf8"))).toMatchObject({
@@ -154,18 +135,27 @@ describe("operator commands", () => {
     );
   });
 
-  test("a word the request does not allow is a usage error, and nothing is written", async () => {
-    const r = await root();
-    const got = await call(r, "op_017", ["operator", "decide", RUN, "approve"]);
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain("write one of approve_irreversible");
-    expect(existsSync(decisionFile(r))).toBe(false);
-  });
-
-  test("decide needs the operator role", async () => {
-    const r = await root();
-    expect((await call(r, "op_031", ["operator", "decide", RUN, "decline"])).code).toBe(
-      EXIT.refused,
+  test("show prints the gate's action, rule, path, and the note when they are set, and no note line for a null note", async () => {
+    const r = await root({
+      ...PLAIN_APPROVAL,
+      action: "click",
+      rule: "risk.needs_approval",
+      path: "/home",
+      detail: 'The gate classified "Submit Transfer", but the model named "Transfers".',
+    });
+    const got = await call(r, "op_017", ["operator", "show", RUN]);
+    expect(got.stdout).toContain('control: "Submit Transfer", risk irreversible');
+    expect(got.stdout).toContain("action: click, rule risk.needs_approval, path /home");
+    expect(got.stdout).toContain(
+      'note: The gate classified "Submit Transfer", but the model named "Transfers".',
     );
+
+    const same = await call(
+      await root({ ...PLAIN_APPROVAL, action: "click", rule: "risk.unsure", path: null, detail: null }),
+      "op_017",
+      ["operator", "show", RUN],
+    );
+    expect(same.stdout).toContain("action: click, rule risk.unsure, path unknown");
+    expect(same.stdout).not.toContain("note:");
   });
 });

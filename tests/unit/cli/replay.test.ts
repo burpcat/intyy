@@ -37,7 +37,7 @@ function openSubArgv(env: ReplayEnv, memberId: string = MEMBER_FOUND): string[] 
 }
 
 describe("intyy replay: exit codes end to end (design section 9 §7.5's own table)", () => {
-  test("success: exit 0, with outputs; the default request ID is the run ID, unmangled", async () => {
+  test("success: exit 0, with outputs; the default request ID is the run ID, unmangled; --reveal-outputs pipes raw output and the run log never holds it", async () => {
     const env = await replayRoot();
     // --reveal-outputs: unambiguous raw output, so this test checks only the exit code, the
     // outputs, and the request ID, never the separate masking question (its own tests below).
@@ -53,6 +53,14 @@ describe("intyy replay: exit codes end to end (design section 9 §7.5's own tabl
     expect(data.request_id).not.toContain(":");
     const runJson = readRunJson(env, got.runId) as { request_id: string };
     expect(runJson.request_id).toBe(data.run_id);
+
+    // accepted on test + loopback: piped output is raw with the flag. The run log records
+    // outputs_revealed: true, and never the raw value (section 4 §9.14).
+    expect(JSON.stringify(runJson)).not.toContain(ACCOUNT_NUMBER);
+    const frozen = (runJson as unknown as { frozen: { outputs_revealed: unknown } }).frozen;
+    expect(frozen.outputs_revealed).toBe(true);
+    const events = readEvents(env, got.runId);
+    expect(JSON.stringify(events)).not.toContain(ACCOUNT_NUMBER);
   });
 
   test("business_outcome: exit 2", async () => {
@@ -67,7 +75,7 @@ describe("intyy replay: exit codes end to end (design section 9 §7.5's own tabl
     expect(data.outcome.code).toBe("member_not_found");
   });
 
-  test("rejected: unattended mode is context_not_approved, exit 4", async () => {
+  test("rejected: unattended mode is context_not_approved, and bad inputs are invalid_input, both exit 4", async () => {
     const env = await replayRoot();
     const inputs = writeInputs(env, { member_id: MEMBER_FOUND });
     const got = await replayCall(env, [
@@ -84,45 +92,42 @@ describe("intyy replay: exit codes end to end (design section 9 §7.5's own tabl
     expect(data.status).toBe("rejected");
     if (data.status !== "rejected") throw new Error("expected rejected");
     expect(data.rejection.errors[0]?.code).toBe("context_not_approved");
-  });
 
-  test("rejected: bad inputs is invalid_input, exit 4", async () => {
-    const env = await replayRoot();
-    const inputs = writeInputs(env, {});
-    const got = await replayCall(env, [
+    const badInputs = writeInputs(env, {});
+    const bad = await replayCall(env, [
       "replay",
       "kvfcu/open_sub@1",
       "--mode",
       "supervised",
       "--inputs",
-      inputs,
+      badInputs,
       "--json",
     ]);
-    expect(got.code).toBe(4);
-    const data = JSON.parse(got.stdout) as Result;
-    expect(data.status).toBe("rejected");
-    if (data.status !== "rejected") throw new Error("expected rejected");
-    expect(data.rejection.errors.some((e) => e.code === "invalid_input")).toBe(true);
+    expect(bad.code).toBe(4);
+    const badData = JSON.parse(bad.stdout) as Result;
+    expect(badData.status).toBe("rejected");
+    if (badData.status !== "rejected") throw new Error("expected rejected");
+    expect(badData.rejection.errors.some((e) => e.code === "invalid_input")).toBe(true);
   });
 
-  test("failed: exit 5", async () => {
+  test("failed: exit 5; declined is ended_by_operator, and effect not_sent for a commits capability", async () => {
     const env = await replayRoot();
     const got = await runSupervisedToEnd(env, openSubArgv(env), "declined");
     expect(got.code).toBe(5);
     const data = JSON.parse(got.stdout) as Result;
     expect(data.status).toBe("failed");
+    if (data.status !== "failed") throw new Error("expected failed");
+    expect(data.failure.code).toBe("ended_by_operator");
+    expect(data.effect).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });
   });
 });
 
 describe("intyy replay: usage refusals (section 9 §10.1)", () => {
-  test("--pin is refused until M10", async () => {
+  test("--pin is refused until M10; --request cannot mix with --mode, --inputs, or a capability; an inline input value is refused", async () => {
     const env = await replayRoot();
-    const got = await replayCall(env, ["replay", "kvfcu/open_sub@1", "--pin", "some-key"]);
-    expect(got.code).toBe(1);
-  });
+    const pin = await replayCall(env, ["replay", "kvfcu/open_sub@1", "--pin", "some-key"]);
+    expect(pin.code).toBe(1);
 
-  test("--request mixed with --mode/--inputs/a capability is a usage error", async () => {
-    const env = await replayRoot();
     const inputs = writeInputs(env, { member_id: MEMBER_FOUND });
     const requestFile = writeInputs(
       env,
@@ -141,10 +146,8 @@ describe("intyy replay: usage refusals (section 9 §10.1)", () => {
     expect(withMode.code).toBe(1);
     const withInputs = await replayCall(env, ["replay", "--request", requestFile, "--inputs", inputs]);
     expect(withInputs.code).toBe(1);
-  });
 
-  test("an input value on the command line is impossible: --inputs takes only a file path or -", async () => {
-    const env = await replayRoot();
+    // an input value on the command line is impossible: --inputs takes only a file path or -
     // The value itself, inline, is not a file path: readFileSync fails and the command refuses.
     const got = await replayCall(env, [
       "replay",
@@ -160,53 +163,25 @@ describe("intyy replay: usage refusals (section 9 §10.1)", () => {
 });
 
 describe("intyy replay: --reveal-outputs (section 4 §9.14)", () => {
-  test("refused when the origin is not loopback", async () => {
-    const env = await replayRoot({ origin: "https://example.com:8080" });
-    const inputs = writeInputs(env, { member_id: MEMBER_FOUND });
-    const got = await replayCall(env, [
-      "replay",
-      "kvfcu/open_sub@1",
-      "--mode",
-      "supervised",
-      "--inputs",
-      inputs,
-      "--reveal-outputs",
-    ]);
-    expect(got.code).toBe(1);
-    expect(got.stderr).toContain("--reveal-outputs");
-  });
-
-  test("refused when settings say environment: production", async () => {
-    const env = await replayRoot({ environment: "production" });
-    const inputs = writeInputs(env, { member_id: MEMBER_FOUND });
-    const got = await replayCall(env, [
-      "replay",
-      "kvfcu/open_sub@1",
-      "--mode",
-      "supervised",
-      "--inputs",
-      inputs,
-      "--reveal-outputs",
-    ]);
-    expect(got.code).toBe(1);
-    expect(got.stderr).toContain("--reveal-outputs");
-  });
-
-  test("accepted on test + loopback: piped output is raw with the flag", async () => {
-    const env = await replayRoot();
-    const got = await runSupervisedToEnd(env, [...openSubArgv(env), "--reveal-outputs"]);
-    expect(got.code).toBe(0);
-    const data = JSON.parse(got.stdout) as Result;
-    if (data.status !== "success") throw new Error("expected success");
-    expect(data.outputs.account_number).toBe(ACCOUNT_NUMBER);
-
-    // The run log records outputs_revealed: true, and never the raw value (section 4 §9.14).
-    const runJson = readRunJson(env, got.runId);
-    expect(JSON.stringify(runJson)).not.toContain(ACCOUNT_NUMBER);
-    const frozen = (runJson as { frozen: { outputs_revealed: unknown } }).frozen;
-    expect(frozen.outputs_revealed).toBe(true);
-    const events = readEvents(env, got.runId);
-    expect(JSON.stringify(events)).not.toContain(ACCOUNT_NUMBER);
+  test("refused when the origin is not loopback, and when settings say environment: production", async () => {
+    for (const [label, opts] of [
+      ["origin", { origin: "https://example.com:8080" }],
+      ["production", { environment: "production" }],
+    ] as const) {
+      const env = await replayRoot(opts);
+      const inputs = writeInputs(env, { member_id: MEMBER_FOUND });
+      const got = await replayCall(env, [
+        "replay",
+        "kvfcu/open_sub@1",
+        "--mode",
+        "supervised",
+        "--inputs",
+        inputs,
+        "--reveal-outputs",
+      ]);
+      expect(got.code, label).toBe(1);
+      expect(got.stderr, label).toContain("--reveal-outputs");
+    }
   });
 
   test("piped output without the flag is masked: the literal [financial], per the contract label", async () => {
@@ -248,16 +223,6 @@ describe("intyy replay: the start confirmation (docs/decisions.md, M05)", () => 
     expect(code).toBe(0);
     const data = JSON.parse(started.stdout()) as Result;
     expect(data.status).toBe("success");
-  });
-
-  test("declined: failed, ended_by_operator, and effect not_sent for a commits capability", async () => {
-    const env = await replayRoot();
-    const got = await runSupervisedToEnd(env, openSubArgv(env), "declined");
-    const data = JSON.parse(got.stdout) as Result;
-    expect(data.status).toBe("failed");
-    if (data.status !== "failed") throw new Error("expected failed");
-    expect(data.failure.code).toBe("ended_by_operator");
-    expect(data.effect).toMatchObject({ commit: "not_sent", performed_by: null, sent_at: null });
   });
 
   test("on a TTY, a scripted question() answer decides it", async () => {
@@ -311,7 +276,7 @@ describe("intyy replay: Ctrl-C (section 9 §10.3)", () => {
 });
 
 describe("maskOutputsForDelivery (section 3 §5.13)", () => {
-  test("financial and pii outputs become their literal placeholder; none stays raw", () => {
+  test("financial and pii outputs become their literal placeholder; an unresolved sensitivity shows [pii]; all none changes nothing", () => {
     const result = successResult({ account_number: "SH1234567", note: "hello", ssn: "123-45-6789" });
     const masked = maskOutputsForDelivery(result, (name) =>
       name === "account_number" ? "financial" : name === "note" ? "none" : name === "ssn" ? "pii" : undefined,
@@ -319,21 +284,17 @@ describe("maskOutputsForDelivery (section 3 §5.13)", () => {
     if (masked.status !== "success") throw new Error("expected success");
     expect(masked.outputs).toEqual({ account_number: "[financial]", note: "hello", ssn: "[pii]" });
     expect(masked.warnings.some((w) => w.code === "outputs_masked")).toBe(true);
-  });
 
-  test("an output whose sensitivity cannot be resolved shows [pii]", () => {
-    const result = successResult({ account_number: "SH1234567" });
-    const masked = maskOutputsForDelivery(result, () => undefined);
-    if (masked.status !== "success") throw new Error("expected success");
-    expect(masked.outputs).toEqual({ account_number: "[pii]" });
-  });
+    // an output whose sensitivity cannot be resolved shows [pii]
+    const unresolved = maskOutputsForDelivery(successResult({ account_number: "SH1234567" }), () => undefined);
+    if (unresolved.status !== "success") throw new Error("expected success");
+    expect(unresolved.outputs).toEqual({ account_number: "[pii]" });
 
-  test("every output labelled none: nothing changes, no warning added", () => {
-    const result = successResult({ note: "hello" });
-    const masked = maskOutputsForDelivery(result, () => "none");
-    if (masked.status !== "success") throw new Error("expected success");
-    expect(masked.outputs).toEqual({ note: "hello" });
-    expect(masked.warnings.some((w) => w.code === "outputs_masked")).toBe(false);
+    // every output labelled none: nothing changes, no warning added
+    const none = maskOutputsForDelivery(successResult({ note: "hello" }), () => "none");
+    if (none.status !== "success") throw new Error("expected success");
+    expect(none.outputs).toEqual({ note: "hello" });
+    expect(none.warnings.some((w) => w.code === "outputs_masked")).toBe(false);
   });
 });
 

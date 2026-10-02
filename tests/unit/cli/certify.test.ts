@@ -188,76 +188,40 @@ async function sealCertifyInputs(
   }
 }
 
-describe("certify case: missing approved inputs refused", () => {
-  test("no approved suite: usage error naming it", async () => {
-    const env = await replayRoot();
-    await sealCertifyInputs(env, "suite");
-    const r = await certifyCall(env, "op_017", [
-      "certify",
-      "case",
-      CAP,
-      "--class",
-      "valid",
-      "--profile",
-      "server_error_on_search",
-    ]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("suite");
-  });
+describe("certify case: refusals", () => {
+  test("a missing approved suite, testdata, or faults is a usage error naming it; a staff ID with no operator role is refused; --operator bogus and an unsealed exact version end without a batch", async () => {
+    const caseArgv = ["certify", "case", CAP, "--class", "valid", "--profile", "server_error_on_search"];
+    for (const missing of ["suite", "testdata", "faults"] as const) {
+      const env = await replayRoot();
+      await sealCertifyInputs(env, missing);
+      const r = await certifyCall(env, "op_017", caseArgv);
+      expect(r.code, missing).toBe(1);
+      expect(r.stderr, missing).toContain(missing);
+    }
 
-  test("no approved testdata: usage error naming it", async () => {
-    const env = await replayRoot();
-    await sealCertifyInputs(env, "testdata");
-    const r = await certifyCall(env, "op_017", [
-      "certify",
-      "case",
-      CAP,
-      "--class",
-      "valid",
-      "--profile",
-      "server_error_on_search",
-    ]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("testdata");
-  });
-
-  test("no approved faults: usage error naming it", async () => {
-    const env = await replayRoot();
-    await sealCertifyInputs(env, "faults");
-    const r = await certifyCall(env, "op_017", [
-      "certify",
-      "case",
-      CAP,
-      "--class",
-      "valid",
-      "--profile",
-      "server_error_on_search",
-    ]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("faults");
-  });
-});
-
-describe("certify case: role", () => {
-  test("op_031 holds no operator role anywhere: refused", async () => {
     const env = await replayRoot();
     await sealCertifyInputs(env);
-    const r = await certifyCall(env, "op_031", [
-      "certify",
-      "case",
-      CAP,
-      "--class",
-      "valid",
-      "--profile",
-      "server_error_on_search",
-    ]);
-    expect(r.code).toBe(6);
-    expect(r.stderr).toContain("role:");
+    // op_031 holds no operator role anywhere: refused
+    const role = await certifyCall(env, "op_031", caseArgv);
+    expect(role.code).toBe(6);
+    expect(role.stderr).toContain("role:");
+
+    // --operator bogus exits usage and names the choices; nothing runs
+    const bogus = await certifyCall(env, "op_017", [...caseArgv, "--operator", "bogus", "--json"]);
+    expect(bogus.code).toBe(EXIT.usage);
+    expect(bogus.stderr).toContain("scripted");
+    expect(bogus.stderr).toContain("mailbox");
+    expect(bogus.stdout).not.toContain("batch_id");
+
+    // an exact version that is not sealed ends version_not_sealed
+    const unsealed = await certifyWith(env, "kvfcu/open_sub@1.2.0");
+    expect(unsealed.code).toBe(7);
+    expect(unsealed.stderr).toContain("version_not_sealed");
   });
 });
 
 describe("certify case: exit codes", () => {
-  test("a passing case exits 0, writes plan.json and report.json, batch_id and case_id match", { timeout: 20000 }, async () => {
+  test("a passing case exits 0, writes plan.json and report.json, batch_id and case_id match; report and rerun repeat it with a fresh run ID; a rerun keeps the plan's pin when a newer version is sealed later", { timeout: 30000 }, async () => {
     const env = await replayRoot();
     await sealCertifyInputs(env);
     const r = await certifyCall(env, "op_017", [
@@ -271,7 +235,7 @@ describe("certify case: exit codes", () => {
       "--json",
     ]);
     expect(r.code).toBe(0);
-    const body = JSON.parse(r.stdout) as { batch_id: string; report: BatchReport };
+    const body = JSON.parse(r.stdout) as { batch_id: string; report: BatchReport; plan: { pin: string } };
     expect(body.report.gate.passed).toBe(true);
     const planPath = join(
       env.root,
@@ -308,9 +272,30 @@ describe("certify case: exit codes", () => {
     ]);
     expect(reported.code).toBe(0);
     expect((JSON.parse(reported.stdout) as { batch_id: string }).batch_id).toBe(body.batch_id);
+
+    // the pin: a key text of `@<major>` resolves to the sealed version, and the plan keeps it
+    expect(body.plan.pin).toBe("kvfcu/open_sub@1.0.0");
+    const pinned = JSON.parse(readFileSync(planPath, "utf8")) as { pin: string };
+    expect(pinned.pin).toBe("kvfcu/open_sub@1.0.0");
+
+    // certify rerun: repeats one case with a fresh run ID
+    const second = await certifyCall(env, "op_017", ["certify", "rerun", body.batch_id, "case", "--json"]);
+    expect(second.code).toBe(0);
+    const secondBody = JSON.parse(second.stdout) as { batch_id: string; report: BatchReport };
+    expect(secondBody.batch_id).not.toBe(body.batch_id);
+    expect(secondBody.report.cases[0]?.result.status).toBe("success");
+
+    // rerun keeps the plan's pin when a newer version is sealed later
+    await sealNewerOpenSub(env);
+    const third = await certifyCall(env, "op_017", ["certify", "rerun", body.batch_id, "case", "--json"]);
+    expect(third.code).toBe(0);
+    const thirdBody = JSON.parse(third.stdout) as Batch;
+    expect(thirdBody.plan.pin).toBe("kvfcu/open_sub@1.0.0");
+    const caseRun = thirdBody.plan.cases[1];
+    expect(await runStartPin(env, caseRun?.run_id ?? "")).toBe("kvfcu/open_sub@1.0.0");
   });
 
-  test("--profile also accepts a suite extra case ID, taking its own class", async () => {
+  test("--profile also accepts a suite extra case ID, taking its own class", { timeout: 20000 }, async () => {
     const env = await replayRoot();
     await sealCertifyInputs(env);
     const r = await certifyCall(env, "op_017", [
@@ -326,19 +311,7 @@ describe("certify case: exit codes", () => {
     expect(body.report.cases[0]?.result.status).toBe("success");
   });
 
-  test("--operator bogus exits usage and names the choices; nothing runs", async () => {
-    const env = await replayRoot();
-    await sealCertifyInputs(env);
-    const r = await certifyCall(env, "op_017", [
-      "certify", "case", CAP, "--class", "valid", "--profile", "server_error_on_search", "--operator", "bogus", "--json",
-    ]);
-    expect(r.code).toBe(EXIT.usage);
-    expect(r.stderr).toContain("scripted");
-    expect(r.stderr).toContain("mailbox");
-    expect(r.stdout).not.toContain("batch_id");
-  });
-
-  test("--operator scripted runs like the default and the plan records it (M07 task 9)", async () => {
+  test("--operator scripted runs like the default and the plan records it (M07 task 9)", { timeout: 20000 }, async () => {
     const env = await replayRoot();
     await sealCertifyInputs(env);
     const r = await certifyCall(env, "op_017", [
@@ -352,7 +325,7 @@ describe("certify case: exit codes", () => {
     expect(plan).toMatchObject({ operator: "scripted", started_by: "op_017" });
   });
 
-  test("a mismatched class exits 5 (the gate failed)", async () => {
+  test("a mismatched class exits 5 (the gate failed)", { timeout: 20000 }, async () => {
     const env = await replayRoot();
     await sealCertifyInputs(env);
     // The site's default member is found, but this class expects a business outcome: a
@@ -393,37 +366,6 @@ describe("certify case: exit codes", () => {
     expect(r.code).toBe(5);
     const body = JSON.parse(r.stdout) as { report: BatchReport };
     expect(body.report.gate.passed).toBe(false);
-  });
-});
-
-describe("certify rerun", () => {
-  test("repeats one case with a fresh run ID", { timeout: 20000 }, async () => {
-    const env = await replayRoot();
-    await sealCertifyInputs(env);
-    const first = await certifyCall(env, "op_017", [
-      "certify",
-      "case",
-      CAP,
-      "--class",
-      "valid",
-      "--profile",
-      "server_error_on_search",
-      "--json",
-    ]);
-    expect(first.code).toBe(0);
-    const firstBody = JSON.parse(first.stdout) as { batch_id: string };
-
-    const second = await certifyCall(env, "op_017", [
-      "certify",
-      "rerun",
-      firstBody.batch_id,
-      "case",
-      "--json",
-    ]);
-    expect(second.code).toBe(0);
-    const secondBody = JSON.parse(second.stdout) as { batch_id: string; report: BatchReport };
-    expect(secondBody.batch_id).not.toBe(firstBody.batch_id);
-    expect(secondBody.report.cases[0]?.result.status).toBe("success");
   });
 });
 
@@ -475,41 +417,13 @@ async function certifyWith(
 }
 
 describe("certify case: the pin (section 3 §4.9)", () => {
-  test(
-    "an exact pin runs that version, even when a newer one is sealed",
-    { timeout: 20000 },
-    async () => {
-      const env = await replayRoot();
-      await sealCertifyInputs(env);
-      await sealNewerOpenSub(env);
-      const r = await certifyWith(env, "kvfcu/open_sub@1.0.0");
-      expect(r.code).toBe(0);
-      expect(r.body?.plan.pin).toBe("kvfcu/open_sub@1.0.0");
-    },
-  );
-
-  test("@<major> resolves the newest sealed version", { timeout: 20000 }, async () => {
+  test("an exact pin runs that version even when a newer one is sealed, and plan.json and both run_start lines carry it; @<major> resolves the newest sealed version", { timeout: 20000 }, async () => {
     const env = await replayRoot();
     await sealCertifyInputs(env);
     await sealNewerOpenSub(env);
-    const r = await certifyWith(env, CAP);
-    expect(r.code).toBe(0);
-    expect(r.body?.plan.pin).toBe("kvfcu/open_sub@1.1.0");
-  });
-
-  test("an exact version that is not sealed ends version_not_sealed", async () => {
-    const env = await replayRoot();
-    await sealCertifyInputs(env);
-    const r = await certifyWith(env, "kvfcu/open_sub@1.2.0");
-    expect(r.code).toBe(7);
-    expect(r.stderr).toContain("version_not_sealed");
-  });
-
-  test("plan.json and both run_start lines carry the pin", { timeout: 20000 }, async () => {
-    const env = await replayRoot();
-    await sealCertifyInputs(env);
     const r = await certifyWith(env, "kvfcu/open_sub@1.0.0");
     expect(r.code).toBe(0);
+    expect(r.body?.plan.pin).toBe("kvfcu/open_sub@1.0.0");
     const body = r.body;
     if (body === undefined) throw new Error("expected a batch");
     const planPath = join(
@@ -527,30 +441,9 @@ describe("certify case: the pin (section 3 §4.9)", () => {
     expect(body.plan.cases).toHaveLength(2);
     for (const c of body.plan.cases)
       expect(await runStartPin(env, c.run_id)).toBe("kvfcu/open_sub@1.0.0");
+
+    const newest = await certifyWith(env, CAP);
+    expect(newest.code).toBe(0);
+    expect(newest.body?.plan.pin).toBe("kvfcu/open_sub@1.1.0");
   });
-
-  test(
-    "rerun keeps the plan's pin when a newer version is sealed later",
-    { timeout: 30000 },
-    async () => {
-      const env = await replayRoot();
-      await sealCertifyInputs(env);
-      const first = await certifyWith(env, CAP);
-      expect(first.body?.plan.pin).toBe("kvfcu/open_sub@1.0.0");
-      await sealNewerOpenSub(env);
-
-      const second = await certifyCall(env, "op_017", [
-        "certify",
-        "rerun",
-        first.body?.batch_id ?? "",
-        "case",
-        "--json",
-      ]);
-      expect(second.code).toBe(0);
-      const body = JSON.parse(second.stdout) as Batch;
-      expect(body.plan.pin).toBe("kvfcu/open_sub@1.0.0");
-      const caseRun = body.plan.cases[1];
-      expect(await runStartPin(env, caseRun?.run_id ?? "")).toBe("kvfcu/open_sub@1.0.0");
-    },
-  );
 });

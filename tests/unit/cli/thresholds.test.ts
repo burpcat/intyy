@@ -38,61 +38,61 @@ function editWith(r: string, doc: Record<string, unknown>): ReturnType<typeof cl
 }
 
 describe("thresholds edit, check", () => {
-  test("edit saves a valid candidate; check passes", async () => {
-    const r = tempRoot();
-    expect((await editWith(r, body())).code).toBe(EXIT.ok);
-    expect((await cli(r, "op_017", ["thresholds", "check", APP, ...JEV])).code).toBe(EXIT.ok);
-  });
+  type Shown = {
+    app: string;
+    records: { jev_version: string; rev: string; state: string; handler_min: number }[];
+  };
 
-  test("a bad edit (outcome_min below handler_min) saves nothing", async () => {
+  test("show prints the starting values; bad edits and a missing --jev save nothing; a valid edit saves and check passes", async () => {
     const r = tempRoot();
+    // show: with no record it prints the starting values
+    const none = await cli(r, "op_017", ["thresholds", "show", APP]);
+    expect(none.code).toBe(EXIT.ok);
+    expect(none.stdout).toContain("starting values");
+    for (const v of ["0.8", "0.95", "0.9"]) expect(none.stdout).toContain(v);
+    expect(
+      (JSON.parse((await cli(r, "op_017", ["thresholds", "show", APP, "--json"])).stdout) as Shown)
+        .records,
+    ).toEqual([]);
+
+    // a bad edit (outcome_min below handler_min) saves nothing
     const edited = await editWith(r, body({ outcome_min: 0.5 }));
     expect(edited.code).toBe(EXIT.invalid);
     expect(edited.stderr).toContain("outcome_min");
     expect((await cli(r, "op_017", ["thresholds", "check", APP, ...JEV])).code).toBe(EXIT.usage);
-  });
 
-  test("a cutoff above 1 is refused", async () => {
-    const r = tempRoot();
+    // a cutoff above 1 is refused
     expect((await editWith(r, body({ handler_min: 1.5 }))).code).not.toBe(EXIT.ok);
     expect((await cli(r, "op_017", ["thresholds", "check", APP, ...JEV])).code).toBe(EXIT.usage);
-  });
 
-  test("a missing --jev is a usage error", async () => {
-    const r = tempRoot();
+    // a missing --jev is a usage error
     for (const verb of ["edit", "check", "seal"]) {
-      expect((await cli(r, "op_017", ["thresholds", verb, APP])).code).toBe(EXIT.usage);
+      expect((await cli(r, "op_017", ["thresholds", verb, APP])).code, verb).toBe(EXIT.usage);
     }
     expect((await cli(r, "op_031", ["thresholds", "approve", APP, "--rev", "1"])).code).toBe(
       EXIT.usage,
     );
+
+    // edit saves a valid candidate; check passes
+    expect((await editWith(r, body())).code).toBe(EXIT.ok);
+    expect((await cli(r, "op_017", ["thresholds", "check", APP, ...JEV])).code).toBe(EXIT.ok);
   });
 });
 
 describe("thresholds seal, approve: roles", () => {
-  test("op_017 seals; op_031 approves", async () => {
+  test("the sealer and op_022 (only two tenants, so the * scope refuses it) cannot approve; op_031 approves", async () => {
     const r = tempRoot();
     await editWith(r, body());
     expect((await cli(r, "op_017", ["thresholds", "seal", APP, ...JEV])).code).toBe(EXIT.ok);
+    // the sealer cannot approve their own record
+    const self = await cli(r, "op_017", ["thresholds", "approve", APP, ...JEV, "--rev", "1"]);
+    expect(self.code).toBe(EXIT.refused);
+    // op_022 approves only at two tenants, so the * scope refuses it
+    const wrong = await cli(r, "op_022", ["thresholds", "approve", APP, ...JEV, "--rev", "1"]);
+    expect(wrong.code).toBe(EXIT.refused);
     expect(
       (await cli(r, "op_031", ["thresholds", "approve", APP, ...JEV, "--rev", "1"])).code,
     ).toBe(EXIT.ok);
-  });
-
-  test("the sealer cannot approve their own record", async () => {
-    const r = tempRoot();
-    await editWith(r, body());
-    await cli(r, "op_017", ["thresholds", "seal", APP, ...JEV]);
-    const self = await cli(r, "op_017", ["thresholds", "approve", APP, ...JEV, "--rev", "1"]);
-    expect(self.code).toBe(EXIT.refused);
-  });
-
-  test("op_022 approves only at two tenants, so the * scope refuses it", async () => {
-    const r = tempRoot();
-    await editWith(r, body());
-    await cli(r, "op_017", ["thresholds", "seal", APP, ...JEV]);
-    const wrong = await cli(r, "op_022", ["thresholds", "approve", APP, ...JEV, "--rev", "1"]);
-    expect(wrong.code).toBe(EXIT.refused);
   });
 });
 
@@ -101,18 +101,6 @@ describe("thresholds show", () => {
     app: string;
     records: { jev_version: string; rev: string; state: string; handler_min: number }[];
   };
-
-  test("with no record it prints the starting values", async () => {
-    const r = tempRoot();
-    const shown = await cli(r, "op_017", ["thresholds", "show", APP]);
-    expect(shown.code).toBe(EXIT.ok);
-    expect(shown.stdout).toContain("starting values");
-    for (const v of ["0.8", "0.95", "0.9"]) expect(shown.stdout).toContain(v);
-    expect(
-      (JSON.parse((await cli(r, "op_017", ["thresholds", "show", APP, "--json"])).stdout) as Shown)
-        .records,
-    ).toEqual([]);
-  });
 
   test("after approval it prints revision 1, approved", async () => {
     const r = tempRoot();
@@ -148,17 +136,14 @@ describe("thresholds with the pinned jev version jev-1.13.0", () => {
     return cli(r, "op_017", ["thresholds", "edit", APP, ...PIN], { EDITOR: `cp "${path}"` });
   }
 
-  test("edit saves a valid candidate; check passes", async () => {
-    const r = tempRoot();
-    expect((await editPinned(r, pinnedBody())).code).toBe(EXIT.ok);
-    expect((await cli(r, "op_017", ["thresholds", "check", APP, ...PIN])).code).toBe(EXIT.ok);
-  });
-
-  test("a bad edit (outcome_min below handler_min) saves nothing", async () => {
+  test("a bad edit (outcome_min below handler_min) saves nothing; a valid edit saves and check passes", async () => {
     const r = tempRoot();
     const edited = await editPinned(r, pinnedBody({ outcome_min: 0.5 }));
     expect(edited.code).toBe(EXIT.invalid);
     expect((await cli(r, "op_017", ["thresholds", "check", APP, ...PIN])).code).toBe(EXIT.usage);
+
+    expect((await editPinned(r, pinnedBody())).code).toBe(EXIT.ok);
+    expect((await cli(r, "op_017", ["thresholds", "check", APP, ...PIN])).code).toBe(EXIT.ok);
   });
 
   test("op_017 seals; the sealer cannot approve; op_031 approves", async () => {

@@ -20,15 +20,10 @@ function helpOf(...path: string[]): string {
 }
 
 describe("help text", () => {
-  test("`certify case --help` names the exact-version form of the key", () => {
+  test("`certify case` and `certify` name the exact-version form of the key; `replay` says --request-id defaults to the run ID, not cli-<staff>", () => {
     expect(helpOf("certify", "case")).toContain("@major.minor.patch");
-  });
-
-  test("`certify --help` names the exact-version form of the key for a batch", () => {
     expect(helpOf("certify")).toContain("@major.minor.patch");
-  });
 
-  test("`replay --help` says --request-id defaults to the run ID, not cli-<staff>", () => {
     const help = helpOf("replay");
     expect(help).toContain("run ID");
     expect(help).not.toContain("cli-<staff>");

@@ -26,8 +26,12 @@ function call(r: string, staff: string, argv: string[], env: Record<string, stri
 const file = (r: string) => join(r, "library", "specs", "kvfcu", "sign_in.json");
 
 describe("spec commands", () => {
-  test("new writes a skeleton once; it fails check until the goal is written", async () => {
+  test("new needs the operator role and writes a skeleton once; check, edit, and the --session and --negative variants behave", async () => {
     const r = root();
+    // new needs the operator role
+    expect((await call(r, "op_031", ["spec", "new", "kvfcu/sign_in"])).code).toBe(EXIT.refused);
+
+    // new writes a skeleton once; it fails check until the goal is written
     const made = await call(r, "op_017", ["spec", "new", "kvfcu/sign_in"]);
     expect(made.code).toBe(0);
     const doc = JSON.parse(readFileSync(file(r), "utf8")) as Record<string, unknown>;
@@ -37,6 +41,8 @@ describe("spec commands", () => {
       capability: "sign_in",
       prompt: "discovery@1.1",
     });
+    // new writes an empty goal on a plain skeleton too
+    expect(doc).toMatchObject({ goal: "", session: null, kind: "discovery" });
     expect((await call(r, "op_017", ["spec", "new", "kvfcu/sign_in"])).code).toBe(EXIT.refused);
     const empty = await call(r, "op_031", ["spec", "check", "kvfcu/sign_in"]);
     expect(empty.code).toBe(EXIT.invalid);
@@ -45,14 +51,11 @@ describe("spec commands", () => {
     const checked = await call(r, "op_031", ["spec", "check", "kvfcu/sign_in"]);
     expect(checked.stderr).toBe("");
     expect(checked.stdout).toBe("spec kvfcu/sign_in is valid.\n");
-  });
 
-  // M05 task 11: `--session` and `--negative` write the two fields a fresh skeleton cannot
-  // guess (section 6 §5.5); a dotted variant name, like `open_share_subaccount.missing`, is
-  // the same capability's alternate scenario file (docs/decisions.md, M05).
-  test("new --session and --negative write a linked, negative_discovery skeleton", async () => {
-    const r = root();
-    const made = await call(r, "op_017", [
+    // M05 task 11: `--session` and `--negative` write the two fields a fresh skeleton cannot
+    // guess (section 6 §5.5); a dotted variant name, like `open_share_subaccount.missing`, is
+    // the same capability's alternate scenario file (docs/decisions.md, M05).
+    const negative = await call(r, "op_017", [
       "spec",
       "new",
       "kvfcu/open_share_subaccount.missing",
@@ -60,53 +63,21 @@ describe("spec commands", () => {
       "kvfcu/sign_in@1",
       "--negative",
     ]);
-    expect(made.code).toBe(0);
+    expect(negative.code).toBe(0);
     const path = join(r, "library", "specs", "kvfcu", "open_share_subaccount.missing.json");
-    const doc = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-    expect(doc).toMatchObject({
+    const negativeDoc = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    expect(negativeDoc).toMatchObject({
       kind: "negative_discovery",
       capability: "open_share_subaccount",
       session: "kvfcu/sign_in@1",
       goal: "",
     });
-  });
 
-  test("new writes an empty goal on a plain skeleton too", async () => {
-    const r = root();
-    await call(r, "op_017", ["spec", "new", "kvfcu/sign_in"]);
-    const doc = JSON.parse(readFileSync(file(r), "utf8")) as Record<string, unknown>;
-    expect(doc).toMatchObject({ goal: "", session: null, kind: "discovery" });
-  });
-
-  test("new refuses a --session value that is not app/capability@major", async () => {
-    const r = root();
-    const bad = await call(r, "op_017", ["spec", "new", "kvfcu/sign_in", "--session", "not-a-link"]);
+    // new refuses a --session value that is not app/capability@major
+    const bad = await call(root(), "op_017", ["spec", "new", "kvfcu/sign_in", "--session", "not-a-link"]);
     expect(bad.code).toBe(EXIT.usage);
-  });
 
-  test("new needs the operator role", async () => {
-    expect((await call(root(), "op_031", ["spec", "new", "kvfcu/sign_in"])).code).toBe(
-      EXIT.refused,
-    );
-  });
-
-  test("check lists every problem at once with exit 7", async () => {
-    const r = root();
-    await call(r, "op_017", ["spec", "new", "kvfcu/sign_in"]);
-    const doc = JSON.parse(readFileSync(file(r), "utf8")) as Record<string, unknown>;
-    doc.expected_effect = "commits";
-    doc.goal = "Find {input.member_id}.";
-    writeFileSync(file(r), JSON.stringify(doc));
-    const bad = await call(r, "op_017", ["spec", "check", "kvfcu/sign_in"]);
-    expect(bad.code).toBe(EXIT.invalid);
-    expect(bad.stderr).toContain("goal: {input.member_id} is not an input");
-    expect(bad.stderr).toContain("correlation: a commits run needs notes or none");
-  });
-
-  test("edit saves a good edit and keeps the file unchanged after a bad one", async () => {
-    const r = root();
-    await call(r, "op_017", ["spec", "new", "kvfcu/sign_in"]);
-    const doc = JSON.parse(readFileSync(file(r), "utf8")) as Record<string, unknown>;
+    // edit saves a good edit and keeps the file unchanged after a bad one
     const good = join(r, "good.json");
     writeFileSync(good, JSON.stringify({ ...doc, goal: "Sign in and reach the home page." }));
     const saved = await call(r, "op_017", ["spec", "edit", "kvfcu/sign_in"], {
@@ -115,14 +86,24 @@ describe("spec commands", () => {
     expect(saved.code).toBe(0);
     expect(readFileSync(file(r), "utf8")).toContain("Sign in and reach the home page.");
 
-    const bad = join(r, "bad.json");
-    writeFileSync(bad, JSON.stringify({ ...doc, entry: "no-slash" }));
+    const badEdit = join(r, "bad.json");
+    writeFileSync(badEdit, JSON.stringify({ ...doc, entry: "no-slash" }));
     const before = readFileSync(file(r), "utf8");
     const refused = await call(r, "op_017", ["spec", "edit", "kvfcu/sign_in"], {
-      EDITOR: `cp "${bad}"`,
+      EDITOR: `cp "${badEdit}"`,
     });
     expect(refused.code).toBe(EXIT.invalid);
     expect(refused.stderr).toContain("The edit is kept at");
     expect(readFileSync(file(r), "utf8")).toBe(before);
+
+    // check lists every problem at once with exit 7
+    const problems = JSON.parse(readFileSync(file(r), "utf8")) as Record<string, unknown>;
+    problems.expected_effect = "commits";
+    problems.goal = "Find {input.member_id}.";
+    writeFileSync(file(r), JSON.stringify(problems));
+    const all = await call(r, "op_017", ["spec", "check", "kvfcu/sign_in"]);
+    expect(all.code).toBe(EXIT.invalid);
+    expect(all.stderr).toContain("goal: {input.member_id} is not an input");
+    expect(all.stderr).toContain("correlation: a commits run needs notes or none");
   });
 });

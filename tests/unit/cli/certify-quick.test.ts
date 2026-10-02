@@ -40,8 +40,8 @@ async function quick(env: ReplayEnv, ...extra: string[]): Promise<{ code: number
   return { code: r.code, stderr: r.stderr, body: JSON.parse(r.stdout || "{}") as Batch };
 }
 
-describe("certify --kind quick: the batch", () => {
-  test("a baseline and one case per commit-step profile, with seeds and files", LONG, async () => {
+describe("certify --kind quick: the batch and drills (section 9 §9.2)", () => {
+  test("a baseline and one case per commit-step profile, with seeds and files; a missing commit-step route is a gate note; a differing --instance fact makes drills; an equal one is no drill", LONG, async () => {
     const env = await readyEnv();
     const { code, body } = await quick(env);
     // Why 0 or 5: the double cannot fire a fault, so `reply_lost` ends unexplained (exit 5).
@@ -65,47 +65,39 @@ describe("certify --kind quick: the batch", () => {
     expect(plan.drill).toBeUndefined();
     expect(plan.declaration).toBeUndefined();
     expect(report.drill).toBeUndefined();
-  });
 
-  test("a baseline with no commit-step route is a gate note, and the gate fails", LONG, async () => {
-    const env = await readyEnv();
-    const r = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick", "--json"], {
+    // a baseline with no commit-step route is a gate note, and the gate fails
+    const noRoute = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick", "--json"], {
       click_search: "POST /search",
     });
-    expect(r.code).toBe(EXIT.failed);
-    const body = JSON.parse(r.stdout) as Batch;
-    const { plan, report } = batchFiles(env, body.batch_id);
-    expect(report.gate.passed).toBe(false);
-    expect(report.gate.notes).toHaveLength(2);
-    expect(report.gate.notes?.join("\n")).toContain("server_error");
-    expect(report.gate.notes?.join("\n")).toContain("reply_lost");
-    expect(plan.cases.map((c) => c.case_id)).toEqual(["baseline"]);
+    expect(noRoute.code).toBe(EXIT.failed);
+    const noRouteBody = JSON.parse(noRoute.stdout) as Batch;
+    const missing = batchFiles(env, noRouteBody.batch_id);
+    expect(missing.report.gate.passed).toBe(false);
+    expect(missing.report.gate.notes).toHaveLength(2);
+    expect(missing.report.gate.notes?.join("\n")).toContain("server_error");
+    expect(missing.report.gate.notes?.join("\n")).toContain("reply_lost");
+    expect(missing.plan.cases.map((c) => c.case_id)).toEqual(["baseline"]);
+
+    // a differing --instance fact makes plan and report drills, with the declaration
+    const drill = await quick(env, "--instance", "strip_semantics=1");
+    const drillFiles = batchFiles(env, drill.body.batch_id);
+    expect(drillFiles.plan.drill).toBe(true);
+    expect(drillFiles.report.drill).toBe(true);
+    expect(drillFiles.plan.declaration).toEqual({ by: "op_017", differs: ["strip_semantics"] });
+    expect(drillFiles.plan.instance.strip_semantics).toBe(true);
+
+    // a declared fact equal to the default records the declaration but is no drill
+    const same = await quick(env, "--instance", "strip_semantics=0");
+    const sameFiles = batchFiles(env, same.body.batch_id);
+    expect(sameFiles.plan.declaration).toEqual({ by: "op_017", differs: [] });
+    expect(sameFiles.plan.drill).toBeUndefined();
+    expect(sameFiles.report.drill).toBeUndefined();
   });
 });
 
-describe("certify --kind quick: drills (section 9 §9.2)", () => {
-  test("a differing --instance fact makes plan and report drills, with the declaration", LONG, async () => {
-    const env = await readyEnv();
-    const { body } = await quick(env, "--instance", "strip_semantics=1");
-    const { plan, report } = batchFiles(env, body.batch_id);
-    expect(plan.drill).toBe(true);
-    expect(report.drill).toBe(true);
-    expect(plan.declaration).toEqual({ by: "op_017", differs: ["strip_semantics"] });
-    expect(plan.instance.strip_semantics).toBe(true);
-  });
-
-  test("a declared fact equal to the default records the declaration but is no drill", LONG, async () => {
-    const env = await readyEnv();
-    const { body } = await quick(env, "--instance", "strip_semantics=0");
-    const { plan, report } = batchFiles(env, body.batch_id);
-    expect(plan.declaration).toEqual({ by: "op_017", differs: [] });
-    expect(plan.drill).toBeUndefined();
-    expect(report.drill).toBeUndefined();
-  });
-});
-
-describe("certify --kind quick: --plan-only", () => {
-  test("prints the case count, instance, declaration, and drill; no file; no harness call", async () => {
+describe("certify --kind quick: --plan-only and refusals", () => {
+  test("--plan-only prints the plan and contacts nothing; refusals (kind, instance, role) run nothing", async () => {
     const env = await readyEnv();
     const r = await certifyCall(env, "op_017", [
       "certify", CAP, "--kind", "quick", "--plan-only", "--instance", "strip_semantics=1",
@@ -119,68 +111,59 @@ describe("certify --kind quick: --plan-only", () => {
     const batches = join(env.root, "state", "evidence", "keystone", "batches");
     expect(existsSync(batches) ? readdirSync(batches) : []).toEqual([]);
     expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
-  });
 
-  test("without --instance: no declaration, no drill", async () => {
-    const env = await readyEnv();
-    const r = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick", "--plan-only"]);
-    expect(r.code).toBe(0);
-    expect(r.stdout).toContain("drill: no");
-    expect(r.stdout).toContain("declared: no");
-  });
-});
+    // without --instance: no declaration, no drill
+    const plain = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick", "--plan-only"]);
+    expect(plain.code).toBe(0);
+    expect(plain.stdout).toContain("drill: no");
+    expect(plain.stdout).toContain("declared: no");
 
-describe("certify --kind quick: refusals", () => {
-  test("--kind regression with no --pack and --kind bogus are usage errors; nothing runs", async () => {
-    const env = await readyEnv();
+    // --kind regression with no --pack and --kind bogus are usage errors; nothing runs
     const regression = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "regression"]);
     expect(regression.code).toBe(EXIT.usage);
     expect(regression.stderr).toContain("--pack");
     const bogus = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "bogus"]);
     expect(bogus.code).toBe(EXIT.usage);
     expect(bogus.stderr).toContain("bogus");
-    for (const r of [regression, bogus]) expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
-    const batches = join(env.root, "state", "evidence", "keystone", "batches");
+    for (const refused of [regression, bogus]) expect(refused.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
     expect(existsSync(batches) ? readdirSync(batches) : []).toEqual([]);
-  });
 
-  test.each([
-    ["--kind full", ["certify", CAP, "--kind", "full", "--json"]],
-    ["no --kind", ["certify", CAP, "--json"]],
-  ])("%s runs a full batch", LONG, async (_name, argv) => {
-    const env = await readyEnv();
-    const r = await certifyCall(env, "op_017", argv);
-    // Why 0 or 5: the double cannot fire a fault, so the gate may fail (exit 5).
-    expect([0, EXIT.failed]).toContain(r.code);
-    const body = JSON.parse(r.stdout) as Batch;
-    expect(batchFiles(env, body.batch_id).plan.kind).toBe("full");
-    expect(body.report.kind).toBe("full");
-  });
-
-  test("a bad --instance is a usage error", async () => {
-    const env = await readyEnv();
+    // a bad --instance is a usage error
     for (const bad of ["drop_labels=2", "colour=blue", "strip_semantics", "delay_scale=0"]) {
-      const r = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick", "--instance", bad]);
-      expect(r.code).toBe(EXIT.usage);
-      expect(r.stderr).toContain("--instance");
+      const badRun = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick", "--instance", bad]);
+      expect(badRun.code, bad).toBe(EXIT.usage);
+      expect(badRun.stderr, bad).toContain("--instance");
+    }
+
+    // op_031 holds no operator role: refused
+    const role = await certifyCall(env, "op_031", ["certify", CAP, "--kind", "quick"]);
+    expect(role.code).toBe(6);
+    expect(role.stderr).toContain("role:");
+  });
+
+  test("a missing approved suite, testdata, or faults is refused, naming it", async () => {
+    for (const missing of ["suite", "testdata", "faults"] as const) {
+      const env = await readyEnv(missing);
+      const r = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick"]);
+      expect(r.code, missing).toBe(EXIT.usage);
+      expect(r.stderr, missing).toContain(missing);
     }
   });
 
-  test("op_031 holds no operator role: refused", async () => {
+  test("--kind full and no --kind each run a full batch", LONG, async () => {
     const env = await readyEnv();
-    const r = await certifyCall(env, "op_031", ["certify", CAP, "--kind", "quick"]);
-    expect(r.code).toBe(6);
-    expect(r.stderr).toContain("role:");
+    for (const [name, argv] of [
+      ["--kind full", ["certify", CAP, "--kind", "full", "--json"]],
+      ["no --kind", ["certify", CAP, "--json"]],
+    ] as [string, string[]][]) {
+      const r = await certifyCall(env, "op_017", argv);
+      // Why 0 or 5: the double cannot fire a fault, so the gate may fail (exit 5).
+      expect([0, EXIT.failed], name).toContain(r.code);
+      const body = JSON.parse(r.stdout) as Batch;
+      expect(batchFiles(env, body.batch_id).plan.kind, name).toBe("full");
+      expect(body.report.kind, name).toBe("full");
+    }
   });
-
-  for (const missing of ["suite", "testdata", "faults"] as const) {
-    test(`no approved ${missing}: refused, naming it`, async () => {
-      const env = await readyEnv(missing);
-      const r = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "quick"]);
-      expect(r.code).toBe(EXIT.usage);
-      expect(r.stderr).toContain(missing);
-    });
-  }
 });
 
 /** The plan and report with batch ID, run IDs, and times replaced, for a same-inputs compare. */

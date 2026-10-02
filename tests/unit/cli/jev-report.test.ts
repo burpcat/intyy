@@ -12,7 +12,7 @@ afterAll(cleanRoots);
 type Report = { app: string; calls: number; rows: Record<string, unknown>[] };
 
 describe("jev report", () => {
-  test("prints 7 rows, all zero, with 0 calls", async () => {
+  test("prints 7 rows, all zero, with 0 calls; a bad app ID is a usage error", async () => {
     const r = tempRoot();
     const out = await call(["jev", "report", "kvfcu", "--json"], {
       cwd: r,
@@ -26,15 +26,14 @@ describe("jev report", () => {
     expect(body.rows.map((x) => x.answer)).toEqual([...ANSWER_TYPES]);
     for (const row of body.rows)
       expect(row).toMatchObject({ right: 0, wrong: 0, below_threshold: 0 });
-  });
 
-  test("a bad app ID is a usage error", async () => {
-    const out = await call(["jev", "report", "Bad App"], {
+    // a bad app ID is a usage error
+    const bad = await call(["jev", "report", "Bad App"], {
       cwd: tempRoot(),
       env: { INTYY_STAFF: "op_017" },
       deps: { commands },
     });
-    expect(out.code).toBe(EXIT.usage);
+    expect(bad.code).toBe(EXIT.usage);
   });
 });
 
@@ -45,7 +44,7 @@ describe("jevTable", () => {
     label,
   });
 
-  test("counts each label per answer type, and keeps every row", () => {
+  test("counts each label per answer type, keeps every row, and has no refused row: jev never claims it", () => {
     const rows = jevTable([
       c("handler", "right"),
       c("handler", "right"),
@@ -59,9 +58,7 @@ describe("jevTable", () => {
     expect(by("outcome")).toEqual({ answer: "outcome", right: 0, wrong: 0, below_threshold: 1 });
     expect(by("found")).toEqual({ answer: "found", right: 1, wrong: 0, below_threshold: 0 });
     expect(by("unsafe")).toEqual({ answer: "unsafe", right: 0, wrong: 0, below_threshold: 0 });
-  });
 
-  test("has no refused row: jev never claims it", () => {
     expect(ANSWER_TYPES).not.toContain("refused");
   });
 });

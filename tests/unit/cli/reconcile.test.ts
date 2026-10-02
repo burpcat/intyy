@@ -122,11 +122,17 @@ async function seedIndexEntry(env: ReplayEnv, requestId: string, memberId: strin
 const effectUpdatePath = (env: ReplayEnv) => join(env.root, "state", "evidence", "keystone", "runs", RUN, "effect_update.json");
 
 describe("intyy reconcile: no request ID (section 9 §10.6, docs/decisions.md M06)", () => {
-  test("warns, reads a note from standard input, and still writes effect_update.json", async () => {
+  test("the operator role is required; then it warns, reads a note from standard input, and still writes effect_update.json", async () => {
     const env = await replayRoot();
     await seedRun(env, null);
     const inputs = join(env.root, "reconcile-inputs.json");
     writeFileSync(inputs, JSON.stringify({ member_id: "700114" }));
+
+    // a staff ID without the operator role is refused
+    // op_031 holds only "approver" for keystone (tests/unit/cli/helpers.ts's STAFF fixture).
+    const denied = await replayCall(env, ["reconcile", RUN, "--inputs", inputs], { env: { INTYY_STAFF: "op_031" }, answers: ["n/a"] });
+    expect(denied.code).toBe(6);
+    expect(existsSync(effectUpdatePath(env))).toBe(false);
 
     const rec = await replayCall(env, ["reconcile", RUN, "--inputs", inputs, "--json"], {
       site: siteWithFoundCheck(),
@@ -174,20 +180,6 @@ describe("intyy reconcile: mismatched inputs against a live index entry (section
     writeFileSync(inputs, JSON.stringify({ member_id: "700199" }));
 
     const rec = await replayCall(env, ["reconcile", RUN, "--inputs", inputs]);
-    expect(rec.code).toBe(6);
-    expect(existsSync(effectUpdatePath(env))).toBe(false);
-  });
-});
-
-describe("intyy reconcile: the operator role is required", () => {
-  test("a staff ID without the operator role is refused", async () => {
-    const env = await replayRoot();
-    await seedRun(env, null);
-    const inputs = join(env.root, "reconcile-inputs.json");
-    writeFileSync(inputs, JSON.stringify({ member_id: "700114" }));
-
-    // op_031 holds only "approver" for keystone (tests/unit/cli/helpers.ts's STAFF fixture).
-    const rec = await replayCall(env, ["reconcile", RUN, "--inputs", inputs], { env: { INTYY_STAFF: "op_031" }, answers: ["n/a"] });
     expect(rec.code).toBe(6);
     expect(existsSync(effectUpdatePath(env))).toBe(false);
   });

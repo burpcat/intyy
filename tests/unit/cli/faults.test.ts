@@ -45,51 +45,38 @@ async function editWith(
 const APP = "kvfcu";
 
 describe("faults edit, check", () => {
-  test("edit saves a valid candidate; check passes", async () => {
+  test("edit refuses a duplicate profile ID and saves nothing; then edit saves a valid candidate and check passes", async () => {
     const r = tempRoot();
+    const profiles = (faultsBody().profiles as Record<string, unknown>[])[0];
+    const bad = { ...faultsBody(), profiles: [profiles, { ...profiles }] };
+    const refused = await editWith(r, "op_017", APP, bad);
+    expect(refused.code).toBe(EXIT.invalid);
+    expect(refused.stderr).toContain("duplicate_profile");
+    const none = await cli(r, "op_017", ["faults", "check", APP]);
+    expect(none.code).toBe(EXIT.usage);
+
     const edited = await editWith(r, "op_017", APP, faultsBody());
     expect(edited.code).toBe(EXIT.ok);
     const checked = await cli(r, "op_017", ["faults", "check", APP]);
     expect(checked.code).toBe(EXIT.ok);
   });
-
-  test("edit refuses a duplicate profile ID; nothing is saved", async () => {
-    const r = tempRoot();
-    const profiles = (faultsBody().profiles as Record<string, unknown>[])[0];
-    const bad = { ...faultsBody(), profiles: [profiles, { ...profiles }] };
-    const edited = await editWith(r, "op_017", APP, bad);
-    expect(edited.code).toBe(EXIT.invalid);
-    expect(edited.stderr).toContain("duplicate_profile");
-    const checked = await cli(r, "op_017", ["faults", "check", APP]);
-    expect(checked.code).toBe(EXIT.usage);
-  });
 });
 
 describe("faults seal, approve: roles (scope * has no staff with both reviewer and approver)", () => {
-  test("op_017 seals; op_031 approves", async () => {
+  test("op_017 seals but has no approver role; op_022 lacks the * scope; op_031 approves", async () => {
     const r = tempRoot();
     await editWith(r, "op_017", APP, faultsBody());
     const sealed = await cli(r, "op_017", ["faults", "seal", APP]);
     expect(sealed.code).toBe(EXIT.ok);
-    const approved = await cli(r, "op_031", ["faults", "approve", APP, "--rev", "1"]);
-    expect(approved.code).toBe(EXIT.ok);
-  });
-
-  test("the sealer op_017 has no approver role at all; the role check refuses first", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", APP, faultsBody());
-    await cli(r, "op_017", ["faults", "seal", APP]);
+    // the sealer op_017 has no approver role at all; the role check refuses first
     const selfApprove = await cli(r, "op_017", ["faults", "approve", APP, "--rev", "1"]);
     expect(selfApprove.code).toBe(EXIT.refused);
     expect(selfApprove.stderr).toContain("lacks the approver role for every tenant (*)");
-  });
-
-  test("op_022 approves only at keystone and lakeshore; faults needs the * scope", async () => {
-    const r = tempRoot();
-    await editWith(r, "op_017", APP, faultsBody());
-    await cli(r, "op_017", ["faults", "seal", APP]);
+    // op_022 approves only at keystone and lakeshore; faults needs the * scope
     const wrongScope = await cli(r, "op_022", ["faults", "approve", APP, "--rev", "1"]);
     expect(wrongScope.code).toBe(EXIT.refused);
     expect(wrongScope.stderr).toContain("lacks the approver role for every tenant (*)");
+    const approved = await cli(r, "op_031", ["faults", "approve", APP, "--rev", "1"]);
+    expect(approved.code).toBe(EXIT.ok);
   });
 });

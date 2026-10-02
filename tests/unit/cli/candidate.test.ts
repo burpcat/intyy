@@ -183,10 +183,20 @@ describe("candidate new, list, show, issues", () => {
 });
 
 describe("candidate decide", () => {
-  test("tagging an action clears its undecided_tag issue", async () => {
+  test("decide refuses a non-reviewer and an unknown subject; tags, renames, and takes a piped note", async () => {
     const r = await root();
     const id = await newCandidate(r);
 
+    // a non-reviewer is refused; op_031 is only an approver (tests/unit/cli/helpers.ts STAFF)
+    const nonReviewer = await cli(r, "op_031", ["candidate", "decide", id, "tag", `${RUN_ID}#3`, "flow_step"]);
+    expect(nonReviewer.code).toBe(EXIT.refused);
+
+    // an unknown decision subject is refused
+    const unknown = await cli(r, "op_017", ["candidate", "decide", id, "risk", "not_a_real_step", "irreversible"]);
+    expect(unknown.code).toBe(EXIT.usage);
+    expect(unknown.stderr).toContain("not a known risk subject");
+
+    // tagging an action clears its undecided_tag issue
     const decided = await cli(r, "op_017", [
       "candidate",
       "decide",
@@ -207,28 +217,8 @@ describe("candidate decide", () => {
       false,
     );
     expect(issues.issues.filter((i) => i.code === "undecided_tag")).toHaveLength(2);
-  });
 
-  test("a non-reviewer is refused", async () => {
-    const r = await root();
-    const id = await newCandidate(r);
-    // op_031 is only an approver (tests/unit/cli/helpers.ts STAFF), never a reviewer.
-    const got = await cli(r, "op_031", ["candidate", "decide", id, "tag", `${RUN_ID}#3`, "flow_step"]);
-    expect(got.code).toBe(EXIT.refused);
-  });
-
-  test("an unknown decision subject is refused", async () => {
-    const r = await root();
-    const id = await newCandidate(r);
-    const got = await cli(r, "op_017", ["candidate", "decide", id, "risk", "not_a_real_step", "irreversible"]);
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain("not a known risk subject");
-  });
-
-  test("a shown (renamed) step ID maps back to its original for a later decision", async () => {
-    const r = await root();
-    const id = await newCandidate(r);
-
+    // a shown (renamed) step ID maps back to its original for a later decision
     const renamed = await cli(r, "op_017", [
       "candidate",
       "decide",
@@ -250,15 +240,12 @@ describe("candidate decide", () => {
     const step = shown.artifact.steps.find((s) => s.id === "confirm_login");
     expect(step?.risk).toBe("idempotent");
 
-    const issues = JSON.parse((await cli(r, "op_017", ["candidate", "issues", id, "--json"])).stdout) as {
+    const issuesAfter = JSON.parse((await cli(r, "op_017", ["candidate", "issues", id, "--json"])).stdout) as {
       issues: { code: string; subject?: string }[];
     };
-    expect(issues.issues.some((i) => i.code === "risk_undecided" && i.subject === "confirm_login")).toBe(false);
-  });
+    expect(issuesAfter.issues.some((i) => i.code === "risk_undecided" && i.subject === "confirm_login")).toBe(false);
 
-  test("--note comes from piped standard input, never a flag", async () => {
-    const r = await root();
-    const id = await newCandidate(r);
+    // --note comes from piped standard input, never a flag
     const got = await call(["candidate", "decide", id, "tag", `${RUN_ID}#3`, "flow_step"], {
       cwd: r,
       env: { INTYY_STAFF: "op_017" },
@@ -270,20 +257,34 @@ describe("candidate decide", () => {
 });
 
 describe("candidate review", () => {
-  test("refuses off a terminal, naming decide instead", async () => {
-    const r = await root();
-    const id = await newCandidate(r);
-    const got = await cli(r, "op_017", ["candidate", "review", id]);
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain("intyy candidate decide");
-  });
-
   /** Section 2 §10: "A human confirms paths at review." The walk asks for `runs_on.paths`
    * before its first blocking issue; every later prompt this run needs is left unscripted, so
    * it answers blank (helpers.ts's `question()` default) and keeps each drafted value. */
-  test("review asks to confirm runs_on.paths first, and a pasted list edits it", async () => {
+  test("review refuses off a terminal, keeps runs_on.paths on a blank answer, and a pasted list edits it", async () => {
     const r = await root();
     const id = await newCandidate(r);
+    // refuses off a terminal, naming decide instead
+    const off = await cli(r, "op_017", ["candidate", "review", id]);
+    expect(off.code).toBe(EXIT.usage);
+    expect(off.stderr).toContain("intyy candidate decide");
+
+    // a blank answer keeps runs_on.paths
+    const before = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
+    const beforePaths = (JSON.parse(before.stdout) as { artifact: { runs_on: { paths: string[] } } }).artifact
+      .runs_on.paths;
+    const blank = await call(["candidate", "review", id], {
+      cwd: r,
+      env: { INTYY_STAFF: "op_017" },
+      deps: { commands },
+      stdinTty: true,
+      answers: [""],
+    });
+    expect(blank.code).toBe(EXIT.ok);
+    const kept = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
+    const keptData = JSON.parse(kept.stdout) as { artifact: { runs_on: { paths: string[] } } };
+    expect(keptData.artifact.runs_on.paths).toEqual(beforePaths);
+
+    // a pasted list edits runs_on.paths
     const got = await call(["candidate", "review", id], {
       cwd: r,
       env: { INTYY_STAFF: "op_017" },
@@ -295,25 +296,6 @@ describe("candidate review", () => {
     const shown = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
     const data = JSON.parse(shown.stdout) as { artifact: { runs_on: { paths: string[] } } };
     expect(data.artifact.runs_on.paths).toEqual(["/", "/login.do", "/main.do", "/extra"]);
-  });
-
-  test("review keeps runs_on.paths when the confirmation answer is blank", async () => {
-    const r = await root();
-    const id = await newCandidate(r);
-    const before = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
-    const beforePaths = (JSON.parse(before.stdout) as { artifact: { runs_on: { paths: string[] } } }).artifact
-      .runs_on.paths;
-    const got = await call(["candidate", "review", id], {
-      cwd: r,
-      env: { INTYY_STAFF: "op_017" },
-      deps: { commands },
-      stdinTty: true,
-      answers: [""],
-    });
-    expect(got.code).toBe(EXIT.ok);
-    const shown = await cli(r, "op_017", ["candidate", "show", id, "--json"]);
-    const data = JSON.parse(shown.stdout) as { artifact: { runs_on: { paths: string[] } } };
-    expect(data.artifact.runs_on.paths).toEqual(beforePaths);
   });
 });
 
@@ -565,17 +547,6 @@ function discoverCall(
 }
 
 describe("discover records a candidate", () => {
-  test("a positive spec that ends success creates a new candidate", async () => {
-    const env = await discoverRoot();
-    writeSignInSpec(env.root);
-    const got = await discoverCall(env, ["kvfcu/sign_in"], new ScriptedPlanner(SIGN_IN_STEPS), SITE);
-
-    expect(got.code).toBe(EXIT.ok);
-    const data = JSON.parse(got.stdout) as { status: string; candidate: string };
-    expect(data.status).toBe("success");
-    expect(data.candidate).toMatch(/^kvfcu\/sign_in\/cand_/);
-  });
-
   test("a positive spec that ends failed records nothing", async () => {
     const env = await discoverRoot();
     writeSignInSpec(env.root);
@@ -588,12 +559,16 @@ describe("discover records a candidate", () => {
     expect(existsSync(join(env.root, "library", "candidates"))).toBe(false);
   });
 
-  test("a negative spec that ends business_outcome attaches to --candidate", async () => {
+  test("a positive spec that ends success creates a candidate; a negative spec that ends business_outcome attaches to it", async () => {
     const env = await discoverRoot();
     writeSignInSpec(env.root);
     writeNegativeSpec(env.root);
     const positive = await discoverCall(env, ["kvfcu/sign_in"], new ScriptedPlanner(SIGN_IN_STEPS), SITE);
-    const id = (JSON.parse(positive.stdout) as { candidate: string }).candidate;
+    expect(positive.code).toBe(EXIT.ok);
+    const created = JSON.parse(positive.stdout) as { status: string; candidate: string };
+    expect(created.status).toBe("success");
+    expect(created.candidate).toMatch(/^kvfcu\/sign_in\/cand_/);
+    const id = created.candidate;
 
     const negativePlanner = new ScriptedPlanner([
       { name: "report_outcome", input: { summary: "No such member.", proof: ["e1"] } },
@@ -606,17 +581,14 @@ describe("discover records a candidate", () => {
     expect(data.candidate).toBe(id);
   });
 
-  test("a negative spec without --candidate is refused before the browser opens", async () => {
-    const env = await discoverRoot();
-    writeNegativeSpec(env.root);
-    const got = await discoverCall(env, [`kvfcu/${NEGATIVE_SPEC}`], new ScriptedPlanner([]), SITE);
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain("--candidate");
-  });
-
-  test("a positive spec with --candidate is refused before the browser opens", async () => {
+  test("a negative spec without --candidate, and a positive spec with --candidate, are refused before the browser opens", async () => {
     const env = await discoverRoot();
     writeSignInSpec(env.root);
+    writeNegativeSpec(env.root);
+    const negative = await discoverCall(env, [`kvfcu/${NEGATIVE_SPEC}`], new ScriptedPlanner([]), SITE);
+    expect(negative.code).toBe(EXIT.usage);
+    expect(negative.stderr).toContain("--candidate");
+
     const got = await discoverCall(
       env,
       ["kvfcu/sign_in", "--candidate", "kvfcu/sign_in/cand_2026-09-24_0000000000"],
@@ -665,32 +637,28 @@ describe("discover --candidate checks the target before any live work (section 6
     return got;
   }
 
-  test("a bare suffix of an existing candidate is refused, with a did-you-mean", async () => {
-    const { env, id } = await setup();
-    const got = await refused(env, id.slice(id.lastIndexOf("/") + 1));
-    expect(got.stderr).toContain("full <app>/<capability>");
-    expect(got.stderr).toContain(`Did you mean ${id}?`);
-  });
+  test("a bad --candidate target is refused before any live work, with a hint that fits the mistake", async () => {
+    const { env, id, other } = await setup();
 
-  test("a bare id that matches nothing is refused, with the hint and no did-you-mean", async () => {
-    const { env } = await setup();
-    const got = await refused(env, "cand_2026-10-01_0000000000");
-    expect(got.stderr).toContain("full <app>/<capability>");
-    expect(got.stderr).not.toContain("Did you mean");
-  });
+    // a bare suffix of an existing candidate: hint, with a did-you-mean
+    const suffix = await refused(env, id.slice(id.lastIndexOf("/") + 1));
+    expect(suffix.stderr).toContain("full <app>/<capability>");
+    expect(suffix.stderr).toContain(`Did you mean ${id}?`);
 
-  test("a full id that does not exist is refused", async () => {
-    const { env } = await setup();
-    const got = await refused(env, "kvfcu/sign_in/cand_2026-10-01_0000000000");
-    expect(got.stderr).toContain("no such candidate");
-  });
+    // a bare id that matches nothing: the hint and no did-you-mean
+    const bare = await refused(env, "cand_2026-10-01_0000000000");
+    expect(bare.stderr).toContain("full <app>/<capability>");
+    expect(bare.stderr).not.toContain("Did you mean");
 
-  test("a full id under another capability is refused", async () => {
-    const { env, other } = await setup();
+    // a full id that does not exist
+    const missing = await refused(env, "kvfcu/sign_in/cand_2026-10-01_0000000000");
+    expect(missing.stderr).toContain("no such candidate");
+
+    // a full id under another capability
     expect(other).toMatch(/^kvfcu\/other_cap\/cand_/);
-    const got = await refused(env, other);
-    expect(got.stderr).toContain("not that capability");
-    expect(got.stderr).toContain("sign_in");
+    const wrongCap = await refused(env, other);
+    expect(wrongCap.stderr).toContain("not that capability");
+    expect(wrongCap.stderr).toContain("sign_in");
   });
 });
 
@@ -806,21 +774,17 @@ async function sealGlobalOutcomePack(
 }
 
 describe("candidate adopt (section 6 §15's table)", () => {
-  test("an unknown outcome code is rejected", async () => {
+  test("a handler not in the merged pack set and an unknown outcome code are rejected", async () => {
     const env = await discoverRoot();
     const id = await candidateWithNegativeRun(env);
+    const noHandler = await cli(env.root, "op_017", ["candidate", "adopt", id, "not_found", "pack:no_such_handler"]);
+    expect(noHandler.code).toBe(EXIT.invalid);
+    expect(noHandler.stderr).toContain("is not in the merged pack set");
+
     await sealGlobalPack(env.root, "sign_in_shown", "Sign In");
     const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "no_such_outcome", "pack:sign_in_shown"]);
     expect(got.code).toBe(EXIT.invalid);
     expect(got.stderr).toContain("is not a known outcome");
-  });
-
-  test("a handler not in the merged pack set is rejected", async () => {
-    const env = await discoverRoot();
-    const id = await candidateWithNegativeRun(env);
-    const got = await cli(env.root, "op_017", ["candidate", "adopt", id, "not_found", "pack:no_such_handler"]);
-    expect(got.code).toBe(EXIT.invalid);
-    expect(got.stderr).toContain("is not in the merged pack set");
   });
 
   test("a handler whose detector does not fire on the negative run's screen is refused", async () => {
@@ -927,18 +891,15 @@ async function reconciliationOf(r: string, id: string): Promise<{ reconciliation
 }
 
 describe("candidate reconciliation is check-first (owner decisions, 2026-10-01)", () => {
-  test("a fresh commits candidate lists missing_reconciliation, leading with a check", async () => {
+  test("a fresh commits candidate lists missing_reconciliation; a waiver without a failed attempt_run is refused", async () => {
     const r = await commitsRoot();
     const id = await newCandidate(r);
     const { issues } = await reconciliationOf(r, id);
     const missing = issues.find((i) => i.code === "missing_reconciliation");
     expect(missing?.message).toContain("needs a linked reconciliation check");
     expect(missing?.message).toContain("a waiver needs a failed attempt_run");
-  });
 
-  test("decide waiver without attempt_run is refused, and nothing is recorded", async () => {
-    const r = await commitsRoot();
-    const id = await newCandidate(r);
+    // decide waiver without attempt_run is refused, and nothing is recorded
     const got = await cli(r, "op_017", ["candidate", "decide", id, "waiver", "recovery.reconciliation", '{"reason":"x"}']);
     // Why invalid (7), not usage (1): the CLI maps a plain-code `invalid` failure so (exitForFailure).
     expect(got.code).toBe(EXIT.invalid);
@@ -946,15 +907,12 @@ describe("candidate reconciliation is check-first (owner decisions, 2026-10-01)"
     const after = await reconciliationOf(r, id);
     expect(after.reconciliation).toBeNull();
     expect(after.issues.some((i) => i.code === "missing_reconciliation")).toBe(true);
-  });
 
-  test("decide waiver naming a run that ended success is refused", async () => {
-    const r = await commitsRoot();
-    const id = await newCandidate(r);
+    // decide waiver naming a run that ended success is refused
     await seedAttempt(r, ATTEMPT_OK, "success");
     const value = JSON.stringify({ reason: "No screen shows the result.", attempt_run: ATTEMPT_OK });
-    const got = await cli(r, "op_017", ["candidate", "decide", id, "waiver", "recovery.reconciliation", value]);
-    expect(got.code).toBe(EXIT.invalid);
+    const okRun = await cli(r, "op_017", ["candidate", "decide", id, "waiver", "recovery.reconciliation", value]);
+    expect(okRun.code).toBe(EXIT.invalid);
     expect((await reconciliationOf(r, id)).reconciliation).toBeNull();
   });
 
@@ -995,11 +953,11 @@ describe("candidate reconciliation is check-first (owner decisions, 2026-10-01)"
     expect(after.issues.some((i) => i.code === "missing_reconciliation")).toBe(false);
   });
 
-  test("review: a waiver answer without attempt_run is refused, and nothing is recorded", async () => {
+  test("review: a waiver answer without attempt_run is refused, then one citing a failed discovery run is recorded", async () => {
     const r = await commitsRoot();
     const id = await newCandidate(r);
     await resolveBasics(r, id, "irreversible");
-    const got = await call(["candidate", "review", id], {
+    const refused = await call(["candidate", "review", id], {
       cwd: r,
       env: { INTYY_STAFF: "op_017" },
       deps: { commands },
@@ -1007,15 +965,10 @@ describe("candidate reconciliation is check-first (owner decisions, 2026-10-01)"
       // The paths question first (blank keeps them), then the missing_reconciliation prompt.
       answers: ["", '{"reason":"x"}'],
     });
-    expect(got.code).toBe(EXIT.invalid);
-    expect(got.stderr).toContain("attempt_run");
+    expect(refused.code).toBe(EXIT.invalid);
+    expect(refused.stderr).toContain("attempt_run");
     expect((await reconciliationOf(r, id)).reconciliation).toBeNull();
-  });
 
-  test("review: a waiver answer citing a failed discovery run is recorded", async () => {
-    const r = await commitsRoot();
-    const id = await newCandidate(r);
-    await resolveBasics(r, id, "irreversible");
     await seedAttempt(r, ATTEMPT_FAILED, "failed");
     const answer = JSON.stringify({ reason: "No screen shows the result.", attempt_run: ATTEMPT_FAILED });
     const got = await call(["candidate", "review", id], {
@@ -1033,30 +986,18 @@ describe("candidate reconciliation is check-first (owner decisions, 2026-10-01)"
 });
 
 describe("candidate second-look and seal, through the CLI", () => {
-  test("second-look needs exactly one of --agree or --disagree", async () => {
+  test("second-look needs one of --agree or --disagree and the reviewer role; seal waits for another staff ID", async () => {
     const r = await root({ irreversibleClick: true });
+    const policy = await sealedPolicyStore([GLOBAL_LAYER, SEAL_APP_LAYER, TENANT_LAYER]);
     const id = await newCandidate(r);
     await resolveBasics(r, id, "reversible");
     const neither = await cli(r, "op_022", ["candidate", "second-look", id, "click_login"]);
     expect(neither.code).toBe(EXIT.usage);
     const both = await cli(r, "op_022", ["candidate", "second-look", id, "click_login", "--agree", "--disagree"]);
     expect(both.code).toBe(EXIT.usage);
-  });
-
-  test("second-look needs the reviewer role", async () => {
-    const r = await root({ irreversibleClick: true });
-    const id = await newCandidate(r);
-    await resolveBasics(r, id, "reversible");
     // op_031 (tests/unit/cli/helpers.ts STAFF) is only an approver, never a reviewer.
-    const got = await cli(r, "op_031", ["candidate", "second-look", id, "click_login", "--agree"]);
-    expect(got.code).toBe(EXIT.refused);
-  });
-
-  test("seal fails without a second look, then succeeds once another staff ID agrees", async () => {
-    const r = await root({ irreversibleClick: true });
-    const policy = await sealedPolicyStore([GLOBAL_LAYER, SEAL_APP_LAYER, TENANT_LAYER]);
-    const id = await newCandidate(r);
-    await resolveBasics(r, id, "reversible");
+    const approver = await cli(r, "op_031", ["candidate", "second-look", id, "click_login", "--agree"]);
+    expect(approver.code).toBe(EXIT.refused);
 
     const before = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy);
     expect(before.code).toBe(EXIT.invalid);
@@ -1107,9 +1048,9 @@ async function sealSignIn(): Promise<{ r: string; policy: FakeDocumentStore<Poli
   return { r, policy, artifactDir: join(r, "library", "artifacts", "kvfcu", "sign_in", "1.0.0") };
 }
 
-describe("artifact list, show, and verify", () => {
-  test("list and show read back the sealed sign_in artifact", async () => {
-    const { r } = await sealSignIn();
+describe("artifact list, show, and verify; capability list and describe", () => {
+  test("list, show, verify, and capability list and describe read back the sealed sign_in artifact", async () => {
+    const { r, policy } = await sealSignIn();
     const listed = await cli(r, "op_017", ["artifact", "list", "--json"]);
     expect(listed.code).toBe(EXIT.ok);
     expect(
@@ -1121,13 +1062,28 @@ describe("artifact list, show, and verify", () => {
     expect(shown.code).toBe(EXIT.ok);
     const artifact = (JSON.parse(shown.stdout) as { artifact: { identity: { version: string } } }).artifact;
     expect(artifact.identity.version).toBe("1.0.0");
-  });
 
-  test("verify passes on a freshly sealed artifact", async () => {
-    const { r, policy } = await sealSignIn();
-    const got = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    // verify passes on a freshly sealed artifact
+    const verified = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    expect(verified.code).toBe(EXIT.ok);
+    expect((JSON.parse(verified.stdout) as { ok: boolean }).ok).toBe(true);
+
+    // capability list and describe read the sealed artifact, draft state until M10
+    const caps = await cli(r, "op_017", ["capability", "list", "--json"]);
+    expect(caps.code).toBe(EXIT.ok);
+    expect(
+      (JSON.parse(caps.stdout) as { capabilities: { app: string; capability: string; major: number; state: string }[] })
+        .capabilities,
+    ).toEqual([{ app: "kvfcu", capability: "sign_in", major: 1, effect: "read_only", state: "draft" }]);
+
+    // --format tool matches the committed golden file
+    const got = await cli(r, "op_017", ["capability", "describe", "kvfcu/sign_in@1", "--format", "tool", "--json"]);
     expect(got.code).toBe(EXIT.ok);
-    expect((JSON.parse(got.stdout) as { ok: boolean }).ok).toBe(true);
+    const tool = JSON.parse(got.stdout) as unknown;
+    const golden = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../fixtures/golden/sign_in.tool.json", import.meta.url)), "utf8"),
+    ) as unknown;
+    expect(tool).toEqual(golden);
   });
 
   test("verify fails on a tampered artifact.json", async () => {
@@ -1157,29 +1113,6 @@ describe("artifact list, show, and verify", () => {
     expect(data.problems.some((p) => p.code === "missing_crop" && p.message.includes("login_button"))).toBe(
       true,
     );
-  });
-});
-
-describe("capability list and describe", () => {
-  test("list and describe read the sealed sign_in artifact, draft state until M10", async () => {
-    const { r } = await sealSignIn();
-    const listed = await cli(r, "op_017", ["capability", "list", "--json"]);
-    expect(listed.code).toBe(EXIT.ok);
-    expect(
-      (JSON.parse(listed.stdout) as { capabilities: { app: string; capability: string; major: number; state: string }[] })
-        .capabilities,
-    ).toEqual([{ app: "kvfcu", capability: "sign_in", major: 1, effect: "read_only", state: "draft" }]);
-  });
-
-  test("--format tool matches the committed golden file", async () => {
-    const { r } = await sealSignIn();
-    const got = await cli(r, "op_017", ["capability", "describe", "kvfcu/sign_in@1", "--format", "tool", "--json"]);
-    expect(got.code).toBe(EXIT.ok);
-    const tool = JSON.parse(got.stdout) as unknown;
-    const golden = JSON.parse(
-      readFileSync(fileURLToPath(new URL("../../fixtures/golden/sign_in.tool.json", import.meta.url)), "utf8"),
-    ) as unknown;
-    expect(tool).toEqual(golden);
   });
 });
 
@@ -1228,22 +1161,27 @@ describe("seal and verify check the linked capabilities against the sealed libra
     return { r, policy, id };
   }
 
-  test("seal refuses a task whose check capability is not sealed, in plain words naming the link", async () => {
+  test("seal refuses until the check capability is sealed; then it seals and verify passes, until the check vanishes", async () => {
     const { r, policy, id } = await readyCandidate();
-    const got = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy);
-    expect(got.code).toBe(EXIT.invalid);
-    expect(got.stderr).toContain(CHECK_LINK);
-    expect(got.stderr).toContain("is not sealed; seal the check capability first");
-  });
+    const refused = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy);
+    expect(refused.code).toBe(EXIT.invalid);
+    expect(refused.stderr).toContain(CHECK_LINK);
+    expect(refused.stderr).toContain("is not sealed; seal the check capability first");
 
-  test("once the check capability is sealed, the same candidate seals, and verify passes", async () => {
-    const { r, policy, id } = await readyCandidate();
     await sealIntoLibrary(r, countCapability());
     const sealed = await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0", "--json"], policy);
     expect(sealed.code).toBe(EXIT.ok);
     const verified = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
     expect(verified.code).toBe(EXIT.ok);
     expect((JSON.parse(verified.stdout) as { ok: boolean }).ok).toBe(true);
+
+    // The check capability's folder vanishes from the library after the task sealed.
+    rmSync(join(r, "library", "artifacts", "kvfcu", "count_member_subaccounts"), { recursive: true, force: true });
+    const got = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
+    expect(got.code).toBe(EXIT.invalid);
+    const data = JSON.parse(got.stdout) as { ok: boolean; problems: { code: string; message: string }[] };
+    expect(data.ok).toBe(false);
+    expect(data.problems.some((p) => p.code === "reconciliation_not_readonly" && p.message.includes(CHECK_LINK))).toBe(true);
   });
 
   test("seal refuses a count_output the sealed check does not declare, and one that is not an integer", async () => {
@@ -1258,18 +1196,5 @@ describe("seal and verify check the linked capabilities against the sealed libra
     const b = await sealCli(wrongType.r, "op_017", ["candidate", "seal", wrongType.id, "--version", "1.0.0"], wrongType.policy);
     expect(b.code).toBe(EXIT.invalid);
     expect(b.stderr).toContain("must be an integer output");
-  });
-
-  test("verify on a sealed task whose check capability has no sealed version is not valid, and names the link", async () => {
-    const { r, policy, id } = await readyCandidate();
-    await sealIntoLibrary(r, countCapability());
-    expect((await sealCli(r, "op_017", ["candidate", "seal", id, "--version", "1.0.0"], policy)).code).toBe(EXIT.ok);
-    // The check capability's folder vanishes from the library after the task sealed.
-    rmSync(join(r, "library", "artifacts", "kvfcu", "count_member_subaccounts"), { recursive: true, force: true });
-    const got = await sealCli(r, "op_017", ["artifact", "verify", "kvfcu/sign_in@1.0.0", "--json"], policy);
-    expect(got.code).toBe(EXIT.invalid);
-    const data = JSON.parse(got.stdout) as { ok: boolean; problems: { code: string; message: string }[] };
-    expect(data.ok).toBe(false);
-    expect(data.problems.some((p) => p.code === "reconciliation_not_readonly" && p.message.includes(CHECK_LINK))).toBe(true);
   });
 });

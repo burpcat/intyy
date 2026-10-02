@@ -41,35 +41,26 @@ type Shown = {
 };
 const show = async (r: string): Promise<Shown> => JSON.parse((await cli(r, "op_017", ["major", "show", ID, "--json"])).stdout) as Shown;
 
-describe("major deprecate", () => {
-  test("an approver writes a candidate, revision 1", async () => {
+describe("major deprecate, seal, approve, show", () => {
+  test("show, deprecate, seal, and approve: roles, inputs, states, and the retire date a tenant sees", async () => {
     const r = tempRoot();
-    const done = await deprecate(r);
-    expect(done.code).toBe(EXIT.ok);
-    expect(done.stdout).toContain("candidate 1");
-    const shown = await show(r);
-    expect(shown).toMatchObject({ rev: "1", state: "candidate", record: { successor: 2, retires_on: "2099-01-31", by: "op_031" } });
-  });
+    // major show: with no record it says the major is not deprecated
+    const none = await cli(r, "op_017", ["major", "show", ID]);
+    expect(none.code).toBe(EXIT.ok);
+    expect(none.stdout).toContain("not deprecated");
+    expect(await show(r)).toMatchObject({ record: null, tenants: [] });
+    // a major that is not app/capability@n is a usage error
+    expect((await cli(r, "op_017", ["major", "show", "nonsense"])).code).toBe(EXIT.usage);
 
-  test("a non-approver is refused, and nothing is written", async () => {
-    const r = tempRoot();
+    // a non-approver is refused, and nothing is written
     expect((await deprecate(r, undefined, REASON, "op_017")).code).toBe(EXIT.refused);
     expect((await show(r)).record).toBeNull();
-  });
-
-  test("an approver at only some tenants is refused: the record applies to every bank (scope *)", async () => {
-    const r = tempRoot();
+    // an approver at only some tenants is refused: the record applies to every bank (scope *)
     expect((await deprecate(r, undefined, REASON, "op_022")).code).toBe(EXIT.refused);
-  });
-
-  test("an empty standard input is refused", async () => {
-    const r = tempRoot();
+    // an empty standard input is refused
     for (const stdin of ["", "  \n"]) expect((await deprecate(r, undefined, stdin)).code).toBe(EXIT.usage);
     expect((await show(r)).record).toBeNull();
-  });
-
-  test("bad dates and bad successors are refused, and nothing is written", async () => {
-    const r = tempRoot();
+    // bad dates and bad successors are refused, and nothing is written
     const bad = [
       ["--successor", "2", "--retires-on", "next spring"],
       ["--successor", "2", "--retires-on", "2099-13-45"],
@@ -79,40 +70,53 @@ describe("major deprecate", () => {
     ];
     for (const extra of bad) expect((await deprecate(r, extra)).code, extra.join(" ")).not.toBe(EXIT.ok);
     expect((await show(r)).record).toBeNull();
-  });
-
-  test("a missing flag is a usage error", async () => {
-    const r = tempRoot();
+    // a missing flag is a usage error
     expect((await deprecate(r, ["--successor", "2"])).code).toBe(EXIT.usage);
     expect((await deprecate(r, ["--retires-on", "2099-01-31"])).code).toBe(EXIT.usage);
-  });
+    // a major that is not app/capability@n is a usage error
+    const badMajor = await cli(r, "op_031", ["major", "deprecate", "open_share_subaccount", "--successor", "2", "--retires-on", "2099-01-31"], REASON);
+    expect(badMajor.code).toBe(EXIT.usage);
+    expect((await show(r)).record).toBeNull();
 
-  test("a major that is not app/capability@n is a usage error", async () => {
-    const r = tempRoot();
-    const bad = await cli(r, "op_031", ["major", "deprecate", "open_share_subaccount", "--successor", "2", "--retires-on", "2099-01-31"], REASON);
-    expect(bad.code).toBe(EXIT.usage);
-  });
+    // an approver writes a candidate, revision 1
+    const done = await deprecate(r);
+    expect(done.code).toBe(EXIT.ok);
+    expect(done.stdout).toContain("candidate 1");
+    expect(await show(r)).toMatchObject({ rev: "1", state: "candidate", record: { successor: 2, retires_on: "2099-01-31", by: "op_031" } });
 
-  test("after an approved revision, the next deprecate counts up", async () => {
-    const r = rootWithDualStaff();
-    await deprecate(r);
+    // a non-reviewer cannot seal; a non-approver cannot approve
+    expect((await cli(r, "op_031", ["major", "seal", ID])).code).toBe(EXIT.refused);
+    // op_017 seals
     expect((await cli(r, "op_017", ["major", "seal", ID])).code).toBe(EXIT.ok);
+    // a sealed record is shown with no tenant rows: it has no force
+    expect(await show(r)).toMatchObject({ state: "sealed", tenants: [] });
+    expect((await cli(r, "op_022", ["major", "approve", ID, "--rev", "1"])).code).toBe(EXIT.refused);
+    // op_031 approves
     expect((await cli(r, "op_031", ["major", "approve", ID, "--rev", "1"])).code).toBe(EXIT.ok);
+    expect(await show(r)).toMatchObject({ rev: "1", state: "approved" });
+
+    // approved, successor not approved here: no retire date
+    const shown = await show(r);
+    expect(shown.tenants).toContainEqual({ tenant: "keystone", successor_approved_here: false, retires_on: null });
+    const text = (await cli(r, "op_017", ["major", "show", ID])).stdout;
+    expect(text).toContain("rev 1 (approved)");
+    expect(text).toContain("no retire date");
+    expect(text).toContain("2099-01-31");
+
+    // approved, successor approved here: the tenant's retire day is the later date
+    // The successor's approval line, in the file layout of the score store (section 8 §5.2).
+    const dir = join(r, "state", "trust", "scores", "keystone", "kvfcu", "open_share_subaccount@2.0.0", "9.2", "base");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "history.jsonl"), [batch(1, "batch_a"), approved(2)].map((l) => `${JSON.stringify(l)}\n`).join(""));
+    const here = await show(r);
+    expect(here.tenants).toContainEqual({ tenant: "keystone", successor_approved_here: true, retires_on: "2099-01-31" });
+
+    // after an approved revision, the next deprecate counts up
     const again = await deprecate(r, ["--successor", "2", "--retires-on", "2099-06-30"]);
     expect(again.code).toBe(EXIT.ok);
     expect(again.stdout).toContain("candidate 2");
     // Show prints the approved record, the one in force, until revision 2 is sealed and approved.
     expect(await show(r)).toMatchObject({ rev: "1", state: "approved", record: { retires_on: "2099-01-31" } });
-  });
-});
-
-describe("major seal, approve: roles and four eyes", () => {
-  test("op_017 seals; op_031 approves", async () => {
-    const r = tempRoot();
-    await deprecate(r);
-    expect((await cli(r, "op_017", ["major", "seal", ID])).code).toBe(EXIT.ok);
-    expect((await cli(r, "op_031", ["major", "approve", ID, "--rev", "1"])).code).toBe(EXIT.ok);
-    expect(await show(r)).toMatchObject({ rev: "1", state: "approved" });
   });
 
   test("the sealer cannot approve their own seal, even holding both roles", async () => {
@@ -124,61 +128,5 @@ describe("major seal, approve: roles and four eyes", () => {
     expect(self.stderr).toContain("four eyes");
     expect(await show(r)).toMatchObject({ state: "sealed" });
     expect((await cli(r, "op_031", ["major", "approve", ID, "--rev", "1"])).code).toBe(EXIT.ok);
-  });
-
-  test("a non-reviewer cannot seal; a non-approver cannot approve", async () => {
-    const r = tempRoot();
-    await deprecate(r);
-    expect((await cli(r, "op_031", ["major", "seal", ID])).code).toBe(EXIT.refused);
-    await cli(r, "op_017", ["major", "seal", ID]);
-    expect((await cli(r, "op_022", ["major", "approve", ID, "--rev", "1"])).code).toBe(EXIT.refused);
-  });
-});
-
-describe("major show", () => {
-  test("with no record it says the major is not deprecated", async () => {
-    const r = tempRoot();
-    const shown = await cli(r, "op_017", ["major", "show", ID]);
-    expect(shown.code).toBe(EXIT.ok);
-    expect(shown.stdout).toContain("not deprecated");
-    expect(await show(r)).toMatchObject({ record: null, tenants: [] });
-  });
-
-  test("a sealed record is shown with no tenant rows: it has no force", async () => {
-    const r = tempRoot();
-    await deprecate(r);
-    await cli(r, "op_017", ["major", "seal", ID]);
-    expect(await show(r)).toMatchObject({ state: "sealed", tenants: [] });
-  });
-
-  test("approved, successor not approved here: no retire date", async () => {
-    const r = tempRoot();
-    await deprecate(r);
-    await cli(r, "op_017", ["major", "seal", ID]);
-    await cli(r, "op_031", ["major", "approve", ID, "--rev", "1"]);
-    const shown = await show(r);
-    expect(shown.tenants).toContainEqual({ tenant: "keystone", successor_approved_here: false, retires_on: null });
-    const text = (await cli(r, "op_017", ["major", "show", ID])).stdout;
-    expect(text).toContain("rev 1 (approved)");
-    expect(text).toContain("no retire date");
-    expect(text).toContain("2099-01-31");
-  });
-
-  test("approved, successor approved here: the tenant's retire day is the later date", async () => {
-    const r = tempRoot();
-    await deprecate(r, ["--successor", "2", "--retires-on", "2099-01-31"]);
-    await cli(r, "op_017", ["major", "seal", ID]);
-    await cli(r, "op_031", ["major", "approve", ID, "--rev", "1"]);
-    // The successor's approval line, in the file layout of the score store (section 8 §5.2).
-    const dir = join(r, "state", "trust", "scores", "keystone", "kvfcu", "open_share_subaccount@2.0.0", "9.2", "base");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "history.jsonl"), [batch(1, "batch_a"), approved(2)].map((l) => `${JSON.stringify(l)}\n`).join(""));
-    const shown = await show(r);
-    expect(shown.tenants).toContainEqual({ tenant: "keystone", successor_approved_here: true, retires_on: "2099-01-31" });
-  });
-
-  test("a major that is not app/capability@n is a usage error", async () => {
-    const r = tempRoot();
-    expect((await cli(r, "op_017", ["major", "show", "nonsense"])).code).toBe(EXIT.usage);
   });
 });

@@ -65,8 +65,8 @@ const autonomyLines = async (env: ReplayEnv): Promise<AutonomyLine[]> =>
 const grant = async (env: ReplayEnv, staff = "op_031", stdin = "The evidence is complete.", hash?: string) =>
   trust(env, staff, ["autonomy", TEXT, "grant", "--expect-record", hash ?? (await read(env)).record], stdin);
 
-describe("trust autonomy: read", () => {
-  test("no evidence: none; with evidence: the state and the counts against the rule, for any role", async () => {
+describe("trust autonomy: read, and a record that is not ready", () => {
+  test("no evidence: none; with evidence: the state and the counts against the rule, for any role; not ready: grant exits 6 and revoke is refused", async () => {
     const none = await trust(await replayRoot(), "op_017", ["autonomy", TEXT]);
     expect(none.code).toBe(EXIT.ok);
     expect(none.stdout).toContain("none");
@@ -77,56 +77,8 @@ describe("trust autonomy: read", () => {
     expect(r.stdout).toContain("10 correct");
     expect(r.stdout).toContain("need 20 correct");
     expect(await read(env)).toMatchObject({ state: "earning", autonomy: { evidence: { correct: 10, found: 5, not_found: 5 } } });
-  });
 
-  test("a ready record says ready", async () => {
-    expect(await read(await READY())).toMatchObject({ state: "ready" });
-  });
-});
-
-describe("trust autonomy grant", () => {
-  test("an approver grants a ready record: a granted line by them, the record is granted, and the reason is kept", async () => {
-    const env = await READY();
-    const r = await grant(env);
-    expect(r.code).toBe(EXIT.ok);
-    const lines = await autonomyLines(env);
-    expect(lines.at(-1)).toMatchObject({ action: "granted", by: "op_031", reason: "The evidence is complete." });
-    expect(await read(env)).toMatchObject({ state: "granted", autonomy: { granted: { by: "op_031", reason: "The evidence is complete." }, evidence: { correct: 20 } } });
-  });
-
-  test("a non-approver is refused, and nothing is written", async () => {
-    const env = await READY();
-    const before = (await history(env)).length;
-    const r = await grant(env, "op_017");
-    expect(r.code).toBe(EXIT.refused);
-    expect((await history(env)).length).toBe(before);
-    expect((await read(env)).state).toBe("ready");
-  });
-
-  test("a wrong --expect-record is refused (exit 6) and nothing is written", async () => {
-    const env = await READY();
-    const before = (await history(env)).length;
-    const r = await grant(env, "op_031", "Evidence is complete.", `sha256:${"0".repeat(64)}`);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("record_changed");
-    expect((await history(env)).length).toBe(before);
-  });
-
-  test("a missing --expect-record is a usage error", async () => {
-    const env = await READY();
-    const r = await trust(env, "op_031", ["autonomy", TEXT, "grant"], "Evidence is complete.");
-    expect(r.code).toBe(EXIT.usage);
-  });
-
-  test("an empty reason on standard input is a usage error", async () => {
-    const env = await READY();
-    const r = await grant(env, "op_031", "  \n");
-    expect(r.code).toBe(EXIT.usage);
-    expect((await read(env)).state).toBe("ready");
-  });
-
-  test("not ready: exit 6, and nothing is written", async () => {
-    const env = await EARNING();
+    // not ready: exit 6, and nothing is written
     const refused = await grant(env);
     expect(refused.code).toBe(EXIT.refused);
     expect(refused.stderr).toContain("not ready");
@@ -134,9 +86,75 @@ describe("trust autonomy grant", () => {
     // No autonomy record at all is not ready either.
     const empty = await replayRoot();
     expect((await grant(empty)).code).toBe(EXIT.refused);
+    // revoke with no autonomy is refused
+    expect((await trust(await replayRoot(), "op_017", ["autonomy", TEXT, "revoke"], "Reason.")).code).toBe(EXIT.refused);
+  });
+});
+
+describe("trust autonomy grant and revoke", () => {
+  test("a ready record: bad calls write nothing; an approver grants once; an operator revokes; the key earns again from zero", async () => {
+    const env = await READY();
+    // a ready record says ready
+    expect(await read(env)).toMatchObject({ state: "ready" });
+    // a bad action word is a usage error
+    expect((await trust(env, "op_017", ["autonomy", TEXT, "explode"], "Reason.")).code).toBe(EXIT.usage);
+
+    // a non-approver is refused, and nothing is written
+    const before = (await history(env)).length;
+    const nonApprover = await grant(env, "op_017");
+    expect(nonApprover.code).toBe(EXIT.refused);
+    expect((await history(env)).length).toBe(before);
+    expect((await read(env)).state).toBe("ready");
+
+    // a wrong --expect-record is refused (exit 6) and nothing is written
+    const wrong = await grant(env, "op_031", "Evidence is complete.", `sha256:${"0".repeat(64)}`);
+    expect(wrong.code).toBe(EXIT.refused);
+    expect(wrong.stderr).toContain("record_changed");
+    expect((await history(env)).length).toBe(before);
+
+    // a missing --expect-record is a usage error
+    const missing = await trust(env, "op_031", ["autonomy", TEXT, "grant"], "Evidence is complete.");
+    expect(missing.code).toBe(EXIT.usage);
+
+    // an empty reason on standard input is a usage error
+    const blank = await grant(env, "op_031", "  \n");
+    expect(blank.code).toBe(EXIT.usage);
+    expect((await read(env)).state).toBe("ready");
+
+    // revoke: an empty reason is a usage error
+    expect((await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "")).code).toBe(EXIT.usage);
+    expect((await read(env)).state).toBe("ready");
+
+    // an approver grants a ready record: a granted line by them, the record is granted, and the reason is kept
+    const r = await grant(env);
+    expect(r.code).toBe(EXIT.ok);
+    const lines = await autonomyLines(env);
+    expect(lines.at(-1)).toMatchObject({ action: "granted", by: "op_031", reason: "The evidence is complete." });
+    expect(await read(env)).toMatchObject({ state: "granted", autonomy: { granted: { by: "op_031", reason: "The evidence is complete." }, evidence: { correct: 20 } } });
+    // granting twice is refused: it is no longer ready
+    expect((await grant(env, "op_031")).code).toBe(EXIT.refused);
+
+    // an operator revokes: a revoked line, zero evidence, no alert
+    const revoked = await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "Jev changed its answers.");
+    expect(revoked.code).toBe(EXIT.ok);
+    expect((await autonomyLines(env)).at(-1)).toMatchObject({ action: "revoked", by: "op_017", reason: "Jev changed its answers." });
+    expect(await read(env)).toMatchObject({
+      state: "revoked",
+      autonomy: { evidence: { correct: 0, found: 0, not_found: 0, wrong: 0, unclear: 0, batches: [] }, granted: null, revoked: { by: "op_017" } },
+    });
+    const alerts = await realWiringOf(env).alerts.list();
+    expect(alerts.ok && alerts.value).toEqual([]);
+    // one already revoked is refused
+    expect((await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "Again.")).code).toBe(EXIT.refused);
+
+    // after a revoke the key earns from zero: one batch is earning again, never ready
+    const w = realWiringOf(env);
+    const deps = { scores: w.scores, locks: w.locks, artifacts: w.candidates };
+    await appendHistory(deps, KEY, earned(5, "batch_c"), WHO);
+    expect(await read(env)).toMatchObject({ state: "earning", autonomy: { evidence: { correct: 10, batches: ["batch_c"] } } });
   });
 
-  test("both argument orders work", async () => {
+  test("both argument orders work, for grant and for an approver's revoke of a ready record", async () => {
     const a = await READY();
     const b = await READY();
     const first = await trust(a, "op_031", ["autonomy", "grant", TEXT, "--expect-record", (await read(a)).record], "Evidence is complete.");
@@ -144,12 +162,12 @@ describe("trust autonomy grant", () => {
     expect([first.code, second.code]).toEqual([EXIT.ok, EXIT.ok]);
     expect((await read(a)).state).toBe("granted");
     expect((await read(b)).state).toBe("granted");
-  });
 
-  test("granting twice is refused: it is no longer ready", async () => {
+    // an approver may revoke, and so may either argument order; a ready record can be revoked too
     const env = await READY();
-    expect((await grant(env)).code).toBe(EXIT.ok);
-    expect((await grant(env, "op_031")).code).toBe(EXIT.refused);
+    const r = await trust(env, "op_031", ["autonomy", "revoke", TEXT], "Not wanted.");
+    expect(r.code).toBe(EXIT.ok);
+    expect((await read(env)).state).toBe("revoked");
   });
 });
 
@@ -167,51 +185,5 @@ describe("trust autonomy: a changed scope", () => {
     expect(r.autonomy?.state).toBe("granted"); // the stored record is untouched: nothing is written on a read
     expect((await history(env)).length).toBe(before);
     expect((await grant(env)).code).toBe(EXIT.refused);
-  });
-});
-
-describe("trust autonomy revoke", () => {
-  test("an operator revokes: a revoked line, zero evidence, no alert", async () => {
-    const env = await READY();
-    await grant(env);
-    const r = await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "Jev changed its answers.");
-    expect(r.code).toBe(EXIT.ok);
-    expect((await autonomyLines(env)).at(-1)).toMatchObject({ action: "revoked", by: "op_017", reason: "Jev changed its answers." });
-    expect(await read(env)).toMatchObject({
-      state: "revoked",
-      autonomy: { evidence: { correct: 0, found: 0, not_found: 0, wrong: 0, unclear: 0, batches: [] }, granted: null, revoked: { by: "op_017" } },
-    });
-    const alerts = await realWiringOf(env).alerts.list();
-    expect(alerts.ok && alerts.value).toEqual([]);
-  });
-
-  test("an approver may revoke, and so may either argument order; a ready record can be revoked too", async () => {
-    const env = await READY();
-    const r = await trust(env, "op_031", ["autonomy", "revoke", TEXT], "Not wanted.");
-    expect(r.code).toBe(EXIT.ok);
-    expect((await read(env)).state).toBe("revoked");
-  });
-
-  test("after a revoke the key earns from zero: one batch is earning again, never ready", async () => {
-    const env = await READY();
-    await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "Reset.");
-    const w = realWiringOf(env);
-    const deps = { scores: w.scores, locks: w.locks, artifacts: w.candidates };
-    await appendHistory(deps, KEY, earned(5, "batch_c"), WHO);
-    expect(await read(env)).toMatchObject({ state: "earning", autonomy: { evidence: { correct: 10, batches: ["batch_c"] } } });
-  });
-
-  test("an empty reason is a usage error; no autonomy, or one already revoked, is refused", async () => {
-    const env = await READY();
-    expect((await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "")).code).toBe(EXIT.usage);
-    expect((await read(env)).state).toBe("ready");
-    expect((await trust(await replayRoot(), "op_017", ["autonomy", TEXT, "revoke"], "Reason.")).code).toBe(EXIT.refused);
-    await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "Reason.");
-    expect((await trust(env, "op_017", ["autonomy", TEXT, "revoke"], "Again.")).code).toBe(EXIT.refused);
-  });
-
-  test("a bad action word is a usage error", async () => {
-    const env = await READY();
-    expect((await trust(env, "op_017", ["autonomy", TEXT, "explode"], "Reason.")).code).toBe(EXIT.usage);
   });
 });

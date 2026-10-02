@@ -76,7 +76,7 @@ describe("trust rebuild", () => {
     expect(r.stdout).toContain("skipped keystone/junk: not a key folder");
   });
 
-  test("--json quotes the record hash of the canonical record, not of the file text", async () => {
+  test("--json quotes the record hash of the canonical record, not of the file text; a second run changes nothing, byte for byte; a tampered record is repaired and named", async () => {
     const env = await replayRoot();
     await seed(env, KEY, LINES);
     const r = await rebuildCall(env, "op_017", "--all", "--json");
@@ -85,12 +85,6 @@ describe("trust rebuild", () => {
     expect(body.rebuilt[0]).toMatchObject({ key: KEY, state: "approved", written: true });
     expect(body.rebuilt[0]?.record).toBe(hashJson(expectedRecord(KEY, LINES)));
     expect(body.rebuilt[0]?.record).toBe(hashJson(readRecord(env, KEY)));
-  });
-
-  test("a second run changes nothing, byte for byte; a tampered record is repaired and named", async () => {
-    const env = await replayRoot();
-    await seed(env, KEY, LINES);
-    await rebuildCall(env, "op_017", "--all");
     const bytes = readFileSync(recordFile(env, KEY), "utf8");
 
     const again = JSON.parse((await rebuildCall(env, "op_017", "--all", "--json")).stdout) as { rebuilt: { changed: string[] }[] };
@@ -117,7 +111,7 @@ describe("trust rebuild", () => {
     expect(existsSync(recordFile(env, KEY))).toBe(true);
   });
 
-  test("a key with no score files stays a draft and nothing is written", async () => {
+  test("a key with no score files stays a draft; the record's artifact hash is the seal's; a bad history exits 7, names its line, and writes no record", async () => {
     const env = await replayRoot();
     const r = await rebuildCall(env, "op_017", "kvfcu/open_sub@1.0.0");
     expect(r.code).toBe(EXIT.ok);
@@ -126,10 +120,8 @@ describe("trust rebuild", () => {
     const none = await rebuildCall(env, "op_017", "--all");
     expect(none.code).toBe(EXIT.ok);
     expect(existsSync(join(env.root, "state", "trust", "scores"))).toBe(false);
-  });
 
-  test("the record's artifact hash is the hash the seal returned", async () => {
-    const env = await replayRoot();
+    // the record's artifact hash is the hash the seal returned
     const sealed = await realWiringOf(env).candidates.seal(
       "kvfcu/open_sub/cand_2026-01-15_1000000009",
       "2.0.0",
@@ -142,54 +134,43 @@ describe("trust rebuild", () => {
     await seed(env, key, LINES);
     await rebuildCall(env, "op_017", "kvfcu/open_sub@2.0.0");
     expect(ScoreRecord.parse(readRecord(env, key)).hashes).toEqual({ artifact: sealed.value.hash, patch: null });
-  });
 
-  test("a bad history exits 7, names its line, and writes no record", async () => {
-    const env = await replayRoot();
+    // a bad history exits 7, names its line, and writes no record
     await seed(env, KEY, [approved(1), retired(2), approved(3)]);
-    const r = await rebuildCall(env, "op_017", "--all");
-    expect(r.code).toBe(EXIT.invalid);
-    expect(r.stderr).toContain("line 3");
+    const bad = await rebuildCall(env, "op_017", "--all");
+    expect(bad.code).toBe(EXIT.invalid);
+    expect(bad.stderr).toContain("line 3");
     expect(existsSync(recordFile(env, KEY))).toBe(false);
   });
 });
 
 describe("trust rebuild: refusals", () => {
-  test("--from-evidence rebuilds the record (M11): exit 0, and with no runs the record is the plain rebuild", async () => {
+  test("a missing or doubled target exits 1, a bad key text exits 1, a non-operator exits 6, and nothing is written; then --from-evidence rebuilds the record (M11)", async () => {
     const env = await replayRoot();
     await seed(env, KEY, LINES);
+    // neither a key nor --all exits 1; both exit 1
+    expect((await rebuildCall(env, "op_017")).code).toBe(EXIT.usage);
+    expect((await rebuildCall(env, "op_017", "kvfcu/open_sub@1.0.0", "--all")).code).toBe(EXIT.usage);
+    expect(existsSync(recordFile(env, KEY))).toBe(false);
+
+    // a key that is not key text exits 1
+    expect((await rebuildCall(env, "op_017", "kvfcu/open_sub")).code).toBe(EXIT.usage);
+    expect((await rebuildCall(env, "op_017", "kvfcu/open_sub@1")).code).toBe(EXIT.usage);
+
+    // an approver without the operator role exits 6 and writes nothing
+    const denied = await rebuildCall(env, "op_031", "--all");
+    expect(denied.code).toBe(EXIT.refused);
+    expect(denied.stderr).toContain("operator");
+    expect(existsSync(recordFile(env, KEY))).toBe(false);
+
+    // an unknown staff ID exits 6
+    expect((await rebuildCall(env, "op_999", "--all")).code).toBe(EXIT.refused);
+
+    // --from-evidence rebuilds the record (M11): exit 0, and with no runs the record is the plain rebuild
     const r = await rebuildCall(env, "op_017", "--all", "--from-evidence");
     expect(r.code).toBe(EXIT.ok);
     expect(r.stderr).toBe("");
     expect(readRecord(env, KEY)).toEqual(expectedRecord(KEY, LINES));
-  });
-
-  test("neither a key nor --all exits 1; both exit 1", async () => {
-    const env = await replayRoot();
-    await seed(env, KEY, LINES);
-    expect((await rebuildCall(env, "op_017")).code).toBe(EXIT.usage);
-    expect((await rebuildCall(env, "op_017", "kvfcu/open_sub@1.0.0", "--all")).code).toBe(EXIT.usage);
-    expect(existsSync(recordFile(env, KEY))).toBe(false);
-  });
-
-  test("a key that is not key text exits 1", async () => {
-    const env = await replayRoot();
-    expect((await rebuildCall(env, "op_017", "kvfcu/open_sub")).code).toBe(EXIT.usage);
-    expect((await rebuildCall(env, "op_017", "kvfcu/open_sub@1")).code).toBe(EXIT.usage);
-  });
-
-  test("an approver without the operator role exits 6 and writes nothing", async () => {
-    const env = await replayRoot();
-    await seed(env, KEY, LINES);
-    const r = await rebuildCall(env, "op_031", "--all");
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("operator");
-    expect(existsSync(recordFile(env, KEY))).toBe(false);
-  });
-
-  test("an unknown staff ID exits 6", async () => {
-    const env = await replayRoot();
-    expect((await rebuildCall(env, "op_999", "--all")).code).toBe(EXIT.refused);
   });
 });
 

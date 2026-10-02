@@ -44,8 +44,8 @@ async function seedCrashedRun(
   );
 }
 
-describe("every command sweeps first (section 9 §7.8)", () => {
-  test("run list closes a crashed run first, and prints the sweep line", async () => {
+describe("the sweep at the CLI", () => {
+  test("run list closes a crashed run first and prints the sweep line; run sweep lists each closed run's commit state and the reconcile command", async () => {
     const env = await replayRoot();
     await seedCrashedRun(env, "run_2026-01-15_2000000001", {
       kind: "discovery",
@@ -53,6 +53,7 @@ describe("every command sweeps first (section 9 §7.8)", () => {
       events: [line(1, "2026-01-15T09:00:00.000Z", null, "run_start", {})],
     });
 
+    // every command sweeps first (section 9 §7.8)
     const got = await replayCall(env, ["run", "list"]);
     expect(got.code).toBe(0);
     expect(got.stderr).toContain("Closed 1 crashed run");
@@ -60,12 +61,8 @@ describe("every command sweeps first (section 9 §7.8)", () => {
     // A second command finds nothing left to close: the sweep already ran.
     const again = await replayCall(env, ["run", "list"]);
     expect(again.stderr).not.toContain("Closed");
-  });
-});
 
-describe("intyy run sweep (section 9 §10.7)", () => {
-  test("lists each closed run's commit state, and the reconcile command for an uncertain one", async () => {
-    const env = await replayRoot();
+    // intyy run sweep (section 9 §10.7): lists each closed run's commit state, and the reconcile command for an uncertain one
     await seedCrashedRun(env, "run_2026-01-15_2000000002", {
       kind: "replay",
       capability: "kvfcu/open_sub",
@@ -78,20 +75,18 @@ describe("intyy run sweep (section 9 §10.7)", () => {
       ],
     });
 
-    const got = await replayCall(env, ["run", "sweep"]);
-    expect(got.code).toBe(0);
-    expect(got.stdout).toContain("run_2026-01-15_2000000002");
-    expect(got.stdout).toContain("commit uncertain");
-    expect(got.stdout).toContain("intyy reconcile run_2026-01-15_2000000002 --inputs <file>");
-  });
+    const swept = await replayCall(env, ["run", "sweep"]);
+    expect(swept.code).toBe(0);
+    expect(swept.stdout).toContain("run_2026-01-15_2000000002");
+    expect(swept.stdout).toContain("commit uncertain");
+    expect(swept.stdout).toContain("intyy reconcile run_2026-01-15_2000000002 --inputs <file>");
 
-  test("the command's own sweep lists the run, clear of the program hook's own sweep", async () => {
+    // The command's own sweep lists the run, clear of the program hook's own sweep.
     // Every command sweeps first, through the very same program hook (section 9 §7.8) —
     // including `run sweep` itself. In a real, single invocation, that hook's own sweep
     // already closes every crash candidate before `run sweep`'s own body ever runs a second
     // sweep, so the detailed listing above depends on the hook leaving something behind.
     // `stubSweep` here isolates `run sweep`'s own body, to show its own reporting is correct.
-    const env = await replayRoot();
     await seedCrashedRun(env, "run_2026-01-15_2000000009", {
       kind: "replay",
       capability: "kvfcu/open_sub",
@@ -104,20 +99,18 @@ describe("intyy run sweep (section 9 §10.7)", () => {
       ],
     });
 
-    const got = await replayCall(env, ["run", "sweep"], { sweep: stubSweep });
-    expect(got.code).toBe(0);
-    expect(got.stdout).toContain("run_2026-01-15_2000000009");
-    expect(got.stdout).toContain("commit uncertain");
-    expect(got.stdout).toContain("intyy reconcile run_2026-01-15_2000000009 --inputs <file>");
+    const stubbed = await replayCall(env, ["run", "sweep"], { sweep: stubSweep });
+    expect(stubbed.code).toBe(0);
+    expect(stubbed.stdout).toContain("run_2026-01-15_2000000009");
+    expect(stubbed.stdout).toContain("commit uncertain");
+    expect(stubbed.stdout).toContain("intyy reconcile run_2026-01-15_2000000009 --inputs <file>");
   });
 
-  test("--force-unlock releases a lock this process did not take, and needs the operator role", async () => {
+  test("--force-unlock needs a reason on standard input, then releases a lock this process did not take", async () => {
     const env = await replayRoot();
-    const runId = "run_2026-01-15_2000000003";
     const lockDir = join(env.root, "state", "var", "locks", "runs");
     mkdirSync(lockDir, { recursive: true });
-    writeFileSync(
-      join(lockDir, `${runId}.lock`),
+    const lockOf = (runId: string) =>
       JSON.stringify({
         schema: "intyy.lock/1.0",
         owner: runId,
@@ -126,8 +119,17 @@ describe("intyy run sweep (section 9 §10.7)", () => {
         command: "replay",
         staff: null,
         started_at: "2026-01-15T09:00:00.000Z",
-      }),
-    );
+      });
+
+    // --force-unlock without a reason on standard input is a usage error
+    const noReason = "run_2026-01-15_2000000004";
+    writeFileSync(join(lockDir, `${noReason}.lock`), lockOf(noReason));
+    const refused = await replayCall(env, ["run", "sweep", "--force-unlock", `run:${noReason}`]);
+    expect(refused.code).toBe(1);
+
+    // --force-unlock releases a lock this process did not take, and needs the operator role
+    const runId = "run_2026-01-15_2000000003";
+    writeFileSync(join(lockDir, `${runId}.lock`), lockOf(runId));
 
     const wiring = realWiringOf(env);
     const before = await wiring.locks.inspect("run", runId);
@@ -141,26 +143,5 @@ describe("intyy run sweep (section 9 §10.7)", () => {
 
     const after = await wiring.locks.inspect("run", runId);
     expect(after).toBeNull();
-  });
-
-  test("--force-unlock without a reason on standard input is a usage error", async () => {
-    const env = await replayRoot();
-    const runId = "run_2026-01-15_2000000004";
-    const lockDir = join(env.root, "state", "var", "locks", "runs");
-    mkdirSync(lockDir, { recursive: true });
-    writeFileSync(
-      join(lockDir, `${runId}.lock`),
-      JSON.stringify({
-        schema: "intyy.lock/1.0",
-        owner: runId,
-        pid: 999_999,
-        host: "another-machine",
-        command: "replay",
-        staff: null,
-        started_at: "2026-01-15T09:00:00.000Z",
-      }),
-    );
-    const got = await replayCall(env, ["run", "sweep", "--force-unlock", `run:${runId}`]);
-    expect(got.code).toBe(1);
   });
 });

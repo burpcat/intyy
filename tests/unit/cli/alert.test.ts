@@ -84,7 +84,7 @@ const stored = async (env: ReplayEnv, n: number): Promise<Alert> => {
 };
 
 describe("alert list", () => {
-  test("shows open alerts of this tenant, newest first", async () => {
+  test("shows open alerts of this tenant, newest first; --state picks acted or dismissed; a bad state exits 1", async () => {
     const env = await replayRoot();
     await putAlerts(env, alertOf(1), alertOf(2), alertOf(3, { state: "dismissed", closed: { by: "op_017", at: "2026-01-15T11:00:00.000Z", note: "n" } }), alertOf(4, { tenant: "lakeshore" }));
     const r = await trust(env, "op_017", ["alert", "list"]);
@@ -96,23 +96,19 @@ describe("alert list", () => {
     expect(r.stdout).toContain("margin_drop");
     expect(r.stdout).not.toContain(id(3));
     expect(r.stdout).not.toContain(id(4));
-  });
-  test("--state picks acted or dismissed; a bad state exits 1", async () => {
-    const env = await replayRoot();
-    await putAlerts(env, alertOf(1), alertOf(3, { state: "dismissed", closed: { by: "op_017", at: "2026-01-15T11:00:00.000Z", note: "n" } }));
+
     const dismissed = await trust(env, "op_017", ["alert", "list", "--state", "dismissed"]);
     expect(dismissed.stdout).toContain(id(3));
     expect(dismissed.stdout).not.toContain(id(1));
     expect((await trust(env, "op_017", ["alert", "list", "--state", "acted"])).stdout).toContain("No acted alerts.");
     expect((await trust(env, "op_017", ["alert", "list", "--state", "bogus"])).code).toBe(EXIT.usage);
   });
-  test("with no alerts it says so, and any staff member may read", async () => {
-    const env = await replayRoot();
-    const r = await trust(env, "op_031", ["alert", "list"]);
+  test("with no alerts it says so, and any staff member may read; --json is the list of alerts", async () => {
+    const empty = await replayRoot();
+    const r = await trust(empty, "op_031", ["alert", "list"]);
     expect(r.code).toBe(EXIT.ok);
     expect(r.stdout).toContain("No open alerts.");
-  });
-  test("--json is the list of alerts", async () => {
+
     const env = await replayRoot();
     await putAlerts(env, alertOf(1));
     const body = JSON.parse((await trust(env, "op_017", ["alert", "list", "--json"])).stdout) as Alert[];
@@ -121,74 +117,63 @@ describe("alert list", () => {
 });
 
 describe("alert show", () => {
-  test("prints the pattern, keys, evidence runs, and suggested fix", async () => {
+  test("prints the pattern, keys, evidence runs, and suggested fix; an unknown ID, and another tenant's alert, exit 1", async () => {
     const env = await replayRoot();
-    await putAlerts(env, alertOf(1));
+    await putAlerts(env, alertOf(1), alertOf(4, { tenant: "lakeshore" }));
     const r = await trust(env, "op_017", ["alert", "show", id(1)]);
     expect(r.code).toBe(EXIT.ok);
     for (const text of ["margin_drop", TEXT, runId(1), "Review target open_member before it breaks.", "lowest live margin 0.10"]) expect(r.stdout).toContain(text);
     expect(JSON.parse((await trust(env, "op_017", ["alert", "show", id(1), "--json"])).stdout)).toEqual(alertOf(1));
-  });
-  test("an unknown ID, and another tenant's alert, exit 1", async () => {
-    const env = await replayRoot();
-    await putAlerts(env, alertOf(4, { tenant: "lakeshore" }));
+
     expect((await trust(env, "op_017", ["alert", "show", id(9)])).code).toBe(EXIT.usage);
     expect((await trust(env, "op_017", ["alert", "show", id(4)])).code).toBe(EXIT.usage);
   });
 });
 
 describe("alert act and dismiss", () => {
-  test("act marks the alert acted, with the text from standard input", async () => {
+  test("act and dismiss refuse bad calls and leave the alert open; then each closes with text from standard input", async () => {
     const env = await replayRoot();
-    await putAlerts(env, alertOf(1));
+    await putAlerts(env, alertOf(1), alertOf(2), alertOf(3));
+
+    // no text on standard input exits 1 and leaves the alert open
+    expect((await trust(env, "op_017", ["alert", "act", id(1)])).code).toBe(EXIT.usage);
+    expect((await trust(env, "op_017", ["alert", "dismiss", id(1)])).code).toBe(EXIT.usage);
+    expect((await stored(env, 1)).state).toBe("open");
+
+    // text on a flag is refused: there is no --with and no --reason
+    expect((await trust(env, "op_017", ["alert", "act", id(1), "--with", "a note"])).code).toBe(EXIT.usage);
+    expect((await trust(env, "op_017", ["alert", "dismiss", id(1), "--reason", "a note"])).code).toBe(EXIT.usage);
+    expect((await stored(env, 1)).state).toBe("open");
+
+    // a person without the operator role exits 6 and writes nothing
+    for (const verb of ["act", "dismiss"]) {
+      const denied = await trust(env, "op_031", ["alert", verb, id(1)], "Because.");
+      expect(denied.code, verb).toBe(EXIT.refused);
+      expect(denied.stderr, verb).toContain("operator");
+    }
+    expect((await stored(env, 1)).state).toBe("open");
+
+    // an unknown alert exits 1
+    expect((await trust(env, "op_017", ["alert", "act", id(9)], "x")).code).toBe(EXIT.usage);
+
+    // act marks the alert acted, with the text from standard input
     const r = await trust(env, "op_017", ["alert", "act", id(1)], "Sealed pack revision 6.\n");
     expect(r.stderr).toBe("");
     expect(r.code).toBe(EXIT.ok);
     expect(await stored(env, 1)).toMatchObject({ state: "acted", closed: { by: "op_017", note: "Sealed pack revision 6." } });
+
+    // dismiss marks the alert dismissed, with the reason from standard input
+    const dismissed = await trust(env, "op_022", ["alert", "dismiss", id(3)], "Bank maintenance window.");
+    expect(dismissed.code).toBe(EXIT.ok);
+    expect(await stored(env, 3)).toMatchObject({ state: "dismissed", closed: { by: "op_022", note: "Bank maintenance window." } });
+
+    // a closed alert exits 6 and keeps its first close
+    await trust(env, "op_017", ["alert", "act", id(2)], "First.");
+    const closed = await trust(env, "op_017", ["alert", "dismiss", id(2)], "Second.");
+    expect(closed.code).toBe(EXIT.refused);
+    expect(await stored(env, 2)).toMatchObject({ state: "acted", closed: { note: "First." } });
+
     expect((await trust(env, "op_017", ["alert", "list"])).stdout).toContain("No open alerts.");
-  });
-  test("dismiss marks the alert dismissed, with the reason from standard input", async () => {
-    const env = await replayRoot();
-    await putAlerts(env, alertOf(1));
-    const r = await trust(env, "op_022", ["alert", "dismiss", id(1)], "Bank maintenance window.");
-    expect(r.code).toBe(EXIT.ok);
-    expect(await stored(env, 1)).toMatchObject({ state: "dismissed", closed: { by: "op_022", note: "Bank maintenance window." } });
-  });
-  test("no text on standard input exits 1 and leaves the alert open", async () => {
-    const env = await replayRoot();
-    await putAlerts(env, alertOf(1));
-    expect((await trust(env, "op_017", ["alert", "act", id(1)])).code).toBe(EXIT.usage);
-    expect((await trust(env, "op_017", ["alert", "dismiss", id(1)])).code).toBe(EXIT.usage);
-    expect((await stored(env, 1)).state).toBe("open");
-  });
-  test("text on a flag is refused: there is no --with and no --reason", async () => {
-    const env = await replayRoot();
-    await putAlerts(env, alertOf(1));
-    expect((await trust(env, "op_017", ["alert", "act", id(1), "--with", "a note"])).code).toBe(EXIT.usage);
-    expect((await trust(env, "op_017", ["alert", "dismiss", id(1), "--reason", "a note"])).code).toBe(EXIT.usage);
-    expect((await stored(env, 1)).state).toBe("open");
-  });
-  test("a person without the operator role exits 6 and writes nothing", async () => {
-    const env = await replayRoot();
-    await putAlerts(env, alertOf(1));
-    for (const verb of ["act", "dismiss"]) {
-      const r = await trust(env, "op_031", ["alert", verb, id(1)], "Because.");
-      expect(r.code).toBe(EXIT.refused);
-      expect(r.stderr).toContain("operator");
-    }
-    expect((await stored(env, 1)).state).toBe("open");
-  });
-  test("a closed alert exits 6 and keeps its first close", async () => {
-    const env = await replayRoot();
-    await putAlerts(env, alertOf(1));
-    await trust(env, "op_017", ["alert", "act", id(1)], "First.");
-    const r = await trust(env, "op_017", ["alert", "dismiss", id(1)], "Second.");
-    expect(r.code).toBe(EXIT.refused);
-    expect(await stored(env, 1)).toMatchObject({ state: "acted", closed: { note: "First." } });
-  });
-  test("an unknown alert exits 1", async () => {
-    const env = await replayRoot();
-    expect((await trust(env, "op_017", ["alert", "act", id(9)], "x")).code).toBe(EXIT.usage);
   });
 });
 
@@ -203,35 +188,29 @@ describe("drift report", () => {
     const json = JSON.parse((await trust(env, "op_031", ["drift", "report", "--json"])).stdout) as { pattern: string; keys: string[]; runs: string[]; alert: string | null }[];
     expect(json).toMatchObject([{ pattern: "margin_drop", keys: [TEXT], runs: [runId(1), runId(2)], alert: null }]);
   });
-  test("with nothing wrong it says so", LONG, async () => {
+  test("with nothing wrong it says so, and it reports only this tenant's findings", LONG, async () => {
     const env = await replayRoot();
+    // it reports only this tenant's findings
+    await seedKey(env, [low(1)], { ...KEY, tenant: "lakeshore" });
+    expect((await trust(env, "op_031", ["drift", "report"])).stdout, "other tenant").toContain("No drift found.");
+    // with nothing wrong it says so
     await seedKey(env, [live(1), live(2)]);
-    expect((await trust(env, "op_031", ["drift", "report"])).stdout).toContain("No drift found.");
+    expect((await trust(env, "op_031", ["drift", "report"])).stdout, "clean key").toContain("No drift found.");
   });
-  test("a finding with an open alert shows the alert's ID", LONG, async () => {
+  test("--since keeps findings on or after the date and rejects a non-date; a finding with an open alert shows the alert's ID", LONG, async () => {
     const env = await replayRoot();
     await seedKey(env, [low(1)]);
+    expect((await trust(env, "op_031", ["drift", "report", "--since", "2026-01-15"])).stdout).toContain("margin_drop");
+    expect((await trust(env, "op_031", ["drift", "report", "--since", "2026-01-16"])).stdout).toContain("No drift found.");
+    // a --since that is not a date exits 1
+    expect((await trust(env, "op_031", ["drift", "report", "--since", "yesterday"])).code).toBe(EXIT.usage);
+
     await putAlerts(env, alertOf(1, { fingerprint: FINGERPRINT }));
     const r = await trust(env, "op_031", ["drift", "report"]);
     expect(r.stdout).toContain(`alert: ${id(1)}`);
     const closed = alertOf(1, { fingerprint: FINGERPRINT, state: "dismissed", closed: { by: "op_017", at: "2026-01-15T11:00:00.000Z", note: "n" } });
     await putAlerts(env, closed);
     expect((await trust(env, "op_031", ["drift", "report"])).stdout).not.toContain("alert:");
-  });
-  test("--since keeps findings whose newest evidence is on or after the date", LONG, async () => {
-    const env = await replayRoot();
-    await seedKey(env, [low(1)]);
-    expect((await trust(env, "op_031", ["drift", "report", "--since", "2026-01-15"])).stdout).toContain("margin_drop");
-    expect((await trust(env, "op_031", ["drift", "report", "--since", "2026-01-16"])).stdout).toContain("No drift found.");
-  });
-  test("a --since that is not a date exits 1", LONG, async () => {
-    const env = await replayRoot();
-    expect((await trust(env, "op_031", ["drift", "report", "--since", "yesterday"])).code).toBe(EXIT.usage);
-  });
-  test("it reports only this tenant's findings", LONG, async () => {
-    const env = await replayRoot();
-    await seedKey(env, [low(1)], { ...KEY, tenant: "lakeshore" });
-    expect((await trust(env, "op_031", ["drift", "report"])).stdout).toContain("No drift found.");
   });
 });
 
@@ -287,7 +266,7 @@ describe("a replay whose live write failed", () => {
     return { env, got };
   }
 
-  test("writes a live_write_failed alert per key, naming the run and the repair; the result stands", LONG, async () => {
+  test("writes a live_write_failed alert per key, naming the run and the repair; the result stands; no alert file holds a member ID or an account number", LONG, async () => {
     const { env, got } = await failedWriteRun();
     expect(got.code).toBe(EXIT.ok);
     expect((JSON.parse(got.stdout) as { status: string }).status).toBe("success");
@@ -298,10 +277,7 @@ describe("a replay whose live write failed", () => {
       expect(a.evidence_runs).toEqual([got.runId]);
       expect(a.suggested_fix).toContain(`intyy trust rebuild ${a.keys[0] ?? ""} --from-evidence`);
     }
-  });
 
-  test("no alert file holds a member ID or an account number", LONG, async () => {
-    const { env } = await failedWriteRun();
     const files = alertFiles(env);
     expect(files.length).toBeGreaterThan(0);
     for (const f of files) {

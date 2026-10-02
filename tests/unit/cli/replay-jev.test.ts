@@ -128,105 +128,92 @@ describe("replayModels: the jev classifier is built only when allowed", () => {
     expect(JEV_VAR).toBe("TYPESAFE_API_KEY");
   });
 
-  test("switch on and a key set: built with that key, and the version is set", async () => {
-    const got = await build(tempRoot());
-    expect(got.jevKeys).toEqual([KEY]);
-    expect(got.models.classifier).toBe(got.classifier);
-    expect(got.models.jevVersion).toBe(VERSION);
-  });
+  test("the jev classifier follows the policy switch, the key, and --models; the reviewer's key is separate; no printed line holds a key", async () => {
+    // switch on and a key set: built with that key, and the version is set
+    const on = await build(tempRoot());
+    expect(on.jevKeys).toEqual([KEY]);
+    expect(on.models.classifier).toBe(on.classifier);
+    expect(on.models.jevVersion).toBe(VERSION);
+    // no printed line holds the key value
+    expect(on.stderr()).not.toContain(KEY);
 
-  test("no key: not built, the run says which variable to set, and no key is printed", async () => {
-    const got = await build(tempRoot(), { env: {} });
-    expect(got.jevKeys).toEqual([]);
-    expect(got.models.classifier).toBeUndefined();
-    expect(got.models.jevVersion).toBeUndefined();
-    expect(got.stderr()).toContain("jev is off for this run");
-    expect(got.stderr()).toContain(JEV_VAR);
-  });
+    // no key: not built, the run says which variable to set, and no key is printed
+    const noKey = await build(tempRoot(), { env: {} });
+    expect(noKey.jevKeys).toEqual([]);
+    expect(noKey.models.classifier).toBeUndefined();
+    expect(noKey.models.jevVersion).toBeUndefined();
+    expect(noKey.stderr()).toContain("jev is off for this run");
+    expect(noKey.stderr()).toContain(JEV_VAR);
 
-  test("an empty key counts as no key", async () => {
-    const got = await build(tempRoot(), { env: { [JEV_VAR]: "" } });
-    expect(got.jevKeys).toEqual([]);
-    expect(got.models.classifier).toBeUndefined();
-  });
+    // an empty key counts as no key
+    const empty = await build(tempRoot(), { env: { [JEV_VAR]: "" } });
+    expect(empty.jevKeys).toEqual([]);
+    expect(empty.models.classifier).toBeUndefined();
 
-  test("the policy switch off: not built, even with a key", async () => {
-    const got = await build(tempRoot(), { jev: false });
-    expect(got.jevKeys).toEqual([]);
-    expect(got.models.classifier).toBeUndefined();
-  });
+    // the policy switch off: not built, even with a key
+    const off = await build(tempRoot(), { jev: false });
+    expect(off.jevKeys).toEqual([]);
+    expect(off.models.classifier).toBeUndefined();
 
-  test("--models off: nothing is built, and it needs no key", async () => {
-    const got = await build(tempRoot(), { models: "off", reviewer: true });
-    expect(got.models).toEqual({ off: true });
-    expect(got.jevKeys).toEqual([]);
-    expect(got.reviewerKeys).toEqual([]);
-  });
+    // --models off: nothing is built, and it needs no key
+    const modelsOff = await build(tempRoot(), { models: "off", reviewer: true });
+    expect(modelsOff.models).toEqual({ off: true });
+    expect(modelsOff.jevKeys).toEqual([]);
+    expect(modelsOff.reviewerKeys).toEqual([]);
 
-  test("the reviewer's key is separate: a reviewer key alone does not turn jev on", async () => {
-    const got = await build(tempRoot(), {
+    // the reviewer's key is separate: a reviewer key alone does not turn jev on
+    const reviewerOnly = await build(tempRoot(), {
       env: { [CLAUDE_VAR]: "made-up-claude-key" },
       reviewer: true,
     });
-    expect(got.reviewerKeys).toEqual(["made-up-claude-key"]);
-    expect(got.jevKeys).toEqual([]);
-    expect(got.models.classifier).toBeUndefined();
-  });
+    expect(reviewerOnly.reviewerKeys).toEqual(["made-up-claude-key"]);
+    expect(reviewerOnly.jevKeys).toEqual([]);
+    expect(reviewerOnly.models.classifier).toBeUndefined();
 
-  test("both models together", async () => {
-    const got = await build(tempRoot(), {
+    // both models together
+    const both = await build(tempRoot(), {
       env: { [JEV_VAR]: KEY, [CLAUDE_VAR]: "made-up-claude-key" },
       reviewer: true,
     });
-    expect(got.jevKeys).toEqual([KEY]);
-    expect(got.reviewerKeys).toEqual(["made-up-claude-key"]);
-    expect(got.models.reviewer).toBeDefined();
-    expect(got.models.classifier).toBeDefined();
-  });
-
-  test("no printed line holds the key value", async () => {
-    const got = await build(tempRoot());
-    expect(got.stderr()).not.toContain(KEY);
+    expect(both.jevKeys).toEqual([KEY]);
+    expect(both.reviewerKeys).toEqual(["made-up-claude-key"]);
+    expect(both.models.reviewer).toBeDefined();
+    expect(both.models.classifier).toBeDefined();
   });
 });
 
 describe("replayModels: the cutoffs (section 5 §10.4, section 8 §14.1)", () => {
-  test("an approved record for this app and version fills the cutoffs", async () => {
+  test("only an approved record for this app and version fills the cutoffs; otherwise the starting values apply and the run says so", async () => {
+    // an approved record for this app and version fills the cutoffs
     const r = tempRoot();
     await record(r, VERSION, CUTOFFS, true);
     const got = await build(r);
     expect(got.models.cutoffs).toEqual(CUTOFFS);
     expect(got.stderr()).not.toContain("starting thresholds");
-  });
 
-  test("no record: no cutoffs (the starting values apply), and the run says so", async () => {
-    const got = await build(tempRoot());
-    expect(got.models.cutoffs).toBeUndefined();
-    expect(got.stderr()).toContain("starting thresholds");
-    expect(got.stderr()).toContain(VERSION);
-  });
+    // with no key, no record is loaded or mentioned
+    const noKey = await build(r, { env: {} });
+    expect(noKey.models.cutoffs).toBeUndefined();
+    expect(noKey.stderr()).not.toContain("starting thresholds");
 
-  test("a sealed record that is not approved is not used", async () => {
-    const r = tempRoot();
-    await record(r, VERSION, CUTOFFS, false);
-    const got = await build(r);
-    expect(got.models.cutoffs).toBeUndefined();
-    expect(got.stderr()).toContain("starting thresholds");
-  });
+    // no record: no cutoffs (the starting values apply), and the run says so
+    const none = await build(tempRoot());
+    expect(none.models.cutoffs).toBeUndefined();
+    expect(none.stderr()).toContain("starting thresholds");
+    expect(none.stderr()).toContain(VERSION);
 
-  test("an approved record for another jev version is not used", async () => {
-    const r = tempRoot();
-    await record(r, "jev-1.12.0", CUTOFFS, true);
-    const got = await build(r);
-    expect(got.models.cutoffs).toBeUndefined();
-  });
+    // a sealed record that is not approved is not used
+    const sealedOnly = tempRoot();
+    await record(sealedOnly, VERSION, CUTOFFS, false);
+    const sealed = await build(sealedOnly);
+    expect(sealed.models.cutoffs).toBeUndefined();
+    expect(sealed.stderr()).toContain("starting thresholds");
 
-  test("with no key, no record is loaded or mentioned", async () => {
-    const r = tempRoot();
-    await record(r, VERSION, CUTOFFS, true);
-    const got = await build(r, { env: {} });
-    expect(got.models.cutoffs).toBeUndefined();
-    expect(got.stderr()).not.toContain("starting thresholds");
+    // an approved record for another jev version is not used
+    const other = tempRoot();
+    await record(other, "jev-1.12.0", CUTOFFS, true);
+    const another = await build(other);
+    expect(another.models.cutoffs).toBeUndefined();
   });
 });
 

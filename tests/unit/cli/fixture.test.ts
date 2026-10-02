@@ -61,7 +61,7 @@ const newArgv = (id: string, extra: string[] = []) => [
 ];
 
 describe("fixture new: a fresh capture", () => {
-  test("saves the masked a11y snapshot and a valid meta.json", async () => {
+  test("saves the masked snapshot and a valid meta.json; --kind normal; needs the reviewer role; --upgrade rebuilds meta.json", async () => {
     const r = await root();
     const got = await cli(r, "op_017", [...newArgv("trouble_popup_01", ["--kind", "trouble"]), "--json"]);
     expect(got.code).toBe(EXIT.ok);
@@ -77,56 +77,48 @@ describe("fixture new: a fresh capture", () => {
       kind: "trouble",
       source: { run_id: RUN_ID, seq: 1 },
     });
-    const dir = join(r, "library", "fixtures", "kvfcu", "trouble_popup_01");
-    expect(existsSync(join(dir, "meta.json"))).toBe(true);
-    expect(readFileSync(join(dir, "a11y.yaml"), "utf8")).toContain("Trouble!");
-    const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as Record<string, unknown>;
-    expect(meta).toMatchObject({ id: "trouble_popup_01", kind: "trouble" });
+    const dir1 = join(r, "library", "fixtures", "kvfcu", "trouble_popup_01");
+    expect(existsSync(join(dir1, "meta.json"))).toBe(true);
+    expect(readFileSync(join(dir1, "a11y.yaml"), "utf8")).toContain("Trouble!");
+    const meta1 = JSON.parse(readFileSync(join(dir1, "meta.json"), "utf8")) as Record<string, unknown>;
+    expect(meta1).toMatchObject({ id: "trouble_popup_01", kind: "trouble" });
     // No screen.png or dom.html were ever saved for this run's turn, so meta says so plainly,
     // never inventing a file it does not have (docs/decisions.md, M04's own rule, reused here).
-    expect(meta.missing).toEqual(["dom.html", "screen.png"]);
-  });
+    expect(meta1.missing).toEqual(["dom.html", "screen.png"]);
 
-  test("--kind normal saves a normal fixture", async () => {
-    const r = await root();
-    const got = await cli(r, "op_017", [...newArgv("normal_home_01", ["--kind", "normal"]), "--json"]);
-    expect(got.code).toBe(EXIT.ok);
-    expect((JSON.parse(got.stdout) as { kind: string }).kind).toBe("normal");
-  });
+    // --kind normal saves a normal fixture
+    const normal = await cli(r, "op_017", [...newArgv("normal_home_01", ["--kind", "normal"]), "--json"]);
+    expect(normal.code).toBe(EXIT.ok);
+    expect((JSON.parse(normal.stdout) as { kind: string }).kind).toBe("normal");
 
-  test("needs the reviewer role", async () => {
-    const r = await root();
-    const got = await cli(r, "op_099", newArgv("trouble_popup_02", ["--kind", "trouble"]));
-    expect(got.code).toBe(EXIT.refused);
-  });
+    // needs the reviewer role
+    const denied = await cli(r, "op_099", newArgv("trouble_popup_02", ["--kind", "trouble"]));
+    expect(denied.code).toBe(EXIT.refused);
 
-  test("--upgrade with no --kind rebuilds meta.json from the old kind, keeping saved files", async () => {
-    const r = await root();
+    // --upgrade with no --kind rebuilds meta.json from the old kind, keeping saved files
     await cli(r, "op_017", newArgv("trouble_popup_03", ["--kind", "trouble"]));
     const dir = join(r, "library", "fixtures", "kvfcu", "trouble_popup_03");
     const before = readFileSync(join(dir, "a11y.yaml"), "utf8");
     // Simulate an old-format meta.json missing later fields, as a real pre-M06 fixture would.
     writeFileSync(join(dir, "meta.json"), JSON.stringify({ id: "trouble_popup_03", kind: "trouble" }));
 
-    const got = await cli(r, "op_017", [...newArgv("trouble_popup_03", ["--upgrade"]), "--json"]);
-    expect(got.code).toBe(EXIT.ok);
+    const upgraded = await cli(r, "op_017", [...newArgv("trouble_popup_03", ["--upgrade"]), "--json"]);
+    expect(upgraded.code).toBe(EXIT.ok);
     const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as Record<string, unknown>;
     expect(meta).toMatchObject({ schema: "intyy.fixture/1.0", id: "trouble_popup_03", kind: "trouble", app_version: "9.2" });
     // The old a11y.yaml is untouched: --upgrade only rebuilds meta.json.
     expect(readFileSync(join(dir, "a11y.yaml"), "utf8")).toBe(before);
-  });
 
-  test("--upgrade with no existing meta.json is refused with a clear message", async () => {
-    const r = await root();
+    // --upgrade with no existing meta.json is refused with a clear message
     mkdirSync(join(r, "library", "fixtures", "kvfcu", "nothing_here"), { recursive: true });
-    const got = await cli(r, "op_017", newArgv("nothing_here", ["--upgrade"]));
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain("no meta.json");
+    const nothing = await cli(r, "op_017", newArgv("nothing_here", ["--upgrade"]));
+    expect(nothing.code).toBe(EXIT.usage);
+    expect(nothing.stderr).toContain("no meta.json");
   });
 });
 
 describe("fixture list and show", () => {
-  test("list shows every saved fixture; show prints one", async () => {
+  test("list shows every saved fixture; show prints one; show on an unknown fixture is refused", async () => {
     const r = await root();
     await cli(r, "op_017", newArgv("trouble_popup_04", ["--kind", "trouble"]));
     await cli(r, "op_017", newArgv("normal_home_04", ["--kind", "normal"]));
@@ -138,14 +130,13 @@ describe("fixture list and show", () => {
     const shown = await cli(r, "op_017", ["fixture", "show", "kvfcu", "trouble_popup_04", "--json"]);
     expect(shown.code).toBe(EXIT.ok);
     expect((JSON.parse(shown.stdout) as { id: string }).id).toBe("trouble_popup_04");
+
+    // show on an unknown fixture is a usage error, naming the folder
+    const unknown = await cli(r, "op_017", ["fixture", "show", "kvfcu", "no_such_fixture"]);
+    expect(unknown.code).toBe(EXIT.usage);
+    expect(unknown.stderr).toContain("no meta.json");
   });
 
-  test("show on an unknown fixture is a usage error, naming the folder", async () => {
-    const r = await root();
-    const got = await cli(r, "op_017", ["fixture", "show", "kvfcu", "no_such_fixture"]);
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain("no meta.json");
-  });
 });
 
 describe("fixture new: a replay's ladder capture", () => {

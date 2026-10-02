@@ -63,19 +63,18 @@ function snapshot(dir: string): string {
 }
 
 describe("tags report", () => {
-  test("an empty root: exit 0, no artifacts, no rows", async () => {
-    const r = await report(tempRoot(), "kvfcu");
+  test("an empty root: exit 0, no artifacts, no rows; an app ID that is not an app ID is a usage error", async () => {
+    const root = tempRoot();
+    const r = await report(root, "kvfcu");
     expect(r.code).toBe(EXIT.ok);
     expect(r.body).toEqual({ app: "kvfcu", artifacts: 0, rows: [] });
+
+    const bad = await report(root, "Bad App");
+    expect(bad.code).toBe(EXIT.usage);
+    expect(bad.stderr).toContain("app");
   });
 
-  test("an app ID that is not an app ID is a usage error", async () => {
-    const r = await report(tempRoot(), "Bad App");
-    expect(r.code).toBe(EXIT.usage);
-    expect(r.stderr).toContain("app");
-  });
-
-  test("one sealed artifact with four kept flow_step actions: one row, agreement 1, not ready", async () => {
+  test("one sealed artifact with four kept flow_step actions: one row, agreement 1, not ready; another app's artifact is not counted", async () => {
     const root = tempRoot();
     await seal(root, artifactOf("kvfcu", 4));
     const r = await report(root, "kvfcu");
@@ -84,11 +83,7 @@ describe("tags report", () => {
     expect(r.body?.rows).toEqual([
       { model: "claude-sonnet-5", prompt: null, tag_type: "flow_step", reviewed: 4, agreed: 4, agreement: 1, recent_changes: 0, ready: false },
     ]);
-  });
 
-  test("another app's artifact is not counted", async () => {
-    const root = tempRoot();
-    await seal(root, artifactOf("kvfcu", 4));
     await seal(root, artifactOf("otherbank", 7));
     const kv = await report(root, "kvfcu");
     expect(kv.body).toMatchObject({ artifacts: 1, rows: [{ reviewed: 4 }] });

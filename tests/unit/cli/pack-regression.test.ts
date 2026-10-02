@@ -112,8 +112,8 @@ function regression(handlerSet: string | null, over: Partial<Extract<HistoryLine
   });
 }
 
-describe("pack impact", () => {
-  test("lists the approved key whose handler set hash changes, with both hashes", async () => {
+describe("pack impact; pack approve: the regression coverage rule", () => {
+  test("impact lists the approved key whose handler set hash changes, with both hashes; an uncovered key refuses approval (exit 6) naming the key and the command; a non-approver gets the role error first", async () => {
     const env = await packRoot(true);
     const found = await impact(env);
     expect(found.impacted).toHaveLength(1);
@@ -123,37 +123,8 @@ describe("pack impact", () => {
     expect(found.impacted[0]?.after).not.toBe(found.impacted[0]?.before);
     const text = (await certifyCall(env, "op_017", ["pack", "impact", "app:kvfcu", "2"])).stdout;
     expect(text).toContain("kvfcu/open_sub@1.0.0");
-  });
 
-  test("with no approved key, it says none is touched; a draft key is not touched", async () => {
-    for (const key of [false, true]) {
-      const env = await replayRoot();
-      await putPack(env, appPack(1, ["popup_one"]), true);
-      await putPack(env, appPack(2, ["popup_one", "popup_two"]), false);
-      if (key) await seedKey(env, [batch(1, "batch_a")]);
-      const r = await certifyCall(env, "op_017", ["pack", "impact", "app:kvfcu", "2"]);
-      expect(r.code).toBe(EXIT.ok);
-      expect(r.stdout).toContain("no approved key is touched");
-    }
-  });
-
-  test("a sealed revision that changes nothing touches nothing", async () => {
-    const env = await replayRoot();
-    await putPack(env, appPack(1, ["popup_one"]), true);
-    await putPack(env, { ...appPack(2, ["popup_one"]), reason: "Only the reason changed." }, false);
-    await seedKey(env, [approved(1)]);
-    expect((await impact(env)).impacted).toEqual([]);
-  });
-});
-
-describe("pack approve: the regression coverage rule", () => {
-  test("no approved key is touched: approve succeeds as before", async () => {
-    const env = await packRoot(false);
-    expect((await approve(env)).code).toBe(EXIT.ok);
-  });
-
-  test("an approved key is touched and uncovered: exit 6 naming the key and the command; nothing is approved", async () => {
-    const env = await packRoot(true);
+    // an approved key is touched and uncovered: exit 6 naming the key and the command; nothing is approved
     const r = await approve(env);
     expect(r.code).toBe(EXIT.refused);
     expect(r.stderr).toContain("kvfcu/open_sub@1.0.0");
@@ -162,32 +133,50 @@ describe("pack approve: the regression coverage rule", () => {
     expect.soft(r.stderr).toContain("--pack app:kvfcu@2");
     // Still refused on a second try: the refusal wrote nothing.
     expect((await approve(env)).code).toBe(EXIT.refused);
+
+    // a non-approver gets the role error first, not the key list
+    const role = await approve(env, "op_017");
+    expect(role.code).toBe(EXIT.refused);
+    expect(role.stderr).not.toContain("kvfcu/open_sub@1.0.0");
   });
 
-  test("a non-approver gets the role error first, not the key list", async () => {
-    const env = await packRoot(true);
-    const r = await approve(env, "op_017");
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).not.toContain("kvfcu/open_sub@1.0.0");
+  test("with no approved key it says none is touched and approve succeeds as before; a draft key is not touched; a sealed revision that changes nothing touches nothing", async () => {
+    for (const key of [false, true]) {
+      const env = await replayRoot();
+      await putPack(env, appPack(1, ["popup_one"]), true);
+      await putPack(env, appPack(2, ["popup_one", "popup_two"]), false);
+      if (key) await seedKey(env, [batch(1, "batch_a")]);
+      const r = await certifyCall(env, "op_017", ["pack", "impact", "app:kvfcu", "2"]);
+      expect(r.code, `key ${String(key)}`).toBe(EXIT.ok);
+      expect(r.stdout, `key ${String(key)}`).toContain("no approved key is touched");
+      // no approved key is touched: approve succeeds as before
+      if (!key) expect((await approve(env)).code).toBe(EXIT.ok);
+    }
+
+    const env = await replayRoot();
+    await putPack(env, appPack(1, ["popup_one"]), true);
+    await putPack(env, { ...appPack(2, ["popup_one"]), reason: "Only the reason changed." }, false);
+    await seedKey(env, [approved(1)]);
+    expect((await impact(env)).impacted).toEqual([]);
   });
 
-  test.each([
-    ["a failed gate", (h: string) => regression(h, { gate: "failed" })],
-    ["a drill", (h: string) => regression(h, { drill: true })],
-    ["another hash", () => regression("sha256:" + "ab".repeat(32))],
-    ["a full batch, not a regression", (h: string) => regression(h, { kind: "full" })],
-  ])("%s does not cover the key", async (_name, line) => {
-    const env = await packRoot(true);
+  test("a failed gate, a drill, another hash, and a full batch do not cover the key; a passed, non-drill regression under the new hash covers it", async () => {
     const { after } = hashes();
-    await seedExtra(env, line(after));
-    const r = await approve(env);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("kvfcu/open_sub@1.0.0");
-  });
+    for (const [name, line] of [
+      ["a failed gate", (h: string) => regression(h, { gate: "failed" })],
+      ["a drill", (h: string) => regression(h, { drill: true })],
+      ["another hash", () => regression("sha256:" + "ab".repeat(32))],
+      ["a full batch, not a regression", (h: string) => regression(h, { kind: "full" })],
+    ] as [string, (h: string) => HistoryLine][]) {
+      const env = await packRoot(true);
+      await seedExtra(env, line(after));
+      const r = await approve(env);
+      expect(r.code, name).toBe(EXIT.refused);
+      expect(r.stderr, name).toContain("kvfcu/open_sub@1.0.0");
+    }
 
-  test("a passed, non-drill regression under the new hash covers it: approve succeeds", async () => {
+    // a passed, non-drill regression under the new hash covers it: approve succeeds
     const env = await packRoot(true);
-    const { after } = hashes();
     await seedExtra(env, regression(after));
     expect((await approve(env)).code).toBe(EXIT.ok);
   });
@@ -235,9 +224,14 @@ const record = (env: ReplayEnv): ScoreRecord =>
   ScoreRecord.parse(JSON.parse(readFileSync(join(env.root, "state", "trust", "scores", keyPath(KEY), "record.json"), "utf8")));
 
 describe("certify --kind regression --pack --all-affected", () => {
-  test("one regression batch for the one affected key: plan, report, and history line", LONG, async () => {
+  test("one regression batch for the one affected key: plan, report, and history line; its runs freeze the candidate hash; one key by name runs it; the covering batch lets pack approve succeed", LONG, async () => {
     const env = await certifyReady("recovering");
     const found = hashes();
+    // an operator role is needed
+    expect((await certifyCall(env, "op_031", REGRESSION)).code).toBe(EXIT.refused);
+    // before the batch the pack is uncovered
+    expect((await approve(env)).code).toBe(EXIT.refused);
+
     const r = await certifyCall(env, "op_017", REGRESSION);
     expect(r.code).toBe(EXIT.ok);
     const body = JSON.parse(r.stdout) as Batches;
@@ -268,18 +262,25 @@ describe("certify --kind regression --pack --all-affected", () => {
     expect(line.under.handler_set).toBe(found.after);
     expect(line.under.handler_set).not.toBe(found.before);
     expect(record(env).state).toBe("approved");
-  });
 
-  test("the batch's runs freeze the candidate hash, while the live frozen set stays unchanged", LONG, async () => {
-    const env = await certifyReady("recovering");
-    const found = hashes();
-    const r = await certifyCall(env, "op_017", REGRESSION);
-    const first = (JSON.parse(r.stdout) as Batches).batches[0]?.plan.cases[0];
+    // the batch's runs freeze the candidate hash, while the live frozen set stays unchanged
+    const first = body.batches[0]?.plan.cases[0];
     const runJson = await realWiringOf(env).evidence.readRunJson("keystone", first?.run_id ?? "");
     if (!runJson.ok) throw new Error("no run.json");
     const frozen = JSON.stringify(runJson.value);
     expect(frozen).toContain(found.after);
     expect(frozen).not.toContain(found.before);
+
+    // one key by name: runs it; --kind regression with no --pack is a usage error; a missing key and no --all-affected is too
+    const one = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "regression", "--pack", "app:kvfcu@2", "--json"]);
+    expect(one.code).toBe(EXIT.ok);
+    expect(history(env).at(-1)).toMatchObject({ event: "batch", kind: "regression" });
+    const noPack = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "regression"]);
+    expect(noPack.code).toBe(EXIT.usage);
+    expect(noPack.stderr).toContain("--pack");
+    const noKey = await certifyCall(env, "op_017", ["certify", "--kind", "regression", "--pack", "app:kvfcu@2"]);
+    expect(noKey.code).toBe(EXIT.usage);
+
     // A later ordinary batch runs under the live hash.
     const plain = await certifyCall(env, "op_017", ["certify", CAP, "--json"]);
     expect(plain.code).toBe(EXIT.ok);
@@ -287,12 +288,8 @@ describe("certify --kind regression --pack --all-affected", () => {
     if (last?.event !== "batch") throw new Error("expected a batch line");
     expect(last.kind).toBe("full");
     expect(last.under.handler_set).toBe(found.before);
-  });
 
-  test("the covering batch lets pack approve succeed", LONG, async () => {
-    const env = await certifyReady("recovering");
-    expect((await approve(env)).code).toBe(EXIT.refused);
-    expect((await certifyCall(env, "op_017", REGRESSION)).code).toBe(EXIT.ok);
+    // the covering batch lets pack approve succeed
     expect((await approve(env)).code).toBe(EXIT.ok);
   });
 
@@ -307,29 +304,11 @@ describe("certify --kind regression --pack --all-affected", () => {
     expect((await approve(env)).code).toBe(EXIT.refused);
   });
 
-  test("one key by name: runs it; --kind regression with no --pack is a usage error; a missing key and no --all-affected is too", LONG, async () => {
-    const env = await certifyReady("recovering");
-    const one = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "regression", "--pack", "app:kvfcu@2", "--json"]);
-    expect(one.code).toBe(EXIT.ok);
-    expect(history(env).at(-1)).toMatchObject({ event: "batch", kind: "regression" });
-    const noPack = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "regression"]);
-    expect(noPack.code).toBe(EXIT.usage);
-    expect(noPack.stderr).toContain("--pack");
-    const noKey = await certifyCall(env, "op_017", ["certify", "--kind", "regression", "--pack", "app:kvfcu@2"]);
-    expect(noKey.code).toBe(EXIT.usage);
-  });
-
   test("--all-affected with no approved key touched runs nothing and exits 0", LONG, async () => {
     const env = await certifyReady("recovering", false);
     const r = await certifyCall(env, "op_017", REGRESSION);
     expect(r.code).toBe(EXIT.ok);
     expect((JSON.parse(r.stdout) as Batches).batches).toEqual([]);
     expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
-  });
-
-  test("an operator role is needed", async () => {
-    const env = await certifyReady("recovering");
-    const r = await certifyCall(env, "op_031", REGRESSION);
-    expect(r.code).toBe(EXIT.refused);
   });
 });

@@ -264,17 +264,26 @@ describe("trust approve: each refusal alone, exit 6", () => {
     { name: "illegal_move: a retired key is reinstated first", setup: { lines: [approved(2), retired(3)] }, codes: ["illegal_move"] },
   ];
 
-  test.each(CASES)("$name", LONG, async ({ setup, call, codes: expected }) => {
-    const fx = await fixture(setup);
-    const before = (await historyOf(fx.env, KEY)).length;
-    const r = await approve(fx, call);
-    expect(r.code).toBe(EXIT.refused);
-    expect(codes(r.stderr)).toEqual(expected);
-    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
+  test("each case is refused alone with exit 6, names only its code, and writes nothing", LONG, async () => {
+    for (const { name, setup, call, codes: expected } of CASES) {
+      const fx = await fixture(setup);
+      const before = (await historyOf(fx.env, KEY)).length;
+      const r = await approve(fx, call);
+      expect(r.code, name).toBe(EXIT.refused);
+      expect(codes(r.stderr), name).toEqual(expected);
+      expect(await historyOf(fx.env, KEY), name).toHaveLength(before);
+    }
   });
 
-  test("four_eyes: the approver sealed the artifact", LONG, async () => {
+  test("a role-less staff ID is refused first; then a sealer who is an approver is refused: four_eyes", LONG, async () => {
     const fx = await fixture();
+    // role: a staff ID with no approver role is refused before anything else
+    const role = await approve(fx, { who: "op_017" });
+    expect(role.code).toBe(EXIT.refused);
+    expect(role.stderr).toContain("op_017 lacks the approver role for tenant keystone");
+    expect(await historyOf(fx.env, KEY)).toHaveLength(1);
+
+    // four_eyes: the approver sealed the artifact
     makeSealerAnApprover(fx.env);
     const r = await approve(fx, { who: "op_017" });
     expect(r.code).toBe(EXIT.refused);
@@ -283,23 +292,17 @@ describe("trust approve: each refusal alone, exit 6", () => {
     expect(await historyOf(fx.env, KEY)).toHaveLength(1);
   });
 
-  test("role: a staff ID with no approver role is refused before anything else", LONG, async () => {
-    const fx = await fixture();
-    const r = await approve(fx, { who: "op_017" });
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("op_017 lacks the approver role for tenant keystone");
-    expect(await historyOf(fx.env, KEY)).toHaveLength(1);
-  });
-
-  test.each([
-    ["quick", { kind: "quick" as const }, { kind: "quick" }],
-    ["regression", { kind: "regression" as const }, { kind: "full" }],
-    ["drill", { drill: true as const }, { drill: true }],
-  ])("a %s batch line never becomes the full batch: no_full_batch", LONG, async (_name, over, report) => {
-    const fx = await fixture({ batches: [{ id: "batch_a", minute: 1, over, report }] });
-    const r = await approve(fx, { ack: [] });
-    expect(r.code).toBe(EXIT.refused);
-    expect(codes(r.stderr)).toEqual(["no_full_batch"]);
+  test("a quick, regression, or drill batch line never becomes the full batch: no_full_batch", LONG, async () => {
+    for (const [name, over, report] of [
+      ["quick", { kind: "quick" as const }, { kind: "quick" }],
+      ["regression", { kind: "regression" as const }, { kind: "full" }],
+      ["drill", { drill: true as const }, { drill: true }],
+    ] as const) {
+      const fx = await fixture({ batches: [{ id: "batch_a", minute: 1, over, report }] });
+      const r = await approve(fx, { ack: [] });
+      expect(r.code, name).toBe(EXIT.refused);
+      expect(codes(r.stderr), name).toEqual(["no_full_batch"]);
+    }
   });
 });
 
@@ -383,21 +386,19 @@ describe("approval retires the prior approved key of the same context", () => {
 });
 
 describe("trust reject", () => {
-  test("records a rejection with the note and leaves the state as it was", LONG, async () => {
-    const fx = await fixture();
-    const r = await trust(fx.env, "op_022", ["reject", TEXT, "--batch", "batch_a"], "Margins too thin.");
-    expect(r.code).toBe(EXIT.ok);
-    const last = (await historyOf(fx.env, KEY)).at(-1);
-    expect(last).toMatchObject({ event: "rejected", by: "op_022", batch: "batch_a", note: "Margins too thin." });
-    expect((await recordOf(fx.env, KEY)).state).toBe("draft");
-  });
-
-  test("needs the approver role (6), a batch (1), and a report for that batch (1)", LONG, async () => {
+  test("needs the approver role (6), a batch (1), and a report for that batch (1); then records a rejection", LONG, async () => {
     const fx = await fixture();
     expect((await trust(fx.env, "op_017", ["reject", TEXT, "--batch", "batch_a"])).code).toBe(EXIT.refused);
     expect((await trust(fx.env, "op_022", ["reject", TEXT])).code).toBe(EXIT.usage);
     expect((await trust(fx.env, "op_022", ["reject", TEXT, "--batch", "batch_nope"])).code).toBe(EXIT.usage);
     expect(await historyOf(fx.env, KEY)).toHaveLength(1);
+
+    // records a rejection with the note and leaves the state as it was
+    const r = await trust(fx.env, "op_022", ["reject", TEXT, "--batch", "batch_a"], "Margins too thin.");
+    expect(r.code).toBe(EXIT.ok);
+    const last = (await historyOf(fx.env, KEY)).at(-1);
+    expect(last).toMatchObject({ event: "rejected", by: "op_022", batch: "batch_a", note: "Margins too thin." });
+    expect((await recordOf(fx.env, KEY)).state).toBe("draft");
   });
 });
 
@@ -409,15 +410,6 @@ describe("trust restore", () => {
   const restore = async (fx: Fx, o: { who?: string; batch?: string; hash?: string } = {}) =>
     trust(fx.env, o.who ?? "op_022", ["restore", TEXT, "--batch", o.batch ?? "batch_b", "--expect-record", o.hash ?? (await reviewHash(fx.env))], "Fixed.");
 
-  test("a new full batch newer than the demotion restores the key", LONG, async () => {
-    const fx = await fixture(DEGRADED);
-    const r = await restore(fx);
-    expect(r.stderr).toBe("");
-    expect(r.code).toBe(EXIT.ok);
-    expect((await historyOf(fx.env, KEY)).at(-1)).toMatchObject({ event: "restored", by: "op_022", batch: "batch_b" });
-    expect((await recordOf(fx.env, KEY)).state).toBe("approved");
-  });
-
   test("not_new_batch: the latest batch is older than the demotion", LONG, async () => {
     const fx = await fixture({ lines: [approved(2, "op_022", "batch_a"), degraded(3)] });
     const r = await restore(fx, { batch: "batch_a" });
@@ -425,7 +417,7 @@ describe("trust restore", () => {
     expect(codes(r.stderr)).toEqual(["not_new_batch"]);
   });
 
-  test("a wrong hash is record_changed; a non-approver is refused; --after-exclusion exits 1", LONG, async () => {
+  test("a wrong hash is record_changed; a non-approver is refused; --after-exclusion exits 1; then a new full batch restores the key", LONG, async () => {
     const fx = await fixture(DEGRADED);
     const wrong = await restore(fx, { hash: h("old") });
     expect(codes(wrong.stderr)).toEqual(["record_changed"]);
@@ -434,12 +426,21 @@ describe("trust restore", () => {
     expect(ex.code).toBe(EXIT.usage);
     expect((await trust(fx.env, "op_022", ["restore", TEXT, "--batch", "batch_b"])).code).toBe(EXIT.usage);
     expect((await recordOf(fx.env, KEY)).state).toBe("degraded");
+
+    // a new full batch newer than the demotion restores the key
+    const r = await restore(fx);
+    expect(r.stderr).toBe("");
+    expect(r.code).toBe(EXIT.ok);
+    expect((await historyOf(fx.env, KEY)).at(-1)).toMatchObject({ event: "restored", by: "op_022", batch: "batch_b" });
+    expect((await recordOf(fx.env, KEY)).state).toBe("approved");
   });
 });
 
 describe("trust reinstate, demote, retire", () => {
-  test("reinstate sends a retired key to draft; approver only; a reason is required", LONG, async () => {
+  test("reinstate sends a retired key to draft; approver only; a reason is required; retire on a retired key is illegal", LONG, async () => {
     const fx = await fixture({ lines: [approved(2), retired(3)] });
+    // retire on a retired key is illegal_move (6)
+    expect((await trust(fx.env, "op_022", ["retire", TEXT], "Again.")).code).toBe(EXIT.refused);
     expect((await trust(fx.env, "op_017", ["reinstate", TEXT], "Needed.")).code).toBe(EXIT.refused);
     expect((await trust(fx.env, "op_022", ["reinstate", TEXT])).code).toBe(EXIT.usage);
     const r = await trust(fx.env, "op_022", ["reinstate", TEXT], "Needed again.");
@@ -448,17 +449,14 @@ describe("trust reinstate, demote, retire", () => {
     expect(await recordOf(fx.env, KEY)).toMatchObject({ state: "draft", approval: null });
   });
 
-  test("reinstate on a key that is not retired is illegal_move (6)", LONG, async () => {
-    const fx = await fixture({ lines: [approved(2)] });
-    expect((await trust(fx.env, "op_022", ["reinstate", TEXT], "Why.")).code).toBe(EXIT.refused);
-  });
-
-  test.each(["op_017", "op_022"])("demote by %s takes an approved key to degraded with the reason", LONG, async (who) => {
-    const fx = await fixture({ lines: [approved(2)] });
-    const r = await trust(fx.env, who, ["demote", TEXT], "Screens changed.");
-    expect(r.code).toBe(EXIT.ok);
-    expect((await historyOf(fx.env, KEY)).at(-1)).toMatchObject({ event: "degraded", by: who, rule: "human", reason: "Screens changed." });
-    expect((await recordOf(fx.env, KEY)).state).toBe("degraded");
+  test("demote by an operator or an approver takes an approved key to degraded with the reason", LONG, async () => {
+    for (const who of ["op_017", "op_022"]) {
+      const fx = await fixture({ lines: [approved(2)] });
+      const r = await trust(fx.env, who, ["demote", TEXT], "Screens changed.");
+      expect(r.code, who).toBe(EXIT.ok);
+      expect((await historyOf(fx.env, KEY)).at(-1), who).toMatchObject({ event: "degraded", by: who, rule: "human", reason: "Screens changed." });
+      expect((await recordOf(fx.env, KEY)).state, who).toBe("degraded");
+    }
   });
 
   test("demote on a draft is illegal_move (6); no reason is 1; a stranger is 6", LONG, async () => {
@@ -468,29 +466,28 @@ describe("trust reinstate, demote, retire", () => {
     expect((await trust(fx.env, "op_017", ["demote", TEXT])).code).toBe(EXIT.usage);
     expect((await trust(fx.env, "op_999", ["demote", TEXT], "Why.")).code).toBe(EXIT.refused);
     expect((await recordOf(fx.env, KEY)).state).toBe("approved");
+    // reinstate on a key that is not retired is illegal_move (6)
+    expect((await trust(fx.env, "op_022", ["reinstate", TEXT], "Why.")).code).toBe(EXIT.refused);
   });
 
-  test.each([
-    ["draft", []],
-    ["approved", [approved(2)]],
-    ["degraded", [approved(2), degraded(3)]],
-  ] as [string, HistoryLine[]][])("retire takes a %s key out, by an operator or an approver", LONG, async (_state, lines) => {
-    const fx = await fixture({ lines });
-    expect((await trust(fx.env, "op_017", ["retire", TEXT])).code).toBe(EXIT.usage);
-    const r = await trust(fx.env, "op_017", ["retire", TEXT], "Replaced by hand.");
-    expect(r.code).toBe(EXIT.ok);
-    expect((await historyOf(fx.env, KEY)).at(-1)).toMatchObject({ event: "retired", by: "op_017", reason: "Replaced by hand.", newer_key: null });
-    expect((await recordOf(fx.env, KEY)).state).toBe("retired");
-  });
-
-  test("retire on a retired key is illegal_move (6)", LONG, async () => {
-    const fx = await fixture({ lines: [approved(2), retired(3)] });
-    expect((await trust(fx.env, "op_022", ["retire", TEXT], "Again.")).code).toBe(EXIT.refused);
+  test("retire takes a draft, approved, or degraded key out, by an operator or an approver", LONG, async () => {
+    for (const [state, lines] of [
+      ["draft", []],
+      ["approved", [approved(2)]],
+      ["degraded", [approved(2), degraded(3)]],
+    ] as [string, HistoryLine[]][]) {
+      const fx = await fixture({ lines });
+      expect((await trust(fx.env, "op_017", ["retire", TEXT])).code, state).toBe(EXIT.usage);
+      const r = await trust(fx.env, "op_017", ["retire", TEXT], "Replaced by hand.");
+      expect(r.code, state).toBe(EXIT.ok);
+      expect((await historyOf(fx.env, KEY)).at(-1), state).toMatchObject({ event: "retired", by: "op_017", reason: "Replaced by hand.", newer_key: null });
+      expect((await recordOf(fx.env, KEY)).state, state).toBe("retired");
+    }
   });
 });
 
 describe("trust list, show, history", () => {
-  test("list shows each key with its state; --state filters; a bad state is 1", LONG, async () => {
+  test("list shows each key with its state; --state filters; a bad state is 1; show prints the record and its hash; history prints oldest first", LONG, async () => {
     const fx = await fixture({ lines: [approved(2)] });
     const all = await trust(fx.env, "op_031", ["list"]);
     expect(all.stdout).toContain(`approved  ${TEXT}`);
@@ -501,10 +498,7 @@ describe("trust list, show, history", () => {
     expect(await rows(TEXT, "degraded")).toEqual([]);
     expect((await trust(fx.env, "op_031", ["list", "--state", "degraded"])).stdout).toContain("No keys.");
     expect((await trust(fx.env, "op_031", ["list", "--state", "bogus"])).code).toBe(EXIT.usage);
-  });
 
-  test("show prints the record and its hash; history prints the lines oldest first", LONG, async () => {
-    const fx = await fixture({ lines: [approved(2)] });
     const shown = await trust(fx.env, "op_031", ["show", TEXT, "--json"]);
     const body = JSON.parse(shown.stdout) as { record: ScoreRecord; hash: string };
     expect(body.record.state).toBe("approved");
@@ -579,70 +573,70 @@ describe("trust approve: the guided walk on a terminal (section 9 §9.4)", () =>
     expect(r.asked).toBe(2);
   });
 
-  test("a wrong step name leaves the step unacknowledged: needs_ack, exit 6, no approval", LONG, async () => {
-    const fx = await fixture();
-    const before = (await historyOf(fx.env, KEY)).length;
-    const r = await walk(fx, ["nope", "", await hash6(fx.env)]);
-    expect(r.code).toBe(EXIT.refused);
-    expect(codes(r.stderr)).toContain("needs_ack");
-    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
+  test("a failed gate and an unapproved session link: the screen prints, no question is asked, exit 6 names the block", LONG, async () => {
+    for (const { name, setup, codes: expected } of [
+      {
+        name: "a failed gate",
+        setup: { batches: [{ id: "batch_a", minute: 1, over: { gate: "failed" as const }, report: { gate: { passed: false, rules: { ...PASSED_RULES, matrix: false } } } }] },
+        codes: ["gate_failed"],
+      },
+      { name: "an unapproved session link", setup: { signIn: false }, codes: ["link_not_approved"] },
+    ]) {
+      const fx = await fixture(setup);
+      const before = (await historyOf(fx.env, KEY)).length;
+      const r = await walk(fx, ["open_member", "x", await hash6(fx.env)]);
+      expect(r.code, name).toBe(EXIT.refused);
+      expect(r.asked, name).toBe(0);
+      expect(r.stderr, name).toMatch(/RECORD sha256:/);
+      expect(codes(r.stderr), name).toEqual(expected);
+      expect(await historyOf(fx.env, KEY), name).toHaveLength(before);
+    }
   });
 
-  test.each([["000000"], ["abc"], [""]])("the hash answer %j refuses as hash_mismatch and writes nothing", LONG, async (typed) => {
-    const fx = await fixture();
-    const before = (await historyOf(fx.env, KEY)).length;
-    const r = await walk(fx, ["open_member", "", typed]);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("hash_mismatch");
-    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
-  });
-
-  test("a hash answer shorter than 6 characters is refused even when it is the start of the hash", LONG, async () => {
-    const fx = await fixture();
-    const r = await walk(fx, ["open_member", "", (await hash6(fx.env)).slice(0, 5)]);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.stderr).toContain("hash_mismatch");
-  });
-
-  test.each([
-    {
-      name: "a failed gate",
-      setup: { batches: [{ id: "batch_a", minute: 1, over: { gate: "failed" as const }, report: { gate: { passed: false, rules: { ...PASSED_RULES, matrix: false } } } }] },
-      codes: ["gate_failed"],
-    },
-    { name: "an unapproved session link", setup: { signIn: false }, codes: ["link_not_approved"] },
-  ])("$name: the screen prints, no question is asked, exit 6 names the block", LONG, async ({ setup, codes: expected }) => {
-    const fx = await fixture(setup);
-    const before = (await historyOf(fx.env, KEY)).length;
-    const r = await walk(fx, ["open_member", "x", await hash6(fx.env)]);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.asked).toBe(0);
-    expect(r.stderr).toMatch(/RECORD sha256:/);
-    expect(codes(r.stderr)).toEqual(expected);
-    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
-  });
-
-  test("a sealer is refused before any question: four_eyes", LONG, async () => {
-    const fx = await fixture();
-    makeSealerAnApprover(fx.env);
-    const r = await walk(fx, ["open_member", "x", await hash6(fx.env)], { who: "op_017" });
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.asked).toBe(0);
-    expect(codes(r.stderr)).toEqual(["four_eyes"]);
-  });
-
-  test("a staff ID without the approver role is refused before any question", LONG, async () => {
-    const fx = await fixture();
-    const r = await walk(fx, ["open_member", "x", await hash6(fx.env)], { who: "op_017" });
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.asked).toBe(0);
-    expect(r.stderr).toContain("op_017 lacks the approver role for tenant keystone");
-  });
-
-  test("a record that changes while the approver types refuses as record_changed, with no approval", LONG, async () => {
+  test("a refused walk writes nothing: wrong step, bad hash answers, no role, sealer, changed record, no terminal", LONG, async () => {
     const fx = await fixture();
     const typed = await hash6(fx.env);
     const before = (await historyOf(fx.env, KEY)).length;
+
+    // a wrong step name leaves the step unacknowledged: needs_ack, exit 6, no approval
+    const wrongStep = await walk(fx, ["nope", "", typed]);
+    expect(wrongStep.code).toBe(EXIT.refused);
+    expect(codes(wrongStep.stderr)).toContain("needs_ack");
+    expect(await historyOf(fx.env, KEY)).toHaveLength(before);
+
+    // a wrong hash answer refuses as hash_mismatch and writes nothing
+    for (const bad of ["000000", "abc", ""]) {
+      const r = await walk(fx, ["open_member", "", bad]);
+      expect(r.code, bad).toBe(EXIT.refused);
+      expect(r.stderr, bad).toContain("hash_mismatch");
+      expect(await historyOf(fx.env, KEY), bad).toHaveLength(before);
+    }
+
+    // a hash answer shorter than 6 characters is refused even when it is the start of the hash
+    const short = await walk(fx, ["open_member", "", typed.slice(0, 5)]);
+    expect(short.code).toBe(EXIT.refused);
+    expect(short.stderr).toContain("hash_mismatch");
+
+    // a staff ID without the approver role is refused before any question
+    const role = await walk(fx, ["open_member", "x", typed], { who: "op_017" });
+    expect(role.code).toBe(EXIT.refused);
+    expect(role.asked).toBe(0);
+    expect(role.stderr).toContain("op_017 lacks the approver role for tenant keystone");
+
+    // with no terminal and no --expect-record, the flag is required (usage error)
+    const noFlag = await trust(fx.env, "op_022", ["approve", TEXT, "--batch", "batch_a", "--ack", "open_member"]);
+    expect(noFlag.code).toBe(EXIT.usage);
+    expect(noFlag.stderr).toContain("--expect-record");
+    expect((await recordOf(fx.env, KEY)).state).toBe("draft");
+
+    // a sealer is refused before any question: four_eyes
+    makeSealerAnApprover(fx.env);
+    const sealer = await walk(fx, ["open_member", "x", typed], { who: "op_017" });
+    expect(sealer.code).toBe(EXIT.refused);
+    expect(sealer.asked).toBe(0);
+    expect(codes(sealer.stderr)).toEqual(["four_eyes"]);
+
+    // a record that changes while the approver types refuses as record_changed, with no approval
     // Why a thresholds line, not a demotion: a draft key cannot be degraded, and a quick batch line
     // leaves the record as it was. This line changes the record and breaks no other rule.
     const tighten = async (): Promise<string> => {
@@ -687,13 +681,5 @@ describe("trust approve: the guided walk on a terminal (section 9 §9.4)", () =>
     expect(asked).toEqual([]);
     expect(r.stdout).toContain(`approved ${TEXT} on batch_a by op_022`);
     expect((await recordOf(fx.env, KEY)).state).toBe("approved");
-  });
-
-  test("with no terminal and no --expect-record, the flag is required (usage error)", LONG, async () => {
-    const fx = await fixture();
-    const r = await trust(fx.env, "op_022", ["approve", TEXT, "--batch", "batch_a", "--ack", "open_member"]);
-    expect(r.code).toBe(EXIT.usage);
-    expect(r.stderr).toContain("--expect-record");
-    expect((await recordOf(fx.env, KEY)).state).toBe("draft");
   });
 });

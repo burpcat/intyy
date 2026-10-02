@@ -60,8 +60,35 @@ async function full(env: ReplayEnv, ...extra: string[]) {
 }
 
 describe("certify (full): the batch and its score line", () => {
-  test("a passing full batch exits 0, writes a full batch line, and fills the record's certify block", LONG, async () => {
+  test("plan-only and a missing operator role touch nothing; a passing full batch exits 0, writes a full batch line, and fills the record's certify block; --kind full prints a summary; --models off makes a drill", LONG, async () => {
     const env = await readyEnv();
+    // --plan-only prints the plan, contacts nothing, and writes no file
+    const plan = await certifyCall(env, "op_017", ["certify", CAP, "--plan-only"]);
+    expect(plan.code).toBe(EXIT.ok);
+    expect(plan.stdout).toContain("full");
+    expect(plan.stdout).toContain("plan only");
+    expect(plan.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
+    expect(existsSync(join(env.root, "state", "evidence", "keystone", "batches"))).toBe(false);
+    expect(existsSync(join(env.root, "state", "trust"))).toBe(false);
+
+    // --plan-only with --models off says drill
+    const planDrill = await certifyCall(env, "op_017", ["certify", CAP, "--plan-only", "--models", "off"]);
+    expect(planDrill.code).toBe(EXIT.ok);
+    expect(planDrill.stdout).toContain("drill: yes");
+
+    // an operator role is needed
+    const denied = await certifyCall(env, "op_031", ["certify", CAP]);
+    expect(denied.code).toBe(EXIT.refused);
+    expect(denied.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
+
+    // an unapproved suite is refused and nothing runs
+    const bare = await replayRoot();
+    await sealQuickInputs(bare, "suite");
+    const noSuite = await certifyCall(bare, "op_017", ["certify", CAP]);
+    expect(noSuite.code).toBe(EXIT.usage);
+    expect(noSuite.stderr).toContain("suite");
+    expect(noSuite.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
+
     const r = await full(env);
     expect(r.code).toBe(EXIT.ok);
     expect(r.body.plan.kind).toBe("full");
@@ -71,6 +98,8 @@ describe("certify (full): the batch and its score line", () => {
       "baseline", "baseline_valid_2", "baseline_valid_3", "twin", "server_error.click_search", "server_error.click_confirm", "stab_0.05_1",
     ]);
     expect(r.body.report.stability).toMatchObject([{ entropy: 0.05, runs: 1, pass: 1 }]);
+    // a key with no candidate runs with the artifact's values
+    expect(r.body.report.timeouts).toMatchObject({ ran_with: {}, ran_with_from: null });
 
     const [line] = history(env);
     if (line?.event !== "batch") throw new Error("expected a batch line");
@@ -90,6 +119,18 @@ describe("certify (full): the batch and its score line", () => {
     expect(rec.regression).toBeNull();
     // A passed batch is not an approval: the key stays a draft until a person approves.
     expect(rec).toMatchObject({ state: "draft", approval: null });
+
+    // --kind full prints a summary that names the gate
+    const summary = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "full"]);
+    expect(summary.code).toBe(EXIT.ok);
+    expect(summary.stdout).toContain("gate: passed");
+    expect(summary.stdout).toContain("(full");
+
+    // --models off makes a drill: it cannot pass rule 1, so it exits 5
+    const drill = await full(env, "--models", "off");
+    expect(drill.code).toBe(EXIT.failed);
+    expect(drill.body.plan).toMatchObject({ drill: true, models_off: true });
+    expect(drill.body.report.gate.rules).toMatchObject({ complete: false, matrix: true, baseline: true });
   });
 
   test("a failed gate exits 5 and the batch line says failed", LONG, async () => {
@@ -105,14 +146,6 @@ describe("certify (full): the batch and its score line", () => {
     // A failed gate on a draft key degrades nothing: there is no trust to take away.
     expect(history(env).map((l) => l.event)).toEqual(["batch"]);
     expect(record(env).state).toBe("draft");
-  });
-
-  test("--kind full prints a summary that names the gate", LONG, async () => {
-    const env = await readyEnv();
-    const r = await certifyCall(env, "op_017", ["certify", CAP, "--kind", "full"]);
-    expect(r.code).toBe(EXIT.ok);
-    expect(r.stdout).toContain("gate: passed");
-    expect(r.stdout).toContain("(full");
   });
 });
 
@@ -139,14 +172,6 @@ describe("certify (full): approved keys", () => {
     expect(record(env)).toMatchObject({ state: "degraded", state_by: "certify" });
   });
 
-  test("a passed gate leaves an approved key approved", LONG, async () => {
-    const env = await readyEnv();
-    await approve(env);
-    const r = await full(env);
-    expect(r.code).toBe(EXIT.ok);
-    expect(history(env).map((l) => l.event)).toEqual(["approved", "batch"]);
-    expect(record(env)).toMatchObject({ state: "approved", state_by: "op_022" });
-  });
 });
 
 describe("certify (full): a drill never changes the record", () => {
@@ -159,6 +184,9 @@ describe("certify (full): a drill never changes the record", () => {
     const before = record(env);
     expect(before).toMatchObject({ state: "approved" });
     expect(before.certify?.batch).toBe(normal.body.batch_id);
+    // a passed gate leaves an approved key approved
+    expect(history(env).map((l) => l.event)).toEqual(["approved", "batch"]);
+    expect(before).toMatchObject({ state: "approved", state_by: "op_022" });
 
     // Why both fail: `--models off` and a declared instance each fail rule 1 (the batch is a drill).
     for (const extra of [["--models", "off"], ["--instance", "strip_semantics=1"]]) {
@@ -171,52 +199,6 @@ describe("certify (full): a drill never changes the record", () => {
       expect(record(env)).toEqual(before);
     }
     expect(history(env).map((l) => l.event)).toEqual(["approved", "batch", "batch", "batch"]);
-  });
-});
-
-describe("certify (full): drills and plan-only", () => {
-  test("--models off makes a drill: it cannot pass rule 1, so it exits 5", LONG, async () => {
-    const env = await readyEnv();
-    const r = await full(env, "--models", "off");
-    expect(r.code).toBe(EXIT.failed);
-    expect(r.body.plan).toMatchObject({ drill: true, models_off: true });
-    expect(r.body.report.gate.rules).toMatchObject({ complete: false, matrix: true, baseline: true });
-  });
-
-  test("--plan-only prints the plan, contacts nothing, and writes no file", async () => {
-    const env = await readyEnv();
-    const r = await certifyCall(env, "op_017", ["certify", CAP, "--plan-only"]);
-    expect(r.code).toBe(EXIT.ok);
-    expect(r.stdout).toContain("full");
-    expect(r.stdout).toContain("plan only");
-    expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
-    expect(existsSync(join(env.root, "state", "evidence", "keystone", "batches"))).toBe(false);
-    expect(existsSync(join(env.root, "state", "trust"))).toBe(false);
-  });
-
-  test("--plan-only with --models off says drill", async () => {
-    const env = await readyEnv();
-    const r = await certifyCall(env, "op_017", ["certify", CAP, "--plan-only", "--models", "off"]);
-    expect(r.code).toBe(EXIT.ok);
-    expect(r.stdout).toContain("drill: yes");
-  });
-});
-
-describe("certify (full): refusals", () => {
-  test("an operator role is needed", async () => {
-    const env = await readyEnv();
-    const r = await certifyCall(env, "op_031", ["certify", CAP]);
-    expect(r.code).toBe(EXIT.refused);
-    expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
-  });
-
-  test("an unapproved suite is refused and nothing runs", async () => {
-    const env = await replayRoot();
-    await sealQuickInputs(env, "suite");
-    const r = await certifyCall(env, "op_017", ["certify", CAP]);
-    expect(r.code).toBe(EXIT.usage);
-    expect(r.stderr).toContain("suite");
-    expect(r.harnesses.flatMap((h) => [...h.calls])).toEqual([]);
   });
 });
 
@@ -247,11 +229,5 @@ describe("certify (full): candidate timeouts (section 8 §9.6)", () => {
     const frozen = (runJson.value as { frozen: { frozen: { timeouts: unknown; timeouts_from: unknown } } }).frozen.frozen;
     expect(frozen.timeouts).toEqual({ click_search: 12000 });
     expect(JSON.stringify(frozen.timeouts_from)).toContain("batch_prior");
-  });
-
-  test("a key with no candidate runs with the artifact's values", LONG, async () => {
-    const env = await readyEnv();
-    const r = await full(env);
-    expect(r.body.report.timeouts).toMatchObject({ ran_with: {}, ran_with_from: null });
   });
 });

@@ -111,21 +111,21 @@ const decisionFile = (r: string, folder: string) =>
   join(r, "state", "evidence", "keystone", "runs", RUN, "mailbox", folder, "decision.json");
 
 describe("case 3: a wrong word is refused (section 9 §10.4)", () => {
-  test.each(KINDS.map((f) => [f.kind, f] as const))("%s: a word the request does not allow is a usage error, and nothing is written", async (_kind, fixture) => {
-    const r = await root(fixture);
-    const got = await call(r, "op_017", ["operator", "decide", RUN, fixture.wrongWord]);
-    expect(got.code).toBe(EXIT.usage);
-    expect(got.stderr).toContain(`write one of ${fixture.decisions.join(", ")}`);
-    expect(existsSync(decisionFile(r, fixture.folder))).toBe(false);
-  });
+  test("for each kind, a word the request does not allow is a usage error and nothing is written; then an allowed word is accepted", async () => {
+    for (const fixture of KINDS) {
+      const r = await root(fixture);
+      const got = await call(r, "op_017", ["operator", "decide", RUN, fixture.wrongWord]);
+      expect(got.code, fixture.kind).toBe(EXIT.usage);
+      expect(got.stderr, fixture.kind).toContain(`write one of ${fixture.decisions.join(", ")}`);
+      expect(existsSync(decisionFile(r, fixture.folder)), fixture.kind).toBe(false);
 
-  test.each(KINDS.map((f) => [f.kind, f] as const))("%s: an allowed word is accepted", async (_kind, fixture) => {
-    const r = await root(fixture);
-    const first = fixture.decisions[0];
-    if (first === undefined) throw new Error("fixture has no decisions");
-    const got = await call(r, "op_017", ["operator", "decide", RUN, first]);
-    expect(got.code).toBe(0);
-    expect(JSON.parse(readFileSync(decisionFile(r, fixture.folder), "utf8"))).toMatchObject({ decision: first });
+      // an allowed word is accepted
+      const first = fixture.decisions[0];
+      if (first === undefined) throw new Error("fixture has no decisions");
+      const ok = await call(r, "op_017", ["operator", "decide", RUN, first]);
+      expect(ok.code, fixture.kind).toBe(0);
+      expect(JSON.parse(readFileSync(decisionFile(r, fixture.folder), "utf8")), fixture.kind).toMatchObject({ decision: first });
+    }
   });
 });
 
