@@ -1,0 +1,374 @@
+{
+  "schema": "intyy.artifact/1.0",
+  "identity": {
+    "app": "kvfcu",
+    "capability": "sign_in",
+    "version": "1.0.0"
+  },
+  "runs_on": {
+    "surface": "web",
+    "app_versions": [
+      "9.2"
+    ],
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "scale": 1
+    },
+    "entry": "/",
+    "paths": [
+      "/",
+      "/login.do",
+      "/lastLogin.do",
+      "/main.do",
+      "/banner.do",
+      "/menu.do",
+      "/memberSearch.do"
+    ],
+    "session": null
+  },
+  "about": {
+    "title": "Sign in",
+    "summary": "Sign in as the operator and reach the home page.",
+    "when_to_use": "Before any task that needs a signed-in operator.",
+    "limits": "Uses the operator account from bank settings. Does not handle a locked account."
+  },
+  "contract": {
+    "inputs": [],
+    "outputs": [],
+    "outcomes": [],
+    "effect": "read_only"
+  },
+  "targets": [
+    {
+      "id": "user_id_box",
+      "description": "The textbox \"User ID\".",
+      "clues": {
+        "role": "textbox",
+        "name": "User ID",
+        "label": "User ID",
+        "region": {
+          "x": 0.4716,
+          "y": 0.1656,
+          "w": 0.1117,
+          "h": 0.0244
+        },
+        "image": "crops/user_id_box.png",
+        "path": "body > table[0] > tbody[0] > tr[1] > td[0] > table[1] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[1] > td[1] > input[0]"
+      }
+    },
+    {
+      "id": "password_box",
+      "description": "The textbox \"Password\".",
+      "clues": {
+        "role": "textbox",
+        "name": "Password",
+        "label": "Password",
+        "region": {
+          "x": 0.4716,
+          "y": 0.1988,
+          "w": 0.1117,
+          "h": 0.0244
+        },
+        "image": "crops/password_box.png",
+        "path": "body > table[0] > tbody[0] > tr[1] > td[0] > table[1] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[2] > td[1] > input[0]"
+      }
+    },
+    {
+      "id": "login_button",
+      "description": "The button \"Login\".",
+      "clues": {
+        "role": "button",
+        "name": "Login",
+        "region": {
+          "x": 0.4541,
+          "y": 0.2319,
+          "w": 0.0452,
+          "h": 0.0244
+        },
+        "image": "crops/login_button.png",
+        "path": "body > table[0] > tbody[0] > tr[1] > td[0] > table[1] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[3] > td[0] > input[0]"
+      }
+    },
+    {
+      "id": "continue_link",
+      "description": "The link \"Continue »\".",
+      "clues": {
+        "role": "link",
+        "name": "Continue »",
+        "text": "Continue »",
+        "region": {
+          "x": 0.2139,
+          "y": 0.1475,
+          "w": 0.047,
+          "h": 0.0169
+        },
+        "path": "body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > table[0] > tbody[0] > tr[1] > td[0] > a[0]"
+      }
+    }
+  ],
+  "conditions": [
+    {
+      "id": "type_user_id_precondition",
+      "description": "Before type user id.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/login.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "user_id_box"
+        }
+      ]
+    },
+    {
+      "id": "type_user_id_checkpoint",
+      "description": "After type user id.",
+      "check": "field_value",
+      "target": "user_id_box",
+      "value": "*",
+      "match": "wildcard"
+    },
+    {
+      "id": "type_password_precondition",
+      "description": "Before type password.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/login.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "password_box"
+        }
+      ]
+    },
+    {
+      "id": "type_password_checkpoint",
+      "description": "After type password.",
+      "check": "field_value",
+      "target": "password_box",
+      "value": "*",
+      "match": "wildcard"
+    },
+    {
+      "id": "click_login_precondition",
+      "description": "Before click login.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/login.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "login_button"
+        },
+        {
+          "ref": "type_user_id_checkpoint"
+        },
+        {
+          "ref": "type_password_checkpoint"
+        }
+      ]
+    },
+    {
+      "id": "click_login_checkpoint",
+      "description": "After click login.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/lastLogin.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "continue_link"
+        }
+      ]
+    },
+    {
+      "id": "click_continue_checkpoint",
+      "description": "After click continue.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "text_visible",
+          "text": "Logout",
+          "match": "contains"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "type_user_id",
+      "intent": "Enter operator username into User ID field",
+      "action": {
+        "type": "type",
+        "target": "user_id_box",
+        "value": "{secret.operator_username}"
+      },
+      "precondition": "type_user_id_precondition",
+      "checkpoint": "type_user_id_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    },
+    {
+      "id": "type_password",
+      "intent": "Enter the operator password to proceed with login.",
+      "action": {
+        "type": "type",
+        "target": "password_box",
+        "value": "{secret.operator_password}"
+      },
+      "precondition": "type_password_precondition",
+      "checkpoint": "type_password_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    },
+    {
+      "id": "click_login",
+      "intent": "Submit the login form with entered credentials to sign in as operator.",
+      "action": {
+        "type": "click",
+        "target": "login_button"
+      },
+      "precondition": "click_login_precondition",
+      "checkpoint": "click_login_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 10000
+    },
+    {
+      "id": "click_continue",
+      "intent": "Continue past the last login notice to reach the home page.",
+      "action": {
+        "type": "click",
+        "target": "continue_link"
+      },
+      "precondition": "click_login_checkpoint",
+      "checkpoint": "click_continue_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 10000
+    }
+  ],
+  "provenance": {
+    "runs": [
+      {
+        "run_id": "run_2026-09-29_qhkn64cebx",
+        "kind": "discovery",
+        "goal": "Sign in as the operator and reach the home page.",
+        "model": "claude-sonnet-5",
+        "recorder_version": "0.2.0"
+      }
+    ],
+    "derived_from": null,
+    "actions": [
+      {
+        "run_id": "run_2026-09-29_qhkn64cebx",
+        "seq": 7,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:type_user_id"
+      },
+      {
+        "run_id": "run_2026-09-29_qhkn64cebx",
+        "seq": 11,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:type_password"
+      },
+      {
+        "run_id": "run_2026-09-29_qhkn64cebx",
+        "seq": 15,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_login"
+      },
+      {
+        "run_id": "run_2026-09-29_qhkn64cebx",
+        "seq": 19,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_continue"
+      }
+    ],
+    "decisions": [
+      {
+        "what": "edit",
+        "subject": "runs_on.paths",
+        "value": "[\"/\",\"/login.do\",\"/lastLogin.do\",\"/main.do\",\"/banner.do\",\"/menu.do\",\"/memberSearch.do\"]",
+        "by": "op_017",
+        "at": "2026-09-30T01:30:22.854Z"
+      },
+      {
+        "what": "risk",
+        "subject": "type_user_id",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-09-30T01:32:24.510Z"
+      },
+      {
+        "what": "risk",
+        "subject": "type_password",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-09-30T01:32:30.084Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_login",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-09-30T01:32:35.628Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_continue",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-09-30T01:32:41.590Z"
+      },
+      {
+        "what": "edit",
+        "subject": "about.when_to_use",
+        "value": "Before any task that needs a signed-in operator.",
+        "by": "op_017",
+        "at": "2026-09-30T01:38:22.559Z"
+      },
+      {
+        "what": "edit",
+        "subject": "about.limits",
+        "value": "Uses the operator account from bank settings. Does not handle a locked account.",
+        "by": "op_017",
+        "at": "2026-09-30T01:38:31.692Z"
+      },
+      {
+        "what": "edit",
+        "subject": "conditions.click_continue_checkpoint",
+        "value": "{\"check\":\"all_of\",\"checks\":[{\"check\":\"location\",\"pattern\":\"/main.do\"},{\"check\":\"text_visible\",\"text\":\"Logout\",\"match\":\"contains\"}]}",
+        "by": "op_017",
+        "at": "2026-09-30T01:39:07.251Z"
+      }
+    ],
+    "sealed": {
+      "by": "op_017",
+      "at": "2026-09-30T01:39:40.272Z"
+    }
+  }
+}

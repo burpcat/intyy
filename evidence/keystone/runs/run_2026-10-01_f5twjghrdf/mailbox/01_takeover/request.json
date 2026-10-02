@@ -1,0 +1,32 @@
+{
+  "schema": "intyy.intervention/1.0",
+  "run_id": "run_2026-10-01_f5twjghrdf",
+  "tenant": "keystone",
+  "capability": "kvfcu/count_member_subaccounts",
+  "kind": "takeover",
+  "reason": "stuck",
+  "step": {
+    "id": "t8",
+    "intent": null
+  },
+  "trouble": {
+    "phase": "discovery",
+    "detail": "The same action ran 3 times with no change."
+  },
+  "ladder": [],
+  "commit": {
+    "state": "none",
+    "notice": null
+  },
+  "operator_note": null,
+  "approval": null,
+  "screenshot": "screens/00038_observation.png",
+  "decisions": [
+    "end_run"
+  ],
+  "outcomes": [],
+  "deadline": "2026-10-01T20:10:20.108Z",
+  "lease": "nobody",
+  "on_handback": "The bot will check where the screen is, then continue.",
+  "opened_at": "2026-10-01T19:40:20.108Z"
+}

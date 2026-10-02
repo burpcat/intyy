@@ -1,0 +1,17 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-09-29_qhkn64cebx",
+  "tenant": "keystone",
+  "kind": "discovery",
+  "capability": "kvfcu/sign_in",
+  "status": "success",
+  "code": null,
+  "started_at": "2026-09-29T16:38:43.942Z",
+  "ended_at": "2026-09-29T16:39:17.069Z",
+  "counts": {
+    "turns": 6,
+    "actions": 4,
+    "blocked": 0,
+    "invalid": 0
+  }
+}

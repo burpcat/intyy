@@ -1,0 +1,145 @@
+- iframe:
+  - table "Keystone Valley Federal Credit Union Welcome, {secret.operator_username} | 01/15/2026 | Logout Do not press Back or Refresh buttons. Use the menu on the left. *** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***":
+    - row "Keystone Valley Federal Credit Union Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+      - cell:
+        - img
+      - cell "Keystone Valley Federal Credit Union":
+        - text: Keystone Valley Federal Credit Union
+      - cell "Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+        - table "Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+          - row "Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+            - cell "Welcome, {secret.operator_username} | 01/15/2026 |":
+              - text: {secret.operator_username}
+            - cell "Logout":
+              - link "Logout":
+                - /url: http://127.0.0.1:8080/logout.do
+    - row "Do not press Back or Refresh buttons. Use the menu on the left.":
+      - cell "Do not press Back or Refresh buttons. Use the menu on the left."
+    - row "*** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***":
+      - cell "*** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***":
+        - text: *** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***
+- iframe:
+  - table "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+    - row "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+      - cell "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+        - table "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+          - row "Member Services":
+            - cell "Member Services"
+          - row "Member Search":
+            - cell "Member Search":
+              - img
+              - link "Member Search":
+                - /url: http://127.0.0.1:8080/memberSearch.do
+          - row "Balance Enquiry":
+            - cell "Balance Enquiry":
+              - img
+              - link "Balance Enquiry":
+                - /url: http://127.0.0.1:8080/balanceEnquiry.do
+          - row "Accounts":
+            - cell "Accounts"
+          - row "Open Sub-Account":
+            - cell "Open Sub-Account":
+              - img
+              - link "Open Sub-Account":
+                - /url: http://127.0.0.1:8080/openAccount.do
+              - img
+          - row "Close Sub-Account":
+            - cell "Close Sub-Account":
+              - img
+              - link "Close Sub-Account":
+                - /url: http://127.0.0.1:8080/closeAccount.do
+          - row "Session":
+            - cell "Session"
+          - row "Logout":
+            - cell "Logout":
+              - img
+              - link "Logout":
+                - /url: http://127.0.0.1:8080/logout.do
+- iframe:
+  - table "» Member Detail 01/15/2026 Customer Information CIF No. {input.member_id} Member Since 03/01/2012 Name [name#4] SSN [ssn#1] Date of Birth [dob#1] [address#1] [phone#1] Address [address#3] Account No. [account#1] Balance [money#8] Opened On [account#2] Primary Savings [money#4] OPEN 03/15/2012 [account#3] Share Savings [money#5] OPEN 04/15/2013 [account#4] Money Market [money#6] OPEN 05/15/2014 [account#5] Share Certificate [money#7] OPEN 06/15/2015 [ Balance Enquiry ":
+    - row "» Member Detail 01/15/2026":
+      - cell "» Member Detail 01/15/2026":
+        - table "» Member Detail 01/15/2026":
+          - row "» Member Detail 01/15/2026":
+            - cell "» Member Detail"
+            - cell "01/15/2026"
+    - row "Customer Information CIF No. {input.member_id} Member Since 03/01/2012 Name [name#4] SSN [ssn#1] Date of Birth [dob#1] [address#1] [phone#1] Address [address#3] Account No. [account#1] Balance [money#8] Opened On [account#2] Primary Savings [money#4] OPEN 03/15/2012 [account#3] Share Savings [money#5] OPEN 04/15/2013 [account#4] Money Market [money#6] OPEN 05/15/2014 [account#5] Share Certificate [money#7] OPEN 06/15/2015 [ Balance Enquiry ] [money#9] [ Cl":
+      - cell "Customer Information CIF No. {input.member_id} Member Since 03/01/2012 Name [name#4] SSN [ssn#1] Date of Birth [dob#1] [address#1] [phone#1] Address [address#3] Account No. [account#1] Balance [money#8] Opened On [account#2] Primary Savings [money#4] OPEN 03/15/2012 [account#3] Share Savings [money#5] OPEN 04/15/2013 [account#4] Money Market [money#6] OPEN 05/15/2014 [account#5] Share Certificate [money#7] OPEN 06/15/2015 [ Balance Enquiry ] [money#9] [ Cl":
+        - table "Customer Information CIF No. {input.member_id} Member Since 03/01/2012 Name [name#4] SSN [ssn#1] Date of Birth [dob#1] [address#1] [phone#1] Address [address#3] Account No. [account#1] Balance [money#8] Opened On [account#2] Primary Savings [money#4] OPEN 03/15/2012 [account#3] Share Savings [money#5] OPEN 04/15/2013 [account#4] Money Market [money#6] OPEN 05/15/2014 [account#5] Share Certificate [money#7] OPEN 06/15/2015 [ Balance Enquiry ] [money#9] [ Cl":
+          - row "Customer Information CIF No. {input.member_id} Member Since 03/01/2012 Name [name#4] SSN [ssn#1] Date of Birth [dob#1] [address#1] [phone#1] Address [address#3]":
+            - cell "Customer Information CIF No. {input.member_id} Member Since 03/01/2012 Name [name#4] SSN [ssn#1] Date of Birth [dob#1] [address#1] [phone#1] Address [address#3]":
+              - table "Customer Information CIF No. {input.member_id} Member Since 03/01/2012 Name [name#4] SSN [ssn#1] Date of Birth [dob#1] [address#1] [phone#1] Address [address#3]":
+                - row "Customer Information":
+                  - columnheader "Customer Information"
+                - row "CIF No. {input.member_id} Member Since 03/01/2012":
+                  - cell "CIF No."
+                  - cell "{input.member_id}":
+                    - text: {input.member_id}
+                  - cell "Member Since"
+                  - cell "03/01/2012"
+                - row "Name [name#4] SSN [ssn#1]":
+                  - cell "Name"
+                  - cell "[name#4]"
+                  - cell "SSN"
+                  - cell "[ssn#1]"
+                - row "Date of Birth [dob#1] [address#1] [phone#1]":
+                  - cell "Date of Birth"
+                  - cell "[dob#1]"
+                  - cell "[address#1]"
+                  - cell "[phone#1]"
+                - row "Address [address#3]":
+                  - cell "Address"
+                  - cell "[address#3]"
+          - row "Account No. [account#1] Balance [money#8] Opened On [account#2] Primary Savings [money#4] OPEN 03/15/2012 [account#3] Share Savings [money#5] OPEN 04/15/2013 [account#4] Money Market [money#6] OPEN 05/15/2014 [account#5] Share Certificate [money#7] OPEN 06/15/2015":
+            - cell "Account No. [account#1] Balance [money#8] Opened On [account#2] Primary Savings [money#4] OPEN 03/15/2012 [account#3] Share Savings [money#5] OPEN 04/15/2013 [account#4] Money Market [money#6] OPEN 05/15/2014 [account#5] Share Certificate [money#7] OPEN 06/15/2015":
+              - table "Account No. [account#1] Balance [money#8] Opened On [account#2] Primary Savings [money#4] OPEN 03/15/2012 [account#3] Share Savings [money#5] OPEN 04/15/2013 [account#4] Money Market [money#6] OPEN 05/15/2014 [account#5] Share Certificate [money#7] OPEN 06/15/2015":
+                - row "Account No. [account#1] Balance [money#8] Opened On":
+                  - columnheader "Account No."
+                  - columnheader "[account#1]"
+                  - columnheader "Balance"
+                  - columnheader "[money#8]"
+                  - columnheader "Opened On"
+                - row "[account#2] Primary Savings [money#4] OPEN 03/15/2012":
+                  - cell "[account#2]"
+                  - cell "Primary Savings"
+                  - cell "[money#4]"
+                  - cell "OPEN"
+                  - cell "03/15/2012"
+                - row "[account#3] Share Savings [money#5] OPEN 04/15/2013":
+                  - cell "[account#3]"
+                  - cell "Share Savings"
+                  - cell "[money#5]"
+                  - cell "OPEN"
+                  - cell "04/15/2013"
+                - row "[account#4] Money Market [money#6] OPEN 05/15/2014":
+                  - cell "[account#4]"
+                  - cell "Money Market"
+                  - cell "[money#6]"
+                  - cell "OPEN"
+                  - cell "05/15/2014"
+                - row "[account#5] Share Certificate [money#7] OPEN 06/15/2015":
+                  - cell "[account#5]"
+                  - cell "Share Certificate"
+                  - cell "[money#7]"
+                  - cell "OPEN"
+                  - cell "06/15/2015"
+          - row "[ Balance Enquiry ] [money#9] [ Close Sub-Account ]":
+            - cell "[ Balance Enquiry ] [money#9] [ Close Sub-Account ]":
+              - table "[ Balance Enquiry ] [money#9] [ Close Sub-Account ]":
+                - row "[ Balance Enquiry ] [money#9] [ Close Sub-Account ]":
+                  - cell "[ Balance Enquiry ]":
+                    - link "Balance Enquiry":
+                      - /url: http://127.0.0.1:8080/balanceEnquiry.do?memNo={input.member_id}
+                  - cell "[money#9]":
+                    - link "Open Sub-Account":
+                      - /url: http://127.0.0.1:8080/openAccount.do?memNo={input.member_id}
+                  - cell "[ Close Sub-Account ]":
+                    - link "Close Sub-Account":
+                      - /url: http://127.0.0.1:8080/closeAccount.do?memNo={input.member_id}
+    - row "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union. Federally insured by NCUA.":
+      - cell "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union. Federally insured by NCUA.":
+        - table "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union. Federally insured by NCUA.":
+          - row "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union. Federally insured by NCUA.":
+            - cell "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union. Federally insured by NCUA.":
+              - link "NCUA":
+                - /url: https://www.ncua.gov/

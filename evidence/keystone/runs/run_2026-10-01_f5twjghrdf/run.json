@@ -1,0 +1,12 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-01_f5twjghrdf",
+  "tenant": "keystone",
+  "kind": "discovery",
+  "capability": "kvfcu/count_member_subaccounts",
+  "status": "failed",
+  "code": "internal_error",
+  "started_at": "2026-10-01T19:39:08.305Z",
+  "ended_at": "2026-10-01T20:10:36.678Z",
+  "counts": null
+}

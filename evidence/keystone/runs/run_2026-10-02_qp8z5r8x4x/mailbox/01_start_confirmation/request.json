@@ -1,0 +1,30 @@
+{
+  "schema": "intyy.intervention/1.0",
+  "run_id": "run_2026-10-02_qp8z5r8x4x",
+  "tenant": "keystone",
+  "capability": "kvfcu/open_share_subaccount",
+  "kind": "start_confirmation",
+  "reason": "supervised_mode",
+  "step": {
+    "id": "start",
+    "intent": null
+  },
+  "trouble": null,
+  "ladder": [],
+  "commit": {
+    "state": "none",
+    "notice": null
+  },
+  "operator_note": null,
+  "approval": null,
+  "screenshot": null,
+  "decisions": [
+    "approved",
+    "declined"
+  ],
+  "outcomes": [],
+  "deadline": "2026-10-02T04:42:30.693Z",
+  "lease": null,
+  "on_handback": null,
+  "opened_at": "2026-10-02T04:27:30.693Z"
+}

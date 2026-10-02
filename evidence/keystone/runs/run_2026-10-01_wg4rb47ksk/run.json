@@ -1,0 +1,117 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-01_wg4rb47ksk",
+  "tenant": "keystone",
+  "kind": "replay",
+  "capability": "kvfcu/open_share_subaccount",
+  "parent_run_id": null,
+  "batch_id": null,
+  "case_id": null,
+  "request_id": "run_2026-10-01_wg4rb47ksk",
+  "status": "success",
+  "result": {
+    "schema": "intyy.result/1.0",
+    "run_id": "run_2026-10-01_wg4rb47ksk",
+    "request_id": "run_2026-10-01_wg4rb47ksk",
+    "capability": {
+      "name": "kvfcu/open_share_subaccount",
+      "version": "1.0.3",
+      "patch_revision": null
+    },
+    "effect": {
+      "commit": "confirmed",
+      "performed_by": "bot",
+      "sent_at": "2026-10-01T22:29:38.235Z",
+      "attempts": []
+    },
+    "warnings": [],
+    "recoveries": [],
+    "interventions": [],
+    "timing": {
+      "started_at": "2026-10-01T22:26:51.565Z",
+      "ended_at": "2026-10-01T22:29:41.852Z",
+      "duration_ms": 0,
+      "human_ms": 0
+    },
+    "evidence": "runs/run_2026-10-01_wg4rb47ksk",
+    "status": "success",
+    "outputs": {
+      "account_number": "{output.account_number}"
+    }
+  },
+  "frozen": {
+    "schema": "intyy.log/1.0",
+    "kind": "replay",
+    "parent_run_id": null,
+    "purpose": null,
+    "batch_id": null,
+    "case_id": null,
+    "pin": null,
+    "request_id": "run_2026-10-01_wg4rb47ksk",
+    "tenant": "keystone",
+    "agent_id": "cli:op_017",
+    "mode": "supervised",
+    "inputs": {
+      "member_id": "[pii]",
+      "deposit": "[financial]"
+    },
+    "authorization": null,
+    "frozen": {
+      "artifact": {
+        "id": "kvfcu/open_share_subaccount@1.0.3",
+        "hash": "sha256:11778d7dedde65f8186a4b1ef94a75bd8727d1b73d6ec3daf16393d99bc55d86"
+      },
+      "patch": null,
+      "session": {
+        "id": "kvfcu/sign_in@1.0.0",
+        "hash": "sha256:83db39113e1f1e23c1225e5d8b4bb70513523d1dc8fff9d4ef4e4fffaed26dc3",
+        "patch": null
+      },
+      "app_version": "9.2",
+      "engine_version": "0.2.0",
+      "handler_set": "sha256:7ca347d8c4b03b67ec00ed6d62467fc74f499271133f508feeb778dde24f8695",
+      "handler_packs": {},
+      "policy": {
+        "layers": {
+          "global": 1,
+          "app:kvfcu": 4,
+          "tenant:keystone": 2
+        },
+        "hash": "sha256:c36a9e041c0012b39daaed1d35eb853d32db183802deccc97c41e793b4c9b431"
+      },
+      "settings": {
+        "revision": 1,
+        "hash": "sha256:3a7aa65741da5c87404035afc9f9c4ccb82df8c99746da40f8be5a98f5f2d7de"
+      },
+      "evidence_level": "standard",
+      "timeouts": {},
+      "timeouts_from": null,
+      "approval": {
+        "state": "draft",
+        "batch": null,
+        "record": null
+      },
+      "ladder": {
+        "jev": true,
+        "reviewer": true,
+        "handler_min": 0.8,
+        "outcome_min": 0.95,
+        "reconciliation_min": 0.9,
+        "reconciliation_autonomy": false
+      }
+    },
+    "fault_profile": null,
+    "outputs_revealed": true
+  },
+  "files": [
+    {
+      "path": "events.jsonl",
+      "sha256": "sha256:83fac66ea1e8d244ad18cbed1a3628638de2f47ce9ba476d9f3afe567ca0a8a2",
+      "bytes": 14860
+    }
+  ],
+  "retention": {
+    "debug_until": "2026-10-31",
+    "audit_until": "2027-10-01"
+  }
+}

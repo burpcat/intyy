@@ -1,0 +1,18 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-01_we3bdycmve",
+  "tenant": "keystone",
+  "kind": "discovery",
+  "capability": "kvfcu/open_share_subaccount",
+  "spec": "kvfcu/open_share_subaccount.at_limit",
+  "status": "business_outcome",
+  "code": "limit_exceeded",
+  "started_at": "2026-10-01T20:56:34.136Z",
+  "ended_at": "2026-10-01T20:57:33.867Z",
+  "counts": {
+    "turns": 6,
+    "actions": 5,
+    "blocked": 0,
+    "invalid": 0
+  }
+}

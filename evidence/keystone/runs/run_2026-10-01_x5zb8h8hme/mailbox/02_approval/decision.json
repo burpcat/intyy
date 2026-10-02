@@ -1,0 +1,8 @@
+{
+  "schema": "intyy.decision/1.0",
+  "staff_id": "op_017",
+  "at": "2026-10-01T20:53:34.165Z",
+  "decision": "approve_idempotent",
+  "outcome": null,
+  "note": null
+}

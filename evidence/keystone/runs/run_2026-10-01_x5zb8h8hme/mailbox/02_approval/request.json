@@ -1,0 +1,40 @@
+{
+  "schema": "intyy.intervention/1.0",
+  "run_id": "run_2026-10-01_x5zb8h8hme",
+  "tenant": "keystone",
+  "capability": "kvfcu/open_share_subaccount",
+  "kind": "approval",
+  "reason": "discovery_irreversible",
+  "step": {
+    "id": "t11",
+    "intent": null
+  },
+  "trouble": null,
+  "ladder": [],
+  "commit": {
+    "state": "none",
+    "notice": null
+  },
+  "operator_note": null,
+  "approval": {
+    "words": "Confirm",
+    "risk": "irreversible",
+    "authorization": "none",
+    "action": "click",
+    "rule": "risk.needs_approval",
+    "path": "/main.do",
+    "detail": null
+  },
+  "screenshot": "screens/00055_observation.png",
+  "decisions": [
+    "approve_irreversible",
+    "approve_reversible",
+    "approve_idempotent",
+    "decline"
+  ],
+  "outcomes": [],
+  "deadline": "2026-10-01T21:23:01.830Z",
+  "lease": null,
+  "on_handback": null,
+  "opened_at": "2026-10-01T20:53:01.830Z"
+}

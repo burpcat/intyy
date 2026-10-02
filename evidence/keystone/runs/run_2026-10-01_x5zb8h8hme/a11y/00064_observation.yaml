@@ -1,0 +1,3 @@
+- alertdialog "Are you sure you want to open this account?":
+  - button "OK"
+  - button "Cancel"
