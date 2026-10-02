@@ -20,8 +20,10 @@ import type { AnyCheck, EvalCtx } from "../targets/evaluate.js";
 import { picOf, type RecordedPictures } from "../targets/picture.js";
 
 /** How long a precondition may wait: the previous step already waited for its own screen
- * (section 7 §5.2). */
-export const PRECONDITION_TIMEOUT_MS = 5_000;
+ * (section 7 §5.2). Why 10 s, not 5 s: a frameset app's frames fill in after the page that holds
+ * them, so the previous step's checkpoint can pass on one frame while the next step's frame is
+ * still loading (owner decision, 2026-10-02, after kvfcu's live fault cases). */
+export const PRECONDITION_TIMEOUT_MS = 10_000;
 
 /** What one step needs to run: the live session, the artifact's shared blocks, and where to
  * log it (`session:<id>` in the prelude, the bare step ID in the task). */
