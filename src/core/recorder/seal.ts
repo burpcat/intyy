@@ -29,10 +29,18 @@ export type SealedFixture = {
   fixture: NormalFixture;
   bytes: Readonly<Record<string, Uint8Array>>;
   missing: readonly string[];
+  /** The positive run's tenant, and the run log line the screen was saved at (its capture
+   * files are named by it, `a11y/00018_observation.yaml`). `seq` is null when no file says. */
+  tenant: string;
+  source: { run_id: string; seq: number | null };
 };
 
 /** Reads back one `normal` fixture's own capture files from the positive run's folder. */
-async function resolveFixtureFiles(folder: RunFolder, fixture: NormalFixture): Promise<SealedFixture> {
+async function resolveFixtureFiles(
+  folder: RunFolder,
+  fixture: NormalFixture,
+  run: { tenant: string; run_id: string },
+): Promise<SealedFixture> {
   const bytes: Record<string, Uint8Array> = {};
   const missing: string[] = [];
   for (const { prefix, name } of FIXTURE_FILE_KINDS) {
@@ -41,7 +49,14 @@ async function resolveFixtureFiles(folder: RunFolder, fixture: NormalFixture): P
     if (read === undefined || !read.ok) missing.push(name);
     else bytes[name] = read.value;
   }
-  return { fixture, bytes, missing };
+  const seqText = fixture.files.map((f) => /^[a-z0-9]+\/(\d+)_/.exec(f)?.[1]).find((n) => n !== undefined);
+  return {
+    fixture,
+    bytes,
+    missing,
+    tenant: run.tenant,
+    source: { run_id: run.run_id, seq: seqText === undefined ? null : Number(seqText) },
+  };
 }
 
 /**
@@ -259,7 +274,9 @@ export async function sealCandidate(
   if (!sealed.ok) return sealed;
 
   const sealedFixtures: SealedFixture[] = [];
-  for (const fixture of normalFixtures) sealedFixtures.push(await resolveFixtureFiles(opened.value, fixture));
+  for (const fixture of normalFixtures) {
+    sealedFixtures.push(await resolveFixtureFiles(opened.value, fixture, runsRead.value.positive));
+  }
 
   return ok({
     key: `${artifactId}@${version}`,

@@ -1087,8 +1087,12 @@ describe("candidate second-look and seal, through the CLI", () => {
     expect(readFileSync(join(dir, "a11y.yaml"), "utf8")).toBe(readFileSync(`${LOG_DIR}a11y/t1.yaml`, "utf8"));
     expect(existsSync(join(dir, "dom.html"))).toBe(false);
     expect(existsSync(join(dir, "screen.png"))).toBe(false);
-    const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as { missing: string[] };
-    expect([...meta.missing].sort()).toEqual(["dom.html", "screen.png"]);
+    // No approved test data names the variant here, and the golden capture's name carries no
+    // run-log number, so no meta.json is written (a short one breaks `fixture list`); the seal
+    // prints the command that writes it.
+    expect(existsSync(join(dir, "meta.json"))).toBe(false);
+    expect(sealed.stdout).toContain("intyy fixture new normal_login --app kvfcu --variant <variant>");
+    expect(sealed.stdout).toContain("--upgrade");
   });
 });
 

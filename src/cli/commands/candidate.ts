@@ -14,6 +14,7 @@ import { CandidateDecision, CandidateDecisionWhat } from "../../core/model/candi
 import type { CandidateIssue } from "../../core/model/candidate-issues.js";
 import { sealedCapabilityShapes } from "../../core/catalog/capabilities.js";
 import { CandidateId, RunId } from "../../core/model/ids.js";
+import { Fixture } from "../../core/model/fixture.js";
 import type { HandlerDraft } from "../../core/model/handler-draft.js";
 import { CapabilityName } from "../../core/model/runspec.js";
 import {
@@ -37,6 +38,7 @@ import { loadFrozenSetFor } from "./pack.js";
 import { effectivePolicy } from "./policy.js";
 import { settingsTarget } from "./settings.js";
 import { specLookup } from "./spec.js";
+import { testdataTarget } from "./testdata.js";
 
 /** A candidate's store ID, split into its parts: `<app>/<capability>/<candidate_id>`. */
 type CandidateRef = { app: string; capability: string; id: string };
@@ -105,26 +107,44 @@ function writeDraftsAndFixtures(
   app: string,
   drafts: readonly HandlerDraft[],
   fixtures: readonly SealedFixture[],
-): void {
+  appVersion: string | undefined,
+  variant: string | undefined,
+): string[] {
   for (const d of drafts) {
     const dir = join(ctx.root, ctx.config.library, "drafts", "handlers", app, d.id);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "draft.json"), `${JSON.stringify(d, null, 2)}\n`);
   }
-  for (const { fixture, bytes, missing } of fixtures) {
+  const notes: string[] = [];
+  for (const { fixture, bytes, missing, tenant, source } of fixtures) {
     const dir = join(ctx.root, ctx.config.library, "fixtures", app, fixture.id);
     mkdirSync(dir, { recursive: true });
     for (const [name, content] of Object.entries(bytes)) writeFileSync(join(dir, name), content);
-    const meta = {
+    // Why no meta.json without these: a short one fails the fixture schema and breaks `fixture
+    // list`. The variant comes only from approved test data (`instance.variant`).
+    if (appVersion === undefined || variant === undefined || source.seq === null) {
+      const seq = source.seq === null ? "<seq>" : String(source.seq);
+      notes.push(
+        `fixture ${app}/${fixture.id}: files saved, no meta.json yet. Run: intyy fixture new ${fixture.id} --app ${app} --variant <variant> --run ${source.run_id} --seq ${seq} --upgrade`,
+      );
+      continue;
+    }
+    const meta = Fixture.parse({
       schema: "intyy.fixture/1.0",
       id: fixture.id,
       app,
+      tenant,
+      app_version: appVersion,
+      variant,
       location: fixture.location,
+      viewport: { width: 1280, height: 800 },
+      source: { run_id: source.run_id, seq: source.seq },
       kind: "normal",
-      missing,
-    };
+      ...(missing.length > 0 ? { missing: [...missing] } : {}),
+    });
     writeFileSync(join(dir, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
   }
+  return notes;
 }
 
 /** The merged global+app policy's checks a strict artifact load needs (section 2 §19.6). Shared
@@ -541,10 +561,19 @@ export const registerCandidate: Register = (program: Command, ctxOf) => {
         const version = versionArg(opts);
         const context = await sealCheckContext(ctx, ref.app);
         const result = orExit(await sealCandidate(candidateDeps(ctx), id, version, staff, context), id);
-        writeDraftsAndFixtures(ctx, ref.app, result.drafts, result.normalFixtures);
+        const settings = await load(settingsTarget(ctx), ["approved", "sealed"]);
+        const testdata = await load(testdataTarget(ctx, ref.app), ["approved"]);
+        const notes = writeDraftsAndFixtures(
+          ctx,
+          ref.app,
+          result.drafts,
+          result.normalFixtures,
+          settings?.doc.apps[ref.app]?.app_version,
+          testdata?.doc.instance.variant,
+        );
         return answer(
           { key: result.key, hash: result.hash },
-          `${result.key} sealed by ${staff}.\nhash ${result.hash}\nNext: intyy certify ${result.key}`,
+          [`${result.key} sealed by ${staff}.`, `hash ${result.hash}`, ...notes, `Next: intyy certify ${result.key}`].join("\n"),
         );
       }),
     );

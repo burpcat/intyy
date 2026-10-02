@@ -27,7 +27,7 @@ function appArg(text: string | undefined): string {
 }
 
 /** The current tenant's test data for one app. Roles are per tenant (section 9 §8.7). */
-function target(ctx: Ctx, app: string): DocTarget<Testdata> {
+export function testdataTarget(ctx: Ctx, app: string): DocTarget<Testdata> {
   const id = `${ctx.tenant}/${app}`;
   return { store: ctx.wiring.testdata, kind: testdataKind, id, label: `testdata ${id}`, scope: ctx.tenant };
 }
@@ -73,7 +73,7 @@ export const registerTestdata: Register = (program: Command, ctxOf) => {
     .action(
       act(ctxOf, (ctx, args) => {
         const app = appArg(args[0]);
-        return editDoc(ctx, target(ctx, app), (base) => nextRevision(ctx, app, base), (doc) => validate(ctx, doc));
+        return editDoc(ctx, testdataTarget(ctx, app), (base) => nextRevision(ctx, app, base), (doc) => validate(ctx, doc));
       }),
     );
 
@@ -83,7 +83,7 @@ export const registerTestdata: Register = (program: Command, ctxOf) => {
     .description("validate the candidate, or else the newest sealed revision; writes nothing")
     .action(
       act(ctxOf, async (ctx, args) => {
-        const t = target(ctx, appArg(args[0]));
+        const t = testdataTarget(ctx, appArg(args[0]));
         const got = await load(t, ["candidate", "approved", "sealed"]);
         if (!got) throw new CliExit(EXIT.usage, `${t.label} has no candidate or sealed revision`);
         const problems = await validate(ctx, got.doc);
@@ -100,7 +100,7 @@ export const registerTestdata: Register = (program: Command, ctxOf) => {
     .argument("<app>", "the app ID")
     .description("freeze the candidate as a sealed revision (reviewer)")
     .action(
-      act(ctxOf, (ctx, args) => sealDoc(ctx, target(ctx, appArg(args[0])), (doc) => validate(ctx, doc))),
+      act(ctxOf, (ctx, args) => sealDoc(ctx, testdataTarget(ctx, appArg(args[0])), (doc) => validate(ctx, doc))),
     );
 
   testdata
@@ -109,6 +109,6 @@ export const registerTestdata: Register = (program: Command, ctxOf) => {
     .requiredOption("--rev <n>", "the sealed revision to approve")
     .description("stamp a sealed revision (approver for this tenant, never its sealer)")
     .action(
-      act(ctxOf, (ctx, args, opts) => approveDoc(ctx, target(ctx, appArg(args[0])), revOption(opts))),
+      act(ctxOf, (ctx, args, opts) => approveDoc(ctx, testdataTarget(ctx, appArg(args[0])), revOption(opts))),
     );
 };
