@@ -68,12 +68,27 @@
     },
     {
       "kind": "run",
+      "id": "run_2026-10-02_fmd346vwqj",
+      "tenant": "keystone"
+    },
+    {
+      "kind": "run",
+      "id": "run_2026-10-02_htxx6z5q9d",
+      "tenant": "keystone"
+    },
+    {
+      "kind": "run",
+      "id": "run_2026-10-02_psb98k0ynt",
+      "tenant": "keystone"
+    },
+    {
+      "kind": "run",
       "id": "run_2026-10-02_qp8z5r8x4x",
       "tenant": "keystone"
     }
   ],
   "by": "op_017",
-  "at": "2026-10-02T16:32:32.232Z",
+  "at": "2026-10-02T16:33:38.413Z",
   "source_hashes": {
     "artifacts/kvfcu/open_share_subaccount/1.0.3/artifact.json": "sha256:9a6e0d4a5dafd58705d6f5542bf40d8f487104116e55c05bd6692732795eab98",
     "artifacts/kvfcu/open_share_subaccount/1.0.3/crops/confirm_button.png": "sha256:ebeab06f62d4d31940bb7d9b6a2ce40726aa180017a6c8f8aa6cdcc9e08846dd",
@@ -264,6 +279,31 @@
     "keystone/runs/run_2026-10-01_x5zb8h8hme/screens/00055_observation.png": "sha256:0b2ae9f333ee41663374b8a8084f49a2e7c24cb811b2f7599061725a6861ed16",
     "keystone/runs/run_2026-10-01_x5zb8h8hme/screens/00074_observation.png": "sha256:69e7970ef148019160d1623d65c9730773b12615857ef4a9d91e4cddd0a370f0",
     "keystone/runs/run_2026-10-01_x5zb8h8hme/screens/00078_observation.png": "sha256:69e7970ef148019160d1623d65c9730773b12615857ef4a9d91e4cddd0a370f0",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/a11y/00035_click_confirm_ladder.yaml": "sha256:ad2c983433dd0943e2523212d5dc323ceee4276373c9166164a9f9fc5b6b03ae",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/a11y/00058_click_confirm_handback.yaml": "sha256:17560f39bb4865f453122e9743661541e1bce0a82d383c77a2f3c064d2664f05",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/events.jsonl": "sha256:f1ab0bdb52cd51003be6cc687c206ac38787ba84ceb1f57c5cbce8246c0f5fba",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/faults.jsonl": "sha256:d8a5c6cfaf3f470a6dd81105e09443b9e20bb501626cfe1cc09300667ac1ce6d",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/mailbox/01_takeover/claim.json": "sha256:2f6abd69b5a724f74f28c6bf0ae8c2aed1a196e70987f486917106f8a384d7a5",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/mailbox/01_takeover/closed.json": "sha256:661bae7c6ca3d3b7c813cce3da8a70bb8e6fb42e34922f3e74da2548751f5bb2",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/mailbox/01_takeover/release.json": "sha256:8c2f10ed4fccd77518406d06888668631a6955a68df7df1923107bcc93e837bc",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/mailbox/01_takeover/request.json": "sha256:f919aa45a233ccd3f039f35091f563fba541049ac4677bc5aa3ba017317936ce",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/run.json": "sha256:2882344f00f84f54881c80c60fc1bcbc8be0882efca609c1a9efaf9ac45b03bd",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/screens/00035_click_confirm_ladder.png": "sha256:e780964a08728493d42cfa0e6f729a981cd46153e438bc7fb885c2ead556ee0a",
+    "keystone/runs/run_2026-10-02_fmd346vwqj/screens/00058_click_confirm_handback.png": "sha256:ca4b1e75c900a1202e4a19a80b4e580c1907eb6eda440f8591db2cee882ae089",
+    "keystone/runs/run_2026-10-02_htxx6z5q9d/a11y/00014_click_search_ladder.yaml": "sha256:39cd26211cf049ab231120b53c74b233b35303175f85bb5c0a48993aa92c939f",
+    "keystone/runs/run_2026-10-02_htxx6z5q9d/events.jsonl": "sha256:99c173abad2dcd3ef02efe9d9d8aa9a5687e1f70e35e015a2f9df4820cf29b13",
+    "keystone/runs/run_2026-10-02_htxx6z5q9d/faults.jsonl": "sha256:f2ea58beb9f1ab4d38d394f7a8d6563e42d72d6a5d9f6662476d11ea03f3859d",
+    "keystone/runs/run_2026-10-02_htxx6z5q9d/run.json": "sha256:9fc20881b7fdb91e566cf559ba11088423414854d2438ab1bb6acf2489e927df",
+    "keystone/runs/run_2026-10-02_htxx6z5q9d/screens/00014_click_search_ladder.png": "sha256:0da8f79ce9935e5f52ca60265c734f9575c65d2437aa825a5a2194a2053c34b5",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/a11y/00040_click_ok_commit_after.yaml": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/a11y/00042_click_ok_unclear.yaml": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/dom/00040_click_ok_commit_after.html": "sha256:68ed36ab7038d1e2a29e4f011ef91401b4682f698cf92c484e55082f82711463",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/dom/00042_click_ok_unclear.html": "sha256:68ed36ab7038d1e2a29e4f011ef91401b4682f698cf92c484e55082f82711463",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/events.jsonl": "sha256:2c503ee1a9547384d3b57e785c88f51e987e396b5cd1e711d21075c214f776df",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/faults.jsonl": "sha256:23e25428cd16cd99987ef7fe461f8f75b4095d18975bc980e55e5eff9018392e",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/run.json": "sha256:83c303e3196585ac583d4b5a94cdf33eb028ea022fc2b1cc5aa02da08716135c",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/screens/00040_click_ok_commit_after.png": "sha256:647eb9ba978161ebd6aaaeb78a62b70997f312c3efc5ca184ef87d3230611592",
+    "keystone/runs/run_2026-10-02_psb98k0ynt/screens/00042_click_ok_unclear.png": "sha256:0895ba6bf90632a418750a8859ed36cda4645d10d6c020cb7be65b61c3201a17",
     "keystone/runs/run_2026-10-02_qp8z5r8x4x/a11y/00024_click_open_sub_account_ladder.yaml": "sha256:360db7b735eedcc5fecdfbd188c4989bf69be256334a7b1fcfc2543cbee105ea",
     "keystone/runs/run_2026-10-02_qp8z5r8x4x/a11y/00027_click_open_sub_account_failed.yaml": "sha256:360db7b735eedcc5fecdfbd188c4989bf69be256334a7b1fcfc2543cbee105ea",
     "keystone/runs/run_2026-10-02_qp8z5r8x4x/dom/00027_click_open_sub_account_failed.html": "sha256:313031c74a59b8bf29efbc96dd009b7aaa7c639bd1aa3eb2e8bda686f9bdf7ac",

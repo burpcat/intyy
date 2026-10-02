@@ -1,0 +1,49 @@
+{
+  "schema": "intyy.intervention/1.0",
+  "run_id": "run_2026-10-02_fmd346vwqj",
+  "tenant": "keystone",
+  "capability": "kvfcu/open_share_subaccount",
+  "kind": "takeover",
+  "reason": "needs_human_handler",
+  "step": {
+    "id": "click_confirm",
+    "intent": null
+  },
+  "trouble": {
+    "phase": "checkpoint",
+    "detail": "step click_confirm's checkpoint never passed"
+  },
+  "ladder": [
+    {
+      "rung": 1,
+      "verdict": "needs_human",
+      "window": "open",
+      "matched": [
+        "supervisor_approval"
+      ],
+      "handler": "supervisor_approval",
+      "attempt": 1,
+      "next": "takeover",
+      "resume_at": null,
+      "files": [
+        "screens/00035_click_confirm_ladder.png",
+        "a11y/00035_click_confirm_ladder.yaml"
+      ]
+    }
+  ],
+  "commit": {
+    "state": "not_sent",
+    "notice": null
+  },
+  "operator_note": "The bank needs a supervisor's approval before Confirm. Approve it as the supervisor in the browser, then hand back.",
+  "approval": null,
+  "screenshot": "screens/00035_click_confirm_ladder.png",
+  "decisions": [
+    "end_run"
+  ],
+  "outcomes": [],
+  "deadline": "2026-10-02T15:40:37.243Z",
+  "lease": "nobody",
+  "on_handback": "The bot will check where the screen is, then continue.",
+  "opened_at": "2026-10-02T15:10:37.243Z"
+}

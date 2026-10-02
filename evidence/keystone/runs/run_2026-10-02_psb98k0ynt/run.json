@@ -1,0 +1,184 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-02_psb98k0ynt",
+  "tenant": "keystone",
+  "kind": "replay",
+  "capability": "kvfcu/open_share_subaccount",
+  "parent_run_id": null,
+  "batch_id": "batch_2026-10-02_ez872twjty",
+  "case_id": "case",
+  "request_id": "run_2026-10-02_psb98k0ynt",
+  "status": "failed",
+  "result": {
+    "schema": "intyy.result/1.0",
+    "run_id": "run_2026-10-02_psb98k0ynt",
+    "request_id": null,
+    "capability": {
+      "name": "kvfcu/open_share_subaccount",
+      "version": "1.0.3",
+      "patch_revision": null
+    },
+    "effect": {
+      "commit": "uncertain",
+      "performed_by": "bot",
+      "sent_at": "2026-10-02T04:05:44.280Z",
+      "attempts": []
+    },
+    "warnings": [],
+    "recoveries": [],
+    "interventions": [],
+    "timing": {
+      "started_at": "2026-10-02T04:04:48.367Z",
+      "ended_at": "2026-10-02T04:05:54.615Z",
+      "duration_ms": 0,
+      "human_ms": 0
+    },
+    "evidence": "runs/run_2026-10-02_psb98k0ynt",
+    "status": "failed",
+    "failure": {
+      "code": "ended_by_operator",
+      "message": "the operator ended the run",
+      "step": "click_ok",
+      "phase": "escalation",
+      "expected": {
+        "condition": "escalation",
+        "description": "the operator ended the run"
+      },
+      "observed": {
+        "location": "http://127.0.0.1:8080/main.do",
+        "checks": []
+      },
+      "attempts": 0,
+      "ladder": {
+        "rung": 0,
+        "verdict": "hard_failure",
+        "ref": "escalation"
+      },
+      "transient": false,
+      "safe_to_retry": false,
+      "files": [
+        "screens/[digits#1]_click_ok_commit_after.png",
+        "dom/[digits#1]_click_ok_commit_after.html",
+        "a11y/[digits#1]_click_ok_commit_after.yaml",
+        "screens/[digits#2]_click_ok_unclear.png",
+        "dom/[digits#2]_click_ok_unclear.html",
+        "a11y/[digits#2]_click_ok_unclear.yaml"
+      ]
+    }
+  },
+  "frozen": {
+    "schema": "intyy.log/1.0",
+    "kind": "replay",
+    "parent_run_id": null,
+    "purpose": null,
+    "batch_id": "batch_2026-10-02_ez872twjty",
+    "case_id": "case",
+    "pin": "kvfcu/open_share_subaccount@1.0.3",
+    "request_id": "run_2026-10-02_psb98k0ynt",
+    "tenant": "keystone",
+    "agent_id": "certify",
+    "mode": "supervised",
+    "inputs": {
+      "member_id": "[pii]",
+      "deposit": "[financial]"
+    },
+    "authorization": {
+      "consent_ref": "certify:batch_2026-10-02_ez872twjty",
+      "granted_by": "staff",
+      "staff_id": "op_017",
+      "granted_at": "2026-10-02T04:04:48.360Z",
+      "expires_at": "2026-10-02T04:34:48.360Z",
+      "capability": "kvfcu/open_share_subaccount@1"
+    },
+    "frozen": {
+      "artifact": {
+        "id": "kvfcu/open_share_subaccount@1.0.3",
+        "hash": "sha256:11778d7dedde65f8186a4b1ef94a75bd8727d1b73d6ec3daf16393d99bc55d86"
+      },
+      "patch": null,
+      "session": {
+        "id": "kvfcu/sign_in@1.0.0",
+        "hash": "sha256:83db39113e1f1e23c1225e5d8b4bb70513523d1dc8fff9d4ef4e4fffaed26dc3",
+        "patch": null
+      },
+      "app_version": "9.2",
+      "engine_version": "0.2.0",
+      "handler_set": "sha256:e22e6b56e513de5517cb08a273ce6e746095285845844d9bb68b6f6648a4edb4",
+      "handler_packs": {
+        "global": 1,
+        "app:kvfcu": 1
+      },
+      "policy": {
+        "layers": {
+          "global": 1,
+          "app:kvfcu": 4,
+          "tenant:keystone": 2
+        },
+        "hash": "sha256:c36a9e041c0012b39daaed1d35eb853d32db183802deccc97c41e793b4c9b431"
+      },
+      "settings": {
+        "revision": 1,
+        "hash": "sha256:3a7aa65741da5c87404035afc9f9c4ccb82df8c99746da40f8be5a98f5f2d7de"
+      },
+      "evidence_level": "standard",
+      "timeouts": {},
+      "timeouts_from": null,
+      "approval": {
+        "state": "draft",
+        "batch": null,
+        "record": null
+      },
+      "ladder": {
+        "jev": true,
+        "reviewer": true,
+        "handler_min": 0.8,
+        "outcome_min": 0.95,
+        "reconciliation_min": 0.9,
+        "reconciliation_autonomy": false
+      }
+    },
+    "fault_profile": null,
+    "outputs_revealed": true
+  },
+  "files": [
+    {
+      "path": "screens/00040_click_ok_commit_after.png",
+      "sha256": "sha256:647eb9ba978161ebd6aaaeb78a62b70997f312c3efc5ca184ef87d3230611592",
+      "bytes": 40378
+    },
+    {
+      "path": "dom/00040_click_ok_commit_after.html",
+      "sha256": "sha256:68ed36ab7038d1e2a29e4f011ef91401b4682f698cf92c484e55082f82711463",
+      "bytes": 3911
+    },
+    {
+      "path": "a11y/00040_click_ok_commit_after.yaml",
+      "sha256": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
+      "bytes": 4393
+    },
+    {
+      "path": "screens/00042_click_ok_unclear.png",
+      "sha256": "sha256:0895ba6bf90632a418750a8859ed36cda4645d10d6c020cb7be65b61c3201a17",
+      "bytes": 40427
+    },
+    {
+      "path": "dom/00042_click_ok_unclear.html",
+      "sha256": "sha256:68ed36ab7038d1e2a29e4f011ef91401b4682f698cf92c484e55082f82711463",
+      "bytes": 3911
+    },
+    {
+      "path": "a11y/00042_click_ok_unclear.yaml",
+      "sha256": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
+      "bytes": 4393
+    },
+    {
+      "path": "events.jsonl",
+      "sha256": "sha256:2c503ee1a9547384d3b57e785c88f51e987e396b5cd1e711d21075c214f776df",
+      "bytes": 13087
+    }
+  ],
+  "retention": {
+    "debug_until": "2026-11-01",
+    "audit_until": "2027-10-02"
+  }
+}

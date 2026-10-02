@@ -1,0 +1,142 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-02_htxx6z5q9d",
+  "tenant": "keystone",
+  "kind": "replay",
+  "capability": "kvfcu/open_share_subaccount",
+  "parent_run_id": null,
+  "batch_id": "batch_2026-10-02_jk66pk4qsg",
+  "case_id": "case",
+  "request_id": "run_2026-10-02_htxx6z5q9d",
+  "status": "success",
+  "result": {
+    "schema": "intyy.result/1.0",
+    "run_id": "run_2026-10-02_htxx6z5q9d",
+    "request_id": "run_2026-10-02_htxx6z5q9d",
+    "capability": {
+      "name": "kvfcu/open_share_subaccount",
+      "version": "1.0.3",
+      "patch_revision": null
+    },
+    "effect": {
+      "commit": "confirmed",
+      "performed_by": "bot",
+      "sent_at": "2026-10-02T02:13:32.829Z",
+      "attempts": []
+    },
+    "warnings": [],
+    "recoveries": [
+      {
+        "step": "click_search",
+        "rung": 1,
+        "via": "handler",
+        "ref": "session_expired",
+        "resumed_at": "type_member_no",
+        "at": "2026-10-02T02:13:12.503Z"
+      }
+    ],
+    "interventions": [],
+    "timing": {
+      "started_at": "2026-10-02T02:12:15.882Z",
+      "ended_at": "2026-10-02T02:13:35.962Z",
+      "duration_ms": 0,
+      "human_ms": 0
+    },
+    "evidence": "runs/run_2026-10-02_htxx6z5q9d",
+    "status": "success",
+    "outputs": {
+      "account_number": "{output.account_number}"
+    }
+  },
+  "frozen": {
+    "schema": "intyy.log/1.0",
+    "kind": "replay",
+    "parent_run_id": null,
+    "purpose": null,
+    "batch_id": "batch_2026-10-02_jk66pk4qsg",
+    "case_id": "case",
+    "pin": "kvfcu/open_share_subaccount@1.0.3",
+    "request_id": "run_2026-10-02_htxx6z5q9d",
+    "tenant": "keystone",
+    "agent_id": "certify",
+    "mode": "supervised",
+    "inputs": {
+      "member_id": "[pii]",
+      "deposit": "[financial]"
+    },
+    "authorization": {
+      "consent_ref": "certify:batch_2026-10-02_jk66pk4qsg",
+      "granted_by": "staff",
+      "staff_id": "op_017",
+      "granted_at": "2026-10-02T02:12:15.876Z",
+      "expires_at": "2026-10-02T02:42:15.876Z",
+      "capability": "kvfcu/open_share_subaccount@1"
+    },
+    "frozen": {
+      "artifact": {
+        "id": "kvfcu/open_share_subaccount@1.0.3",
+        "hash": "sha256:11778d7dedde65f8186a4b1ef94a75bd8727d1b73d6ec3daf16393d99bc55d86"
+      },
+      "patch": null,
+      "session": {
+        "id": "kvfcu/sign_in@1.0.0",
+        "hash": "sha256:83db39113e1f1e23c1225e5d8b4bb70513523d1dc8fff9d4ef4e4fffaed26dc3",
+        "patch": null
+      },
+      "app_version": "9.2",
+      "engine_version": "0.2.0",
+      "handler_set": "sha256:e22e6b56e513de5517cb08a273ce6e746095285845844d9bb68b6f6648a4edb4",
+      "handler_packs": {
+        "global": 1,
+        "app:kvfcu": 1
+      },
+      "policy": {
+        "layers": {
+          "global": 1,
+          "app:kvfcu": 4,
+          "tenant:keystone": 2
+        },
+        "hash": "sha256:c36a9e041c0012b39daaed1d35eb853d32db183802deccc97c41e793b4c9b431"
+      },
+      "settings": {
+        "revision": 1,
+        "hash": "sha256:3a7aa65741da5c87404035afc9f9c4ccb82df8c99746da40f8be5a98f5f2d7de"
+      },
+      "evidence_level": "standard",
+      "timeouts": {},
+      "timeouts_from": null,
+      "approval": {
+        "state": "draft",
+        "batch": null,
+        "record": null
+      },
+      "ladder": {
+        "jev": false,
+        "reviewer": false
+      }
+    },
+    "fault_profile": null,
+    "outputs_revealed": true
+  },
+  "files": [
+    {
+      "path": "screens/00014_click_search_ladder.png",
+      "sha256": "sha256:0da8f79ce9935e5f52ca60265c734f9575c65d2437aa825a5a2194a2053c34b5",
+      "bytes": 46571
+    },
+    {
+      "path": "a11y/00014_click_search_ladder.yaml",
+      "sha256": "sha256:39cd26211cf049ab231120b53c74b233b35303175f85bb5c0a48993aa92c939f",
+      "bytes": 6406
+    },
+    {
+      "path": "events.jsonl",
+      "sha256": "sha256:99c173abad2dcd3ef02efe9d9d8aa9a5687e1f70e35e015a2f9df4820cf29b13",
+      "bytes": 17197
+    }
+  ],
+  "retention": {
+    "debug_until": "2026-11-01",
+    "audit_until": "2027-10-02"
+  }
+}
