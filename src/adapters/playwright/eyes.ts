@@ -105,7 +105,26 @@ function unreadableFrame(tag: string, fi: number): SurfaceElement {
 export class PlaywrightEyes implements Eyes {
   constructor(private readonly s: BrowserState) {}
 
+  /**
+   * Why the cap: a native box the browser still holds blocks page script, and an evaluate then
+   * never returns (a stale OK box after a slow approval, 2026-10-02). A look that cannot finish
+   * in a step's time is a lost page, so a commit's race ends `uncertain` instead of hanging.
+   */
   async observe(): Promise<Outcome<Observation, "page_gone">> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const capped = new Promise<Outcome<Observation, "page_gone">>((res) => {
+      timer = setTimeout(() => {
+        res(fail("page_gone"));
+      }, STEP_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([this.#look(), capped]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async #look(): Promise<Outcome<Observation, "page_gone">> {
     const page = this.s.active;
     if (page === null) return fail("page_gone");
     const base = {
