@@ -2,7 +2,6 @@
 
 intyy gives AI agents hands in bank back-office apps that have no API. The full design is in [docs/design/](docs/design/). Every evidence ID below (A1 to A12, B1 to B5) is a row in [evidence/README.md](evidence/README.md).
 
-> DRAFT (M12). The owner edits and owns every claim. A line marked `TODO(owner)` waits for an M10 evidence run.
 
 ## 1. Architecture
 
@@ -129,7 +128,10 @@ See [section 4 §2, §3, §6, §7, §9, §15](docs/design/4-intyy-safety-policy.
 
 ## 7. Cuts
 
-**Stretch goals claimed: two.** Confidence and approval: a scorer, a gate, trust states, and four-eyes `trust approve`; unattended replay is rejected until a key is approved (B4). Multi-run stability: entropy levels, seeds, and twin runs in each full batch (B3). TODO(owner): keep each claim only once B3 and B4 are published.
+**Stretch goals claimed: two.**
+
+- **Confidence and approval.** A full batch scores a key and a gate judges it; a second person approves with `trust approve`, bound to the record they read. Both keys passed their gates with 0 wrong verdicts and were approved by another staff ID (B3). Unattended replay was `rejected` before approval and `success` after (B4).
+- **Multi-run stability.** Each full batch adds random faults at three entropy levels, five seeds each, every run twice. It is measured, not gated, and it is honest: `sign_in` passed 80/80/20% at 0.05/0.15/0.30, `open_share_subaccount` 60/0/0%. The misses are blank, 503, logout, and frame-level error pages. Twins always matched their first run.
 
 **The rung 3 overlap.** The reviewer on rung 3 is close to "assisted fallback". It is part of the ladder, bounded to one step, checked by the gate, and not claimed.
 
@@ -141,6 +143,6 @@ See [section 4 §2, §3, §6, §7, §9, §15](docs/design/4-intyy-safety-policy.
 
 **Next, with more time.**
 
-1. A rows read capability for kvfcu, so a lost reply is settled by a check, not a person.
-2. Patch merge, so one artifact serves many tenants.
-3. A desktop adapter behind the same surface port.
+1. Seal handler pack rev 3, drafted from the stability misses (`blank_page`, `service_unavailable`, `back_at_login`), and recover a frame's own last good page, not the frameset's.
+2. A rows read capability for kvfcu, so a lost reply is settled by a check, not a person.
+3. Patch merge, so one artifact serves many tenants.
