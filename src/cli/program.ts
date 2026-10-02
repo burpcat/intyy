@@ -105,7 +105,11 @@ function buildProgram(io: Io, deps: RunDeps, setCtx: (c: Ctx) => void, ctxOf: ()
   // Why a hook: every command starts with the same steps, then the sweep (section 9 §7.8).
   program.hook("preAction", async (_root, action) => {
     const flags = globalFlags(action.optsWithGlobals());
-    checkRunFlags(action.name(), flags);
+    // Why the top command: `certify case` and `certify rerun` are subcommands; the flag rules
+    // name the command they belong to (`certify`), not the subcommand.
+    let top: Command = action;
+    while (top.parent?.parent !== undefined && top.parent.parent !== null) top = top.parent;
+    checkRunFlags(top.name(), flags);
     const ctx = makeContext(io, flags, deps.wire ?? wire);
     setCtx(ctx);
     // Why skip here: `run sweep` (section 9 §10.7) runs the very same sweep itself, for its

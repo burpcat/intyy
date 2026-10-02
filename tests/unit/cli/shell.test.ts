@@ -186,6 +186,19 @@ describe("output rules", () => {
     expect(models.stderr).toContain("--models works only on replay, certify, and reconcile");
   });
 
+  test("--models off is taken by a subcommand of certify, like certify case", async () => {
+    const root = tempRoot();
+    const certifyCase: Register = (program, ctxOf) => {
+      program
+        .command("certify")
+        .command("case")
+        .action(act(ctxOf, () => Promise.resolve({ text: () => "ran", data: () => ({}) })));
+    };
+    const r = await call(["--models", "off", "certify", "case"], { cwd: root, deps: { commands: [certifyCase] } });
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.stdout).toContain("ran");
+  });
+
   test("an unknown command or option is a usage error", async () => {
     const root = tempRoot();
     expect((await call(["nope"], { cwd: root, deps: { commands: [probe()] } })).code).toBe(

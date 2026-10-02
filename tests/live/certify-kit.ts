@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { FileDocumentStore } from "../../src/adapters/files/document-store.js";
 import { FileCandidateStore, FileEvidenceStore } from "../../src/adapters/files/other-stores.js";
+import { commands } from "../../src/cli/commands/index.js";
 import { loadDotEnv } from "../../src/cli/env.js";
 import { wire, type Wiring } from "../../src/cli/wiring.js";
 import { requestStepsFor, resolveAnchor } from "../../src/core/certify/anchors.js";
@@ -218,7 +219,8 @@ async function invoke(tail: string[], models?: ModelsOpt): Promise<{
     {
       cwd: tmp.root,
       env,
-      deps: { wire: (root, cfg, wireEnv) => fixedWire(root, cfg, wireEnv, models?.wire) },
+      // Why `commands`: `call` registers none on its own, so `certify` would be unknown.
+      deps: { commands, wire: (root, cfg, wireEnv) => fixedWire(root, cfg, wireEnv, models?.wire) },
     },
   );
   return {
