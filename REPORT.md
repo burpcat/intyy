@@ -116,7 +116,7 @@ See [section 7 §12 to §16](docs/design/7-intyy-replay-engine-and-handoff.md), 
 
 **Redaction at write time.** Only `src/core/safety/redaction/` creates `Masked` values; the compiler enforces it.
 
-**Canary tests.** A reserved member and every bound secret must never reach disk. `evidence publish` scans in memory and refuses on one hit. A12: 422 safety and canary tests pass, with one known limit marked expected.
+**Canary tests.** A reserved member and every bound secret must never reach disk. `evidence publish` scans in memory and refuses on one hit. A12: 172 safety and canary tests pass, with one known limit marked expected.
 
 **Limits, all four.**
 

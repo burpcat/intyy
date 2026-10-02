@@ -1,10 +1,10 @@
 {
   "schema": "intyy.safety_report/1.0",
-  "generated_at": "2026-10-02T15:21:50.673Z",
+  "generated_at": "2026-10-02T19:42:51.058Z",
   "success": true,
   "totals": {
-    "tests": 422,
-    "passed": 422,
+    "tests": 172,
+    "passed": 172,
     "failed": 0,
     "skipped": 0,
     "expected_failures": 1
@@ -59,27 +59,11 @@
       "status": "passed",
       "tests": [
         {
-          "name": "PublishManifest a good manifest parses",
+          "name": "PublishManifest PublishManifest parses a good manifest and rejects unknown keys, schemas, hashes, and kinds",
           "status": "passed"
         },
         {
-          "name": "PublishManifest an unknown key is rejected, at the top and inside an item",
-          "status": "passed"
-        },
-        {
-          "name": "PublishManifest a wrong schema name, a bad hash, and a bad item kind are rejected",
-          "status": "passed"
-        },
-        {
-          "name": "SafetyReport a good report parses",
-          "status": "passed"
-        },
-        {
-          "name": "SafetyReport an unknown key is rejected, at the top, in totals, and in a test",
-          "status": "passed"
-        },
-        {
-          "name": "SafetyReport a wrong schema name or status is rejected",
+          "name": "SafetyReport SafetyReport parses a good report and rejects unknown keys, schemas, and statuses",
           "status": "passed"
         }
       ]
@@ -119,27 +103,11 @@
       "status": "passed",
       "tests": [
         {
-          "name": "a clean publish a run copies its folder, its batch's plan and report, and the artifacts it used",
+          "name": "a clean publish a run copies its folder, its batch, and its artifacts; the manifest names and hashes each",
           "status": "passed"
         },
         {
-          "name": "a clean publish the manifest names every item, who and when, and a hash for every copied file",
-          "status": "passed"
-        },
-        {
-          "name": "a clean publish each artifact copy matches the seal hash the artifact index records",
-          "status": "passed"
-        },
-        {
-          "name": "a canary hit refuses the whole publish in a run file",
-          "status": "passed"
-        },
-        {
-          "name": "a canary hit refuses the whole publish in a run file, as the second marker (a bound secret value)",
-          "status": "passed"
-        },
-        {
-          "name": "a canary hit refuses the whole publish in a base64 form",
+          "name": "a canary hit refuses the whole publish in a run file: first marker, second marker, and base64 form",
           "status": "passed"
         },
         {
@@ -183,27 +151,7 @@
           "status": "passed"
         },
         {
-          "name": "refusals write nothing forbidden_file: a run folder holds trace.zip",
-          "status": "passed"
-        },
-        {
-          "name": "refusals write nothing forbidden_file: a run folder holds session.har",
-          "status": "passed"
-        },
-        {
-          "name": "refusals write nothing forbidden_file: a run folder holds cookies.json",
-          "status": "passed"
-        },
-        {
-          "name": "refusals write nothing forbidden_file: a run folder holds storage_state.json",
-          "status": "passed"
-        },
-        {
-          "name": "refusals write nothing forbidden_file: a run folder holds traces/page.bin",
-          "status": "passed"
-        },
-        {
-          "name": "refusals write nothing forbidden_file: a run folder holds video/run.webm",
+          "name": "refusals write nothing forbidden_file: a run folder holding a trace, HAR, cookie, storage, or video file is refused",
           "status": "passed"
         },
         {
@@ -215,15 +163,7 @@
           "status": "passed"
         },
         {
-          "name": "links resolve (section 9 §6.6, check 3) a child run also publishes its parent",
-          "status": "passed"
-        },
-        {
-          "name": "links resolve (section 9 §6.6, check 3) a parent run also publishes its children",
-          "status": "passed"
-        },
-        {
-          "name": "links resolve (section 9 §6.6, check 3) a run in a batch also publishes the batch's plan and report",
+          "name": "links resolve (section 9 §6.6, check 3) a child run also publishes its parent, and a parent run also publishes its children",
           "status": "passed"
         },
         {
@@ -243,11 +183,7 @@
           "status": "passed"
         },
         {
-          "name": "verifyEvidence a fresh publish has no problems",
-          "status": "passed"
-        },
-        {
-          "name": "verifyEvidence a changed file is one problem, naming the file",
+          "name": "verifyEvidence a fresh publish has no problems; a changed file is one problem, naming the file",
           "status": "passed"
         },
         {
@@ -281,27 +217,11 @@
       "status": "passed",
       "tests": [
         {
-          "name": "buildSafetyReport marks only the known-limit test, and the totals add up",
+          "name": "buildSafetyReport buildSafetyReport marks the known-limit test, totals, success, paths, and status",
           "status": "passed"
         },
         {
-          "name": "buildSafetyReport a failed test makes success false",
-          "status": "passed"
-        },
-        {
-          "name": "buildSafetyReport with no failed test and a known-limit test, success is true",
-          "status": "passed"
-        },
-        {
-          "name": "buildSafetyReport with no known-limit test, success is false even when every test passed",
-          "status": "passed"
-        },
-        {
-          "name": "buildSafetyReport the repo root is cut from each path, with or without a trailing slash",
-          "status": "passed"
-        },
-        {
-          "name": "buildSafetyReport a file's status is passed or failed as Vitest says",
+          "name": "buildSafetyReport success needs no failed test and a known-limit test",
           "status": "passed"
         },
         {
@@ -349,27 +269,7 @@
           "status": "passed"
         },
         {
-          "name": "paths (section 4 §6.3, §6.4) a path not on the list is blocked: deny by default",
-          "status": "passed"
-        },
-        {
-          "name": "paths (section 4 §6.3, §6.4) deny beats allow",
-          "status": "passed"
-        },
-        {
-          "name": "paths (section 4 §6.3, §6.4) the query counts for query patterns",
-          "status": "passed"
-        },
-        {
-          "name": "paths (section 4 §6.3, §6.4) tricks are malformed",
-          "status": "passed"
-        },
-        {
-          "name": "paths (section 4 §6.3, §6.4) normalizing cannot sneak past deny",
-          "status": "passed"
-        },
-        {
-          "name": "paths (section 4 §6.3, §6.4) irreversible paths are marked",
+          "name": "paths (section 4 §6.3, §6.4) paths: deny by default, deny beats allow, queries count, tricks are blocked, irreversible paths are marked",
           "status": "passed"
         },
         {
@@ -377,163 +277,7 @@
           "status": "passed"
         },
         {
-          "name": "action types per actor (section 4 §6.9) engine navigate: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) engine click: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) engine type: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) engine select: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) engine set_checked: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) engine press: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) engine read: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) engine scroll: allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler navigate: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler click: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler type: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler select: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler set_checked: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler press: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler read: allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) handler scroll: allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm navigate: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm click: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm type: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm select: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm set_checked: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm press: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm read: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) llm scroll: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer navigate: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer click: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer type: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer select: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer set_checked: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer press: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer read: allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) reviewer scroll: allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human navigate: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human click: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human type: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human select: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human set_checked: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human press: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human read: allowed",
-          "status": "passed"
-        },
-        {
-          "name": "action types per actor (section 4 §6.9) human scroll: allowed",
+          "name": "action types per actor (section 4 §6.9) each actor gets exactly its action types",
           "status": "passed"
         },
         {
@@ -541,23 +285,7 @@
           "status": "passed"
         },
         {
-          "name": "keys (section 4 §6.9) global keys are allowed",
-          "status": "passed"
-        },
-        {
-          "name": "keys (section 4 §6.9) a key off the list is blocked",
-          "status": "passed"
-        },
-        {
-          "name": "keys (section 4 §6.9) a function key needs an app mapping",
-          "status": "passed"
-        },
-        {
-          "name": "keys (section 4 §6.9) the reviewer presses Tab and Escape only",
-          "status": "passed"
-        },
-        {
-          "name": "keys (section 4 §6.9) a human is observed, not gated",
+          "name": "keys (section 4 §6.9) keys: global keys pass, off-list and unmapped function keys block, reviewer and human differ",
           "status": "passed"
         }
       ]
@@ -653,23 +381,7 @@
           "status": "passed"
         },
         {
-          "name": "DOM snapshots (section 4 §9.13, section 3 §7.6) no raw member text survives anywhere",
-          "status": "passed"
-        },
-        {
-          "name": "DOM snapshots (section 4 §9.13, section 3 §7.6) scripts, inline handlers, comments, hidden fields, values, and textarea text are removed",
-          "status": "passed"
-        },
-        {
-          "name": "DOM snapshots (section 4 §9.13, section 3 §7.6) text attributes and addresses pass the text rules",
-          "status": "passed"
-        },
-        {
-          "name": "DOM snapshots (section 4 §9.13, section 3 §7.6) table cells use their column header, else the cell to the left, as a label",
-          "status": "passed"
-        },
-        {
-          "name": "DOM snapshots (section 4 §9.13, section 3 §7.6) layout survives: tags and plain words stay",
+          "name": "DOM snapshots (section 4 §9.13, section 3 §7.6) a DOM snapshot masks member text, strips risky parts, keeps layout, and labels table cells",
           "status": "passed"
         },
         {
@@ -683,63 +395,11 @@
       "status": "passed",
       "tests": [
         {
-          "name": "C3 in the classifier: only the message words count a message with no list word is unsure, so irreversible, though OK is a safe word",
+          "name": "C3 in the classifier: only the message words count classify reads the message words only: unsure without a list word, by word with one, safe words ignored",
           "status": "passed"
         },
         {
-          "name": "C3 in the classifier: only the message words count the real run message, open this sub-account, is unsure on the global lists",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the classifier: only the message words count an irreversible word in the message is irreversible by word, not unsure",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the classifier: only the message words count a reversible word in the message is reversible",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the classifier: only the message words count a safe word in the message is ignored: unsure, so irreversible",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the classifier: only the message words count safe words still work on an ordinary button",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the classifier: only the message words count the button label OK with an empty message is unsure",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the classifier: only the message words count a label with a list word does not rescue a message with none",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the classifier: only the message words count Dismiss is unchanged: a click with no message reads its own label",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the gate: accepting a box on the snapshot fake confirm \"Are you sure you want to go on?\": risk.unsure",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the gate: accepting a box on the snapshot fake confirm \"Delete member?\": risk.needs_approval",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the gate: accepting a box on the snapshot fake confirm \"Add a note to this member?\": risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the gate: accepting a box on the snapshot fake confirm \"Show the details?\": risk.unsure",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the gate: accepting a box on the snapshot fake alert \"Your session will end soon.\": risk.unsure",
-          "status": "passed"
-        },
-        {
-          "name": "C3 in the gate: accepting a box on the snapshot fake alert \"Delete member now.\": risk.needs_approval",
+          "name": "C3 in the gate: accepting a box on the snapshot fake accepting each box gets its rule, risk, decision, and a masked log line",
           "status": "passed"
         },
         {
@@ -799,243 +459,15 @@
       "status": "passed",
       "tests": [
         {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · engine · idempotent: blocked allowlist.action",
+          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery run: every actor and class gets its answer",
           "status": "passed"
         },
         {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · engine · reversible: blocked allowlist.action",
+          "name": "gate matrix: actor × class × run kind (section 4 §14) replay run: every actor and class gets its answer",
           "status": "passed"
         },
         {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · engine · irreversible: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · engine · unsure: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · handler · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · handler · reversible: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · handler · irreversible: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · handler · unsure: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · llm · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · llm · reversible: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · llm · irreversible: needs_approval risk.needs_approval",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · llm · unsure: needs_approval risk.unsure",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · reviewer · idempotent: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · reviewer · reversible: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · reviewer · irreversible: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · reviewer · unsure: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · human · idempotent: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · human · reversible: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · human · irreversible: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) discovery · human · unsure: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · engine · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · engine · reversible: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · engine · irreversible: needs_approval risk.needs_approval",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · engine · unsure: needs_approval risk.needs_approval",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · handler · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · handler · reversible: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · handler · irreversible: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · handler · unsure: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · llm · idempotent: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · llm · reversible: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · llm · irreversible: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · llm · unsure: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · reviewer · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · reviewer · reversible: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · reviewer · irreversible: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · reviewer · unsure: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · human · idempotent: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · human · reversible: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · human · irreversible: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) replay · human · unsure: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · engine · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · engine · reversible: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · engine · irreversible: blocked risk.read_only_run",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · engine · unsure: blocked risk.read_only_run",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · handler · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · handler · reversible: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · handler · irreversible: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · handler · unsure: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · llm · idempotent: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · llm · reversible: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · llm · irreversible: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · llm · unsure: blocked allowlist.action",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · reviewer · idempotent: allowed risk.allowed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · reviewer · reversible: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · reviewer · irreversible: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · reviewer · unsure: blocked risk.actor",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · human · idempotent: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · human · reversible: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · human · irreversible: observed human.observed",
-          "status": "passed"
-        },
-        {
-          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only · human · unsure: observed human.observed",
+          "name": "gate matrix: actor × class × run kind (section 4 §14) read_only run: every actor and class gets its answer",
           "status": "passed"
         },
         {
@@ -1145,55 +577,11 @@
       "status": "passed",
       "tests": [
         {
-          "name": "A: a legacy label-value table in an accessibility snapshot (§9.7) no raw name, date of birth, or address appears anywhere, ancestors included",
+          "name": "A: a legacy label-value table in an accessibility snapshot (§9.7) A: a legacy table masks every value, keeps labels, and labels columns",
           "status": "passed"
         },
         {
-          "name": "A: a legacy label-value table in an accessibility snapshot (§9.7) each value cell reads its token; the member ID reads its reference",
-          "status": "passed"
-        },
-        {
-          "name": "A: a legacy label-value table in an accessibility snapshot (§9.7) the same tokens appear inside the flattened names of the table, row, and cell",
-          "status": "passed"
-        },
-        {
-          "name": "A: a legacy label-value table in an accessibility snapshot (§9.7) the label cells stay readable",
-          "status": "passed"
-        },
-        {
-          "name": "A: a legacy label-value table in an accessibility snapshot (§9.7) a column header labels the cells under it, as the table's first row",
-          "status": "passed"
-        },
-        {
-          "name": "A: a legacy label-value table in an accessibility snapshot (§9.7) a mask token beside a cell is not taken for a label",
-          "status": "passed"
-        },
-        {
-          "name": "B: the run remembers what the label rule found (§9.7) later text in the same run masks the name and the address",
-          "status": "passed"
-        },
-        {
-          "name": "B: the run remembers what the label rule found (§9.7) a fresh redactor does not mask a free sentence (the known limit stays)",
-          "status": "passed"
-        },
-        {
-          "name": "B: the run remembers what the label rule found (§9.7) learn with a label that is not sensitive remembers nothing",
-          "status": "passed"
-        },
-        {
-          "name": "B: the run remembers what the label rule found (§9.7) learn masks the longest value first, and the same value as the same token",
-          "status": "passed"
-        },
-        {
-          "name": "B: the run remembers what the label rule found (§9.7) learn leaves out the part a known value already masks",
-          "status": "passed"
-        },
-        {
-          "name": "B: the run remembers what the label rule found (§9.7) learn matches whole words only",
-          "status": "passed"
-        },
-        {
-          "name": "B: the run remembers what the label rule found (§9.7) learn ignores a value that has no letter or digit",
+          "name": "B: the run remembers what the label rule found (§9.7) B: the run learns what the label rule found, whole words only",
           "status": "passed"
         },
         {
@@ -1205,19 +593,7 @@
           "status": "passed"
         },
         {
-          "name": "F: unmaskedLabelledLines (§9.7) the masked output of A has no line left",
-          "status": "passed"
-        },
-        {
-          "name": "F: unmaskedLabelledLines (§9.7) the raw text of A gives the value-cell lines, not the label lines",
-          "status": "passed"
-        },
-        {
-          "name": "F: unmaskedLabelledLines (§9.7) a cell that only holds a mask is clean; a cell with other words is not",
-          "status": "passed"
-        },
-        {
-          "name": "F: unmaskedLabelledLines (§9.7) a cell beside a label that is not sensitive is not flagged",
+          "name": "F: unmaskedLabelledLines (§9.7) F: unmaskedLabelledLines finds raw value cells and passes masked or non-sensitive ones",
           "status": "passed"
         }
       ]
@@ -1237,47 +613,7 @@
       "status": "passed",
       "tests": [
         {
-          "name": "section 4 §6.3 examples /members/* matches /members/100107",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /members/* rejects /members/100107/accounts",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /members/* rejects /members/",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /members/*/accounts matches /members/100107/accounts",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /members/*/accounts rejects /members/100107/accounts/9",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /Main.do?cmd=view* matches /Main.do?cmd=viewMember&sid=77",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /Main.do?cmd=view* rejects /Main.do?cmd=deleteMember",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /Main.do?cmd=view* rejects /Main.do",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /login matches /login",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /login matches /login?next=/home",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §6.3 examples /login rejects /login/help",
+          "name": "section 4 §6.3 examples each pattern matches its yes paths and rejects its no paths",
           "status": "passed"
         },
         {
@@ -1297,39 +633,11 @@
           "status": "passed"
         },
         {
-          "name": "normalizing (section 4 §6.3) decodes percent codes once",
+          "name": "normalizing (section 4 §6.3) normalizing decodes, collapses, resolves, strips, and folds as a browser does",
           "status": "passed"
         },
         {
-          "name": "normalizing (section 4 §6.3) an encoded slash, a backslash, or a null byte is malformed",
-          "status": "passed"
-        },
-        {
-          "name": "normalizing (section 4 §6.3) broken percent codes are malformed",
-          "status": "passed"
-        },
-        {
-          "name": "normalizing (section 4 §6.3) collapses repeated slashes",
-          "status": "passed"
-        },
-        {
-          "name": "normalizing (section 4 §6.3) resolves . and .., and stops at the root",
-          "status": "passed"
-        },
-        {
-          "name": "normalizing (section 4 §6.3) encoded dots resolve too",
-          "status": "passed"
-        },
-        {
-          "name": "normalizing (section 4 §6.3) strips ; path parameters before resolving ..",
-          "status": "passed"
-        },
-        {
-          "name": "normalizing (section 4 §6.3) drops the # fragment",
-          "status": "passed"
-        },
-        {
-          "name": "normalizing (section 4 §6.3) folds case only when the app says case_sensitive: false",
+          "name": "normalizing (section 4 §6.3) bad escapes, slashes, and null bytes are malformed",
           "status": "passed"
         },
         {
@@ -1337,19 +645,11 @@
           "status": "passed"
         },
         {
-          "name": "isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05) equal path, and equal path with equal query, are the same place",
+          "name": "isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05) the same place: equal paths, queries, and tricks that change nothing",
           "status": "passed"
         },
         {
-          "name": "isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05) `;` parameters, `..`, and a fragment cannot hide or fake a difference",
-          "status": "passed"
-        },
-        {
-          "name": "isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05) a different path or a different query is not the same place",
-          "status": "passed"
-        },
-        {
-          "name": "isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05) a malformed address on either side is never equal",
+          "name": "isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05) different places and malformed addresses are never the same",
           "status": "passed"
         }
       ]
@@ -1359,95 +659,19 @@
       "status": "passed",
       "tests": [
         {
-          "name": "policy merge the three example layers merge and record each revision",
+          "name": "policy merge policy merge: layers combine, and each field kind lets a lower layer only tighten",
           "status": "passed"
         },
         {
-          "name": "policy merge section 4 §4.3's example: a tenant allowing /admin/* fails with the exact message",
+          "name": "bounds bounds: picks inside the range hold, outside picks fail, and require_signed only turns on",
           "status": "passed"
         },
         {
-          "name": "policy merge allow lists: a lower layer may remove items, never add them",
+          "name": "missing layers missing layers: a missing app layer allows no paths, and a missing global value is strictest",
           "status": "passed"
         },
         {
-          "name": "policy merge restriction lists: a lower layer adds, and cannot remove",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge safe words: the app may add them; the tenant may only remove them",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge reversible words: no layer may add one, because it lowers risk",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge switches: a lower layer may only turn stricter",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge correlation: the app may turn notes on; the tenant may only turn them off",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge redaction: detectors and labels only add; digit_run_min only goes down",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge display formats: a lower layer picks a subset",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge secrets: the tenant may narrow paths, never widen them or add a name",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge a secret path must be on the allowlist (section 4 §4.8)",
-          "status": "passed"
-        },
-        {
-          "name": "policy merge capabilities: deny lists add up at every layer",
-          "status": "passed"
-        },
-        {
-          "name": "bounds a pick inside the range holds; a missing pick takes the default",
-          "status": "passed"
-        },
-        {
-          "name": "bounds a pick outside the range fails",
-          "status": "passed"
-        },
-        {
-          "name": "bounds an option outside the list fails",
-          "status": "passed"
-        },
-        {
-          "name": "bounds a pick with no bound in global fails: the §4.7 short-form global has no retention bound",
-          "status": "passed"
-        },
-        {
-          "name": "bounds require_signed may only turn on",
-          "status": "passed"
-        },
-        {
-          "name": "missing layers with no app layer yet, the merge names it and allows no paths",
-          "status": "passed"
-        },
-        {
-          "name": "missing layers a tenant cannot allow a path when no app layer allows it",
-          "status": "passed"
-        },
-        {
-          "name": "missing layers a missing global value is the strictest",
-          "status": "passed"
-        },
-        {
-          "name": "hash the same rules always give the same hash, whatever the key or list order",
-          "status": "passed"
-        },
-        {
-          "name": "hash a different rule gives a different hash; a new reason alone does not",
+          "name": "hash the hash ignores key and list order and a new reason, and changes with a rule",
           "status": "passed"
         }
       ]
@@ -1457,107 +681,15 @@
       "status": "passed",
       "tests": [
         {
-          "name": "known values (section 4 §9.6) an input becomes its reference, whole words only",
+          "name": "known values (section 4 §9.6) known values turn into references or tokens by the section 9.6 rules",
           "status": "passed"
         },
         {
-          "name": "known values (section 4 §9.6) case is ignored and spaces collapse",
+          "name": "the label rule (section 4 §9.7) the label rule masks the value after a label, longest phrase first",
           "status": "passed"
         },
         {
-          "name": "known values (section 4 §9.6) the longest value goes first",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) digits-only values ignore spaces and dashes inside the number",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) an extracted output becomes its reference",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) a short sensitive value becomes a token, not a reference",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) a short value labelled none is left alone",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) a value labelled none with four or more characters still becomes its reference",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) two inputs with the same value give a token, not a guess",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) money inputs match by amount, in every form",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) grouped money matches too",
-          "status": "passed"
-        },
-        {
-          "name": "known values (section 4 §9.6) date inputs match in every display format",
-          "status": "passed"
-        },
-        {
-          "name": "the label rule (section 4 §9.7) the field's own label masks the whole value",
-          "status": "passed"
-        },
-        {
-          "name": "the label rule (section 4 §9.7) text before a colon is a label",
-          "status": "passed"
-        },
-        {
-          "name": "the label rule (section 4 §9.7) the longest label phrase picks the kind",
-          "status": "passed"
-        },
-        {
-          "name": "the label rule (section 4 §9.7) known values go first; the label rule masks what is left",
-          "status": "passed"
-        },
-        {
-          "name": "the label rule (section 4 §9.7) each line of a text is its own label-value pair",
-          "status": "passed"
-        },
-        {
-          "name": "the label rule (section 4 §9.7) clock times are not labels",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) ssn: both shapes; area 000 and 666 are not SSNs",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) ssn: area 900 to 999 only as an ITIN group",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) card: 13 to 19 digits with the Luhn check",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) email: the domain has a dot",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) phone: US 10 digits, optional +1, with spaces, dots, dashes, or brackets",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) money: $ or USD, or grouped digits with 2 decimals",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) a detector that the policy leaves off does not run",
-          "status": "passed"
-        },
-        {
-          "name": "detectors (section 4 §9.8, updates file §3.1) routing numbers are not detected, but the digit-run net masks them",
+          "name": "detectors (section 4 §9.8, updates file §3.1) detectors: ssn, itin, card, email, phone, money, and routing numbers",
           "status": "passed"
         },
         {
@@ -1569,31 +701,11 @@
           "status": "passed"
         },
         {
-          "name": "digit runs (section 4 §9.9) five or more digits left over become a token; four stay",
+          "name": "digit runs (section 4 §9.9) digit runs: five or more digits become a token; the limit comes from the layers",
           "status": "passed"
         },
         {
-          "name": "digit runs (section 4 §9.9) a lower layer may lower the limit",
-          "status": "passed"
-        },
-        {
-          "name": "digit runs (section 4 §9.9) a missing limit counts as its strictest value",
-          "status": "passed"
-        },
-        {
-          "name": "per-run tokens (section 4 §9.3) the same value gets the same token; a new value the next number",
-          "status": "passed"
-        },
-        {
-          "name": "per-run tokens (section 4 §9.3) tokens reset every run",
-          "status": "passed"
-        },
-        {
-          "name": "per-run tokens (section 4 §9.3) a masked part is never scanned again",
-          "status": "passed"
-        },
-        {
-          "name": "per-run tokens (section 4 §9.3) a secret-filled field is never read",
+          "name": "per-run tokens (section 4 §9.3) per-run tokens are stable inside a run, reset between runs, and never rescan",
           "status": "passed"
         },
         {
@@ -1624,135 +736,23 @@
       "status": "passed",
       "tests": [
         {
-          "name": "section 4 §7.12 worked examples member search, click Search: safe word",
+          "name": "section 4 §7.12 worked examples every worked example gets the class the design table gives it",
           "status": "passed"
         },
         {
-          "name": "section 4 §7.12 worked examples search results, click a row: navigation-like role",
+          "name": "words (section 4 §7.3) words: normalizing, whole words, phrases, strictest wins, bland labels, policy additions",
           "status": "passed"
         },
         {
-          "name": "section 4 §7.12 worked examples member page, click \"Open New Account\": open is safe, no risky phrase",
+          "name": "roles (section 4 §7.4) roles: script links, icons, navigation-like roles, and links decide the class",
           "status": "passed"
         },
         {
-          "name": "section 4 §7.12 worked examples account form, click \"Confirm\": irreversible word",
+          "name": "context rules only raise (section 4 §7.5) context rules C1, C2, and C3 only raise the class",
           "status": "passed"
         },
         {
-          "name": "section 4 §7.12 worked examples account form with a deposit typed, click \"Next\": C1",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §7.12 worked examples info box, click \"OK\": button-like with no list word is unsure",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §7.12 worked examples script box \"Transfer $100?\", accept: C3 reads the message",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §7.12 worked examples old terminal app, press F10 with no mapping: unsure here; the allowlist blocks it",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §7.12 worked examples member page, link to an irreversible path: C2 path",
-          "status": "passed"
-        },
-        {
-          "name": "section 4 §7.12 worked examples nominee form, click \"Add Row\": reversible word",
-          "status": "passed"
-        },
-        {
-          "name": "words (section 4 §7.3) normalizing: lower case, trimmed, spaces collapsed, symbols removed",
-          "status": "passed"
-        },
-        {
-          "name": "words (section 4 §7.3) whole words only",
-          "status": "passed"
-        },
-        {
-          "name": "words (section 4 §7.3) phrases match as whole-word runs",
-          "status": "passed"
-        },
-        {
-          "name": "words (section 4 §7.3) the strictest word wins",
-          "status": "passed"
-        },
-        {
-          "name": "words (section 4 §7.3) the four word places all count",
-          "status": "passed"
-        },
-        {
-          "name": "words (section 4 §7.3) bland labels fall to unsure",
-          "status": "passed"
-        },
-        {
-          "name": "words (section 4 §7.3) a policy word the lists add is used",
-          "status": "passed"
-        },
-        {
-          "name": "roles (section 4 §7.4) a script link is button-like, so a bland label is unsure",
-          "status": "passed"
-        },
-        {
-          "name": "roles (section 4 §7.4) an icon with no name is button-like with no words: unsure",
-          "status": "passed"
-        },
-        {
-          "name": "roles (section 4 §7.4) tabs, tree items, cells, list items, and options are navigation-like",
-          "status": "passed"
-        },
-        {
-          "name": "roles (section 4 §7.4) a link to a plain allowed path is navigation-like",
-          "status": "passed"
-        },
-        {
-          "name": "roles (section 4 §7.4) a link off the allowlist is not navigation-like: unsure",
-          "status": "passed"
-        },
-        {
-          "name": "roles (section 4 §7.4) a list word still beats a navigation role",
-          "status": "passed"
-        },
-        {
-          "name": "context rules only raise (section 4 §7.5) C1 raises a safe word",
-          "status": "passed"
-        },
-        {
-          "name": "context rules only raise (section 4 §7.5) C2: a button-like control on an irreversible page",
-          "status": "passed"
-        },
-        {
-          "name": "context rules only raise (section 4 §7.5) C2 leaves navigation-like controls alone",
-          "status": "passed"
-        },
-        {
-          "name": "context rules only raise (section 4 §7.5) C3: a message with no list word is unsure",
-          "status": "passed"
-        },
-        {
-          "name": "context rules only raise (section 4 §7.5) C3: a safe word in the message is ignored, so it is unsure and irreversible",
-          "status": "passed"
-        },
-        {
-          "name": "base class by action type (section 4 §7.2) read, scroll, type, select, set_checked are idempotent",
-          "status": "passed"
-        },
-        {
-          "name": "base class by action type (section 4 §7.2) navigate is idempotent unless the path is irreversible",
-          "status": "passed"
-        },
-        {
-          "name": "base class by action type (section 4 §7.2) press Tab, arrows, and page keys are idempotent; Escape is reversible",
-          "status": "passed"
-        },
-        {
-          "name": "base class by action type (section 4 §7.2) press Enter is classed like the form's submit control",
-          "status": "passed"
-        },
-        {
-          "name": "base class by action type (section 4 §7.2) a mapped function key is classed like a button with that label",
+          "name": "base class by action type (section 4 §7.2) base class by action type: idempotent kinds, navigate, keys, Enter, and function keys",
           "status": "passed"
         }
       ]
