@@ -1413,12 +1413,13 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         return endWith(endRun("business_outcome", refusal.code, result, stepId));
       }
 
-      // 3. Forward search, then the resume rule. One look at the screen, no wait.
-      const seen = await eyes.observe(deps.signal);
+      // 3. Forward search, then the resume rule, looked at again for up to 10 s. Why the wait:
+      // a frameset's frames can still be loading when the person hands back, so one look can
+      // show no step yet (owner decision, 2026-10-02; the same wait as a precondition's).
       const stuckIndex = artifact.steps.findIndex((s2) => s2.id === stepId);
-      let resume: number | null = null;
-      if (seen.ok && stuckIndex >= 0) {
-        const screen = fromObservation(seen.value);
+      const searchOnce = (seenNow: Awaited<ReturnType<Eyes["observe"]>>): number | "past_outputs" | null => {
+        if (!seenNow.ok || stuckIndex < 0) return null;
+        const screen = fromObservation(seenNow.value);
         const ctx: EvalCtx = { targets, conditions, refs };
         const commitIndex = commitStepDef === undefined ? null : artifact.steps.indexOf(commitStepDef);
         const confirmed = effect?.commit === "confirmed";
@@ -1437,16 +1438,24 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
           ctx,
         });
         // Section 7 §16.3: the human moved past the outputs, so the check supplies them.
-        if (forward.kind === "past_outputs") return endWith(settleUncertainCommit(stepId));
-        if (forward.kind === "found") resume = forward.index;
-        else {
-          // Why not dispatched: a human's work on the stuck step proves nothing here, and forward
-          // search already looked for finished steps. The floor is the step after a sent commit.
-          const floor = commitWasSent ? commitIndex + 1 : 0;
-          const rule = resumeSearch(ladderSteps, stuckIndex, false, floor, screen, ctx);
-          if (rule.kind === "resume_at") resume = rule.index;
-        }
+        if (forward.kind === "past_outputs") return "past_outputs";
+        if (forward.kind === "found") return forward.index;
+        // Why not dispatched: a human's work on the stuck step proves nothing here, and forward
+        // search already looked for finished steps. The floor is the step after a sent commit.
+        const floor = commitWasSent && commitIndex !== null ? commitIndex + 1 : 0;
+        const rule = resumeSearch(ladderSteps, stuckIndex, false, floor, screen, ctx);
+        return rule.kind === "resume_at" ? rule.index : null;
+      };
+      const handbackUntil = deps.clock.now().getTime() + PRECONDITION_TIMEOUT_MS;
+      let seen = await eyes.observe(deps.signal);
+      let found = searchOnce(seen);
+      while (found === null && deps.clock.now().getTime() < handbackUntil && deps.signal?.aborted !== true) {
+        await deps.clock.after(250, deps.signal);
+        seen = await eyes.observe(deps.signal);
+        found = searchOnce(seen);
       }
+      if (found === "past_outputs") return endWith(settleUncertainCommit(stepId));
+      const resume: number | null = found;
 
       // 6 (of 16.1). A found step: the bot gets the lease back, with a new token.
       if (resume !== null && leaseState.reverified().ok) {
