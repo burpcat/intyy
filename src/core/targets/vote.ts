@@ -63,6 +63,24 @@ function roleGroupOf(role: string): RoleGroup | undefined {
   return ROLE_GROUP[role];
 }
 
+/** The leading `frame[n]` of a recorded path, or `""` for the top page (section 9 §5: frames
+ * appear in a path as `frame[n]`). */
+function frameOf(path: string): string {
+  return /^frame\[\d+\]/.exec(path)?.[0] ?? "";
+}
+
+/**
+ * Keeps the candidates in the frame the target was recorded in. No path clue keeps all.
+ * Why: a frameset app can show the same words in two frames, like a menu link and an in-page
+ * link. The path clue weighs too little to keep them apart, so the menu one won after the page
+ * changed under it and the run clicked the wrong control (kvfcu `full` batch, 2026-10-02).
+ */
+export function filterByFrame<T extends { path: string }>(recordedPath: string | undefined, items: readonly T[]): T[] {
+  if (recordedPath === undefined) return [...items];
+  const frame = frameOf(recordedPath);
+  return items.filter((e) => frameOf(e.path) === frame);
+}
+
 /** Keeps the items that fit a target's `role` clue (section 7 §6.1). No clue keeps all. */
 export function filterByRole<T extends { role: string; roleGroup: RoleGroup }>(
   role: string | undefined,
@@ -222,6 +240,7 @@ export function vote(
     pool = screen.elements.filter((e) => within.has(e.id) && e.id !== parentVote.elementId);
   }
   pool = filterByRole(target.clues.role, pool);
+  pool = filterByFrame(target.clues.path, pool);
 
   const scored = pool.map((el) => ({
     el,
