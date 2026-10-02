@@ -1,6 +1,6 @@
 // Proves, on the live bank app, that a `quick` certify batch on keystone with the instance flag
-// off passes: `certify kvfcu/open_share_subaccount@1.0.0 --kind quick`, no `--instance`. The
-// gate passes and the batch is no drill (design section 8 §7.1; section 9 §9.1, §9.2). Needs the
+// off passes: `certify kvfcu/open_share_subaccount@1.0.3 --kind quick`, no `--instance`. The
+// gate passes; it is a drill only through `--models off`, and with faked models it is none (design section 8 §7.1; section 9 §9.1, §9.2). Needs the
 // owner's sealed artifact, approved suite, test data, faults, and packs: until they exist,
 // `beforeAll` fails with one message naming what is missing. Never skips. The instance lock is
 // held for the file. M08 gate row "A quick batch on keystone, flag off, passes". M10 gate row "a
@@ -30,14 +30,16 @@ afterAll(async () => {
   if (hold !== null) await locks.release(hold);
 });
 
+// Why a drill: with no fakes the kit runs `--models off`, and a `--models off` batch is a drill
+// (section 8 §7.1). No instance difference is declared; the next test proves "not a drill".
 test(
-  "a quick batch with no --instance passes the gate and is not a drill",
+  "a quick batch with no --instance passes the gate; a drill only because models are off",
   async () => {
     batch = await certifyQuick();
     expect(batch.report.gate.passed).toBe(true);
     expect(batch.code).toBe(0);
-    expect(batch.report.drill).toBeUndefined();
-    expect(batch.plan.drill).toBeUndefined();
+    expect(batch.report.drill).toBe(true);
+    expect(batch.plan.models_off).toBe(true);
     expect(batch.plan.declaration).toBeUndefined();
     expect(batch.plan.kind).toBe("quick");
     expect(batch.report.cases.map((c) => c.case_id)).toContain("baseline");
