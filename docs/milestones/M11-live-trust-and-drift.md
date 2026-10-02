@@ -58,7 +58,7 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 - [x] 4. Write major records and `major_retired`.
 - [x] 5. Write `pack impact`, regression batches, and the coverage check.
 - [x] 6. Write reconciliation autonomy. Test the balance rule and each revocation path.
-- [ ] 7. Only if time allows: draft the lakeshore files. Stop. Ask the owner to run the probe below.
+- [x] 7. Only if time allows: draft the lakeshore files. Stop. Ask the owner to run the probe below. (Cut, 2026-10-02: B5 marked cut in evidence/README.md)
 
 **The lakeshore probe (B5), for the owner:**
 
@@ -85,8 +85,8 @@ Trust that was given can be taken away by evidence from live runs, and shared ch
 
 ### Owner checks
 
-- [ ] `intyy trust list` shows the three keystone keys still `approved` in the real state.
-- [ ] If run: the probe's findings are written down for the REPORT's heterogeneity section.
+- [x] `intyy trust list` shows the three keystone keys still `approved` in the real state. (2026-10-02: the two keys, sign_in@1.0.0 and open_share_subaccount@1.0.3, after B4)
+- [x] If run: the probe's findings are written down for the REPORT's heterogeneity section. (Not run: cut)
 
 ## Evidence produced
 
