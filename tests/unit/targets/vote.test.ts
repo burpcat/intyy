@@ -1,9 +1,9 @@
-// Proves clue voting (design section 7 §6): the winner rule, `within`, the role filter, and the
-// two minimum-evidence rules. Names and values are made up. M04 task 5.
+// Proves clue voting (design section 7 §6): the winner rule, `within`, the role filter, the frame
+// filter, and the two minimum-evidence rules. Names and values are made up. M04 task 5.
 import { describe, expect, test } from "vitest";
 import type { Target } from "../../../src/core/model/artifact/targets.js";
 import { fromObservation } from "../../../src/core/targets/screen.js";
-import { vote } from "../../../src/core/targets/vote.js";
+import { filterByFrame, vote } from "../../../src/core/targets/vote.js";
 import { el, screen } from "../discovery/kit.js";
 
 /** A minimal target: an ID, a made-up description, and clues. */
@@ -172,6 +172,36 @@ describe("the role-group filter (section 7 §6.1)", () => {
       if (v.kind === "winner") expect(v.elementId).toBe("0");
       expect(v.facts.candidates).toBe(1);
     }
+  });
+});
+
+describe("the frame filter (section 9 §5, frames as `frame[n]`)", () => {
+  test("a target is matched only in the frame it was recorded in", () => {
+    const t = target("open_sub_link", { role: "link", name: "Open Sub-Account", path: "frame[2] > body > div > a[0]" });
+    const menu = el("menu", { role: "link", roleGroup: "navigation", href: "/menu", clues: { path: "frame[1] > body > div > a[0]", name: "Open Sub-Account" } });
+    const page = el("page", { role: "link", roleGroup: "navigation", href: "/page", clues: { path: "frame[2] > body > div > a[0]", name: "Open Sub-Account" } });
+
+    // two links with the same name in two frames: the vote picks the recorded frame's link.
+    {
+      const v = vote(t, fromObservation(screen([menu, page])), byId(t));
+      expect(v.kind).toBe("winner");
+      if (v.kind === "winner") expect(v.elementId).toBe("1");
+      expect(v.facts.candidates).toBe(1);
+    }
+
+    // only the other frame's link on screen: not_found, with no fallback to another frame.
+    {
+      const v = vote(t, fromObservation(screen([menu])), byId(t));
+      expect(v.kind).toBe("not_found");
+      expect(v.facts.candidates).toBe(0);
+    }
+
+    // a top-page path drops elements under frame[n] and keeps a native dialog control.
+    const items = [{ path: "frame[1] > body > a[0]" }, { path: "body > a[0]" }, { path: "native:dialog > accept" }];
+    expect(filterByFrame("body > div > a[0]", items)).toEqual([{ path: "body > a[0]" }, { path: "native:dialog > accept" }]);
+
+    // no path clue keeps everything.
+    expect(filterByFrame(undefined, items)).toEqual(items);
   });
 });
 
