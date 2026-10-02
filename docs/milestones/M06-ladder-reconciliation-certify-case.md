@@ -98,16 +98,16 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 
 ### Live (`npm run test:live`)
 
-- [ ] Every row of section 5 §14 with a rung 1 answer ends as the table says. Named faults, fixed seed.
-- [ ] `unknown_popup` ends `escalated`, because rungs 2 and 3 are off. That is `recovers_or_escalates`.
-- [ ] The prelude: `sign_in` recovers a lost session, then the task resumes.
-- [ ] Demo path step 6: `success`, `found_by_check`.
+- [x] Every row of section 5 §14 with a rung 1 answer ends as the table says. Named faults, fixed seed. (2026-10-02: tests/live/fault-table.test.ts 7/7 on 1.0.3.)
+- [x] `unknown_popup` ends `escalated`, because rungs 2 and 3 are off. That is `recovers_or_escalates`.
+- [x] The prelude: `sign_in` recovers a lost session, then the task resumes. (Starts with no old cookies: owner decision, 2026-10-02.)
+- [x] Demo path step 6: `success`, `found_by_check`. (With the cited waiver it ends escalated `reconciliation_waived`, verdict pass: tests/live/demo-step6.test.ts, 2026-10-02.)
 
 ### Owner checks
 
 - [x] Suite, test data, faults, and both packs are sealed and approved. (2026-10-01.)
 - [x] Each handler has at least one `fire` and one `no_fire` fixture.
-- [ ] You ran A8, A9, and A10 below, and each ended as expected.
+- [x] You ran A8, A9, and A10 below, and each ended as expected. (2026-10-02 on 1.0.3: A8 escalated reconciliation_waived at click_ok, verdict pass, because of the cited waiver; A9 at @step:click_search, success, one recovery; A10 failed permission_denied by the pack's handler.)
 
 ## Evidence produced
 
