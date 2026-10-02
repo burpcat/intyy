@@ -26,7 +26,7 @@ import type { FakeElement, FakeSite } from "../../../src/fakes/snapshot-surface/
 import type { FaultLogEntry, Harness, HarnessFailure, NamedFault } from "../../../src/ports/harness.js";
 import { fail, type Outcome } from "../../../src/ports/outcome.js";
 import type { ReviewerInput } from "../../../src/ports/models.js";
-import { ORIGIN, TENANT, fixtureSite } from "../replay/executor-harness.js";
+import { OPEN_SUB, ORIGIN, TENANT, fixtureSite } from "../replay/executor-harness.js";
 import type { RouteMappingHarness } from "./route-mapping-harness.js";
 import { MISSING, VALID, fullDeps, fullInput, profile } from "./full-kit.js";
 
@@ -205,6 +205,25 @@ describe("runCertifyFull: a clean batch", () => {
   test("the matrix `suite.matrix.profiles` list picks profiles by ID", async () => {
     const b = await batchOf((id) => fullInput(id, { matrixProfiles: ["reply_lost"] }));
     expect(b.plan.cases.filter((c) => c.group === "matrix").map((c) => c.case_id)).toEqual(["reply_lost.click_confirm"]);
+  });
+});
+
+describe("runCertifyFull: matrix steps (section 8 §7.2, open-window steps plus the commit step)", () => {
+  test("@each_request_step skips a reversible request step and keeps the commit step", async () => {
+    // The default open_sub has an idempotent click_search, which gets a cell (see the case-order
+    // test above). Here a newer seal makes click_search reversible: its window closes once sent.
+    const { deps, ids } = await fullDeps();
+    const reversible = {
+      ...OPEN_SUB,
+      identity: { ...OPEN_SUB.identity, version: "1.1.0" },
+      steps: OPEN_SUB.steps.map((s) => (s.id === "click_search" ? { ...s, risk: "reversible" as const } : s)),
+    };
+    const sealed = await deps.artifacts.seal("kvfcu/open_sub/cand_2026-01-15_1000000005", "1.1.0", "op_017", reversible, {});
+    expect(sealed.ok).toBe(true);
+    const r = await runCertifyFull(fullInput(ids.batchId(), { profiles: [profile("server_error", "@each_request_step")] }), deps);
+    if (!r.ok) throw new Error(`full batch failed: ${r.failure}`);
+    expect(r.value.plan.pin).toBe("kvfcu/open_sub@1.1.0");
+    expect(r.value.plan.cases.filter((c) => c.group === "matrix").map((c) => c.case_id)).toEqual(["server_error.click_confirm"]);
   });
 });
 
