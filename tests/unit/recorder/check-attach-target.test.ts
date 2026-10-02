@@ -38,34 +38,37 @@ async function deps() {
 const detailOf = (got: Outcome<void, "not_found">): string => (got.ok ? "" : (got.detail ?? ""));
 
 describe("checkAttachTarget", () => {
-  test("a full id of the spec's capability is ok", async () => {
-    expect(await checkAttachTarget(await deps(), CAP, ID)).toEqual({ ok: true, value: undefined });
-  });
-
-  test("a bare suffix that exists names the full id", async () => {
-    const got = await checkAttachTarget(await deps(), CAP, SUFFIX);
-    expect(got).toMatchObject({ ok: false, failure: "not_found" });
-    expect(detailOf(got)).toContain("full <app>/<capability>");
-    expect(detailOf(got)).toContain(`Did you mean ${ID}?`);
-  });
-
-  test("a bare suffix that exists only under another capability gets no did-you-mean", async () => {
-    const got = await checkAttachTarget(await deps(), "kvfcu/third_cap", SUFFIX);
-    expect(got).toMatchObject({ ok: false, failure: "not_found" });
-    expect(detailOf(got)).toContain("full <app>/<capability>");
-    expect(detailOf(got)).not.toContain("Did you mean");
-  });
-
-  test("a full id that does not exist says so", async () => {
-    const got = await checkAttachTarget(await deps(), CAP, `${CAP}/cand_2026-10-01_0000000000`);
-    expect(got).toMatchObject({ ok: false, failure: "not_found" });
-    expect(detailOf(got)).toContain("no such candidate");
-  });
-
-  test("a full id under another capability names the spec's capability", async () => {
-    const got = await checkAttachTarget(await deps(), CAP, OTHER);
-    expect(got).toMatchObject({ ok: false, failure: "not_found" });
-    expect(detailOf(got)).toContain("not that capability");
-    expect(detailOf(got)).toContain(CAP);
+  test("checkAttachTarget accepts a full id and names what to write for every refusal", async () => {
+    {
+      // a full id of the spec's capability is ok
+      expect(await checkAttachTarget(await deps(), CAP, ID)).toEqual({ ok: true, value: undefined });
+    }
+    {
+      // a bare suffix that exists names the full id
+      const got = await checkAttachTarget(await deps(), CAP, SUFFIX);
+      expect(got).toMatchObject({ ok: false, failure: "not_found" });
+      expect(detailOf(got)).toContain("full <app>/<capability>");
+      expect(detailOf(got)).toContain(`Did you mean ${ID}?`);
+    }
+    {
+      // a bare suffix that exists only under another capability gets no did-you-mean
+      const got = await checkAttachTarget(await deps(), "kvfcu/third_cap", SUFFIX);
+      expect(got).toMatchObject({ ok: false, failure: "not_found" });
+      expect(detailOf(got)).toContain("full <app>/<capability>");
+      expect(detailOf(got)).not.toContain("Did you mean");
+    }
+    {
+      // a full id that does not exist says so
+      const got = await checkAttachTarget(await deps(), CAP, `${CAP}/cand_2026-10-01_0000000000`);
+      expect(got).toMatchObject({ ok: false, failure: "not_found" });
+      expect(detailOf(got)).toContain("no such candidate");
+    }
+    {
+      // a full id under another capability names the spec's capability
+      const got = await checkAttachTarget(await deps(), CAP, OTHER);
+      expect(got).toMatchObject({ ok: false, failure: "not_found" });
+      expect(detailOf(got)).toContain("not that capability");
+      expect(detailOf(got)).toContain(CAP);
+    }
   });
 });

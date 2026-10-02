@@ -37,20 +37,23 @@ async function textFor(body: unknown): Promise<string | null> {
 }
 
 describe("loadSnapshots: the proof turn's element-list text, in either wire shape", () => {
-  test("the real Claude adapter's shape: messages[0].content, one text block", async () => {
-    const text = await textFor({
-      messages: [{ role: "user", content: [{ type: "text", text: 'e1 heading "Hi"' }] }],
-    });
-    expect(text).toBe('e1 heading "Hi"');
-  });
-
-  test("a fake planner's flat PlannerTurn shape: a top-level message string", async () => {
-    const text = await textFor({ model: "x", prompt: "x", system: "x", tools: [], message: 'e1 heading "Hi"', image: null });
-    expect(text).toBe('e1 heading "Hi"');
-  });
-
-  test("neither shape: null, never a guess", async () => {
-    const text = await textFor({ foo: "bar" });
-    expect(text).toBeNull();
+  test("loadSnapshots reads either wire shape and gives null for neither", async () => {
+    {
+      // the real Claude adapter's shape: messages[0].content, one text block
+      const text = await textFor({
+        messages: [{ role: "user", content: [{ type: "text", text: 'e1 heading "Hi"' }] }],
+      });
+      expect(text).toBe('e1 heading "Hi"');
+    }
+    {
+      // a fake planner's flat PlannerTurn shape: a top-level message string
+      const text = await textFor({ model: "x", prompt: "x", system: "x", tools: [], message: 'e1 heading "Hi"', image: null });
+      expect(text).toBe('e1 heading "Hi"');
+    }
+    {
+      // neither shape: null, never a guess
+      const text = await textFor({ foo: "bar" });
+      expect(text).toBeNull();
+    }
   });
 });

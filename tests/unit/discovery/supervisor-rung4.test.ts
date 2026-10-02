@@ -52,202 +52,216 @@ const decision = (d: string) =>
   }) as unknown as Masked<unknown>;
 
 describe("case 1: each kind's fields, against section 7 §13.1", () => {
-  test("takeover: step, trouble, a non-empty ladder trail, commit.state, no notice when not in flight, operator_note", async () => {
-    const { sup, desk, box } = await setup(30);
-    const answer = sup.takeover({
-      reason: "stuck",
-      step: { id: "click_search", intent: null },
-      trouble: { phase: "checkpoint", detail: "never arrived" },
-      ladder: [{ rung: 1, verdict: "climb" }],
-      commit: { state: "not_sent", notice: null },
-      operatorNote: null,
-      screenshot: "screens/00019_click_search_ladder.png",
-    });
-    await until(join(box("01_takeover"), "request.json"));
-    const req = JSON.parse(readFileSync(join(box("01_takeover"), "request.json"), "utf8")) as Record<string, unknown>;
-    expect(req).toMatchObject({
-      kind: "takeover",
-      reason: "stuck",
-      step: { id: "click_search", intent: null },
-      trouble: { phase: "checkpoint", detail: "never arrived" },
-      ladder: [{ rung: 1, verdict: "climb" }],
-      commit: { state: "not_sent", notice: null },
-      operator_note: null,
-      decisions: ["end_run"],
-    });
-    await desk.decide("keystone", RUN, "01_takeover", decision("end_run"));
-    expect(await answer).toEqual({ kind: "ended_run", staff: "op_017" });
-  });
-
-  test("takeover: commit.notice carries the fixed in-flight text only when the commit is uncertain", async () => {
-    const { sup, box } = await setup(30);
-    void sup.takeover({
-      reason: "needs_human_handler",
-      step: { id: "click_confirm", intent: null },
-      trouble: null,
-      ladder: [],
-      commit: { state: "uncertain", notice: "The commit action was already sent. Do not submit again." },
-      operatorNote: "A supervisor must approve this.",
-      screenshot: null,
-    });
-    await until(join(box("01_takeover"), "request.json"));
-    const req = JSON.parse(readFileSync(join(box("01_takeover"), "request.json"), "utf8")) as Record<string, unknown>;
-    expect(req).toMatchObject({
-      commit: { state: "uncertain", notice: "The commit action was already sent. Do not submit again." },
-      operator_note: "A supervisor must approve this.",
-    });
-  });
-
-  test("retry_decision: reason retry_needs_approval, decisions retry | no_retry", async () => {
-    const { sup, desk, box } = await setup(30);
-    const answer = sup.retryDecision({ step: "click_confirm", screenshot: null });
-    await until(join(box("01_retry_decision"), "request.json"));
-    const req = JSON.parse(readFileSync(join(box("01_retry_decision"), "request.json"), "utf8")) as Record<string, unknown>;
-    expect(req).toMatchObject({
-      kind: "retry_decision",
-      reason: "retry_needs_approval",
-      step: { id: "click_confirm" },
-      decisions: ["retry", "no_retry"],
-    });
-    await desk.decide("keystone", RUN, "01_retry_decision", decision("retry"));
-    expect(await answer).toEqual({ kind: "retry", staff: "op_017" });
-  });
-
-  test("reconciliation_decision: reason reconciliation_unclear, decisions found | not_found, no browser needed", async () => {
-    const { sup, desk, box } = await setup(240);
-    const answer = sup.reconciliationDecision({ step: "click_confirm" });
-    await until(join(box("01_reconciliation_decision"), "request.json"));
-    const req = JSON.parse(readFileSync(join(box("01_reconciliation_decision"), "request.json"), "utf8")) as Record<string, unknown>;
-    expect(req).toMatchObject({
-      kind: "reconciliation_decision",
-      reason: "reconciliation_unclear",
-      step: { id: "click_confirm" },
-      decisions: ["found", "not_found"],
-      screenshot: null,
-    });
-    await desk.decide("keystone", RUN, "01_reconciliation_decision", decision("not_found"));
-    expect(await answer).toEqual({ kind: "not_found", staff: "op_017" });
+  test("each request kind opens with its own fields, and a takeover carries the in-flight commit notice only when uncertain", async () => {
+    {
+      // takeover: step, trouble, a non-empty ladder trail, commit.state, no notice when not in flight, operator_note
+      const { sup, desk, box } = await setup(30);
+      const answer = sup.takeover({
+        reason: "stuck",
+        step: { id: "click_search", intent: null },
+        trouble: { phase: "checkpoint", detail: "never arrived" },
+        ladder: [{ rung: 1, verdict: "climb" }],
+        commit: { state: "not_sent", notice: null },
+        operatorNote: null,
+        screenshot: "screens/00019_click_search_ladder.png",
+      });
+      await until(join(box("01_takeover"), "request.json"));
+      const req = JSON.parse(readFileSync(join(box("01_takeover"), "request.json"), "utf8")) as Record<string, unknown>;
+      expect(req).toMatchObject({
+        kind: "takeover",
+        reason: "stuck",
+        step: { id: "click_search", intent: null },
+        trouble: { phase: "checkpoint", detail: "never arrived" },
+        ladder: [{ rung: 1, verdict: "climb" }],
+        commit: { state: "not_sent", notice: null },
+        operator_note: null,
+        decisions: ["end_run"],
+      });
+      await desk.decide("keystone", RUN, "01_takeover", decision("end_run"));
+      expect(await answer).toEqual({ kind: "ended_run", staff: "op_017" });
+    }
+    {
+      // takeover: commit.notice carries the fixed in-flight text only when the commit is uncertain
+      const { sup, box } = await setup(30);
+      void sup.takeover({
+        reason: "needs_human_handler",
+        step: { id: "click_confirm", intent: null },
+        trouble: null,
+        ladder: [],
+        commit: { state: "uncertain", notice: "The commit action was already sent. Do not submit again." },
+        operatorNote: "A supervisor must approve this.",
+        screenshot: null,
+      });
+      await until(join(box("01_takeover"), "request.json"));
+      const req = JSON.parse(readFileSync(join(box("01_takeover"), "request.json"), "utf8")) as Record<string, unknown>;
+      expect(req).toMatchObject({
+        commit: { state: "uncertain", notice: "The commit action was already sent. Do not submit again." },
+        operator_note: "A supervisor must approve this.",
+      });
+    }
+    {
+      // retry_decision: reason retry_needs_approval, decisions retry | no_retry
+      const { sup, desk, box } = await setup(30);
+      const answer = sup.retryDecision({ step: "click_confirm", screenshot: null });
+      await until(join(box("01_retry_decision"), "request.json"));
+      const req = JSON.parse(readFileSync(join(box("01_retry_decision"), "request.json"), "utf8")) as Record<string, unknown>;
+      expect(req).toMatchObject({
+        kind: "retry_decision",
+        reason: "retry_needs_approval",
+        step: { id: "click_confirm" },
+        decisions: ["retry", "no_retry"],
+      });
+      await desk.decide("keystone", RUN, "01_retry_decision", decision("retry"));
+      expect(await answer).toEqual({ kind: "retry", staff: "op_017" });
+    }
+    {
+      // reconciliation_decision: reason reconciliation_unclear, decisions found | not_found, no browser needed
+      const { sup, desk, box } = await setup(240);
+      const answer = sup.reconciliationDecision({ step: "click_confirm" });
+      await until(join(box("01_reconciliation_decision"), "request.json"));
+      const req = JSON.parse(readFileSync(join(box("01_reconciliation_decision"), "request.json"), "utf8")) as Record<string, unknown>;
+      expect(req).toMatchObject({
+        kind: "reconciliation_decision",
+        reason: "reconciliation_unclear",
+        step: { id: "click_confirm" },
+        decisions: ["found", "not_found"],
+        screenshot: null,
+      });
+      await desk.decide("keystone", RUN, "01_reconciliation_decision", decision("not_found"));
+      expect(await answer).toEqual({ kind: "not_found", staff: "op_017" });
+    }
   });
 });
 
 describe("case 2: each decision word (section 7 §13.2)", () => {
-  test("takeover: end_run resolves ended_run", async () => {
-    const { sup, desk, box } = await setup(30);
-    const answer = sup.takeover({
-      reason: "stuck",
-      step: { id: "s", intent: null },
-      trouble: null,
-      ladder: [],
-      commit: { state: "none", notice: null },
-      operatorNote: null,
-      screenshot: null,
-    });
-    await until(join(box("01_takeover"), "request.json"));
-    await desk.decide("keystone", RUN, "01_takeover", decision("end_run"));
-    expect(await answer).toEqual({ kind: "ended_run", staff: "op_017" });
-  });
-
-  test.each([
-    ["retry", "retry"],
-    ["no_retry", "no_retry"],
-  ])("retry_decision: %s resolves %s", async (word, kind) => {
-    const { sup, desk, box } = await setup(30);
-    const answer = sup.retryDecision({ step: "s", screenshot: null });
-    await until(join(box("01_retry_decision"), "request.json"));
-    await desk.decide("keystone", RUN, "01_retry_decision", decision(word));
-    expect(await answer).toEqual({ kind, staff: "op_017" });
-  });
-
-  test.each([
-    ["found", "found"],
-    ["not_found", "not_found"],
-  ])("reconciliation_decision: %s resolves %s", async (word, kind) => {
-    const { sup, desk, box } = await setup(240);
-    const answer = sup.reconciliationDecision({ step: "s" });
-    await until(join(box("01_reconciliation_decision"), "request.json"));
-    await desk.decide("keystone", RUN, "01_reconciliation_decision", decision(word));
-    expect(await answer).toEqual({ kind, staff: "op_017" });
+  test("each decision word resolves the supervisor's own answer", async () => {
+    {
+      // takeover: end_run resolves ended_run
+      const { sup, desk, box } = await setup(30);
+      const answer = sup.takeover({
+        reason: "stuck",
+        step: { id: "s", intent: null },
+        trouble: null,
+        ladder: [],
+        commit: { state: "none", notice: null },
+        operatorNote: null,
+        screenshot: null,
+      });
+      await until(join(box("01_takeover"), "request.json"));
+      await desk.decide("keystone", RUN, "01_takeover", decision("end_run"));
+      expect(await answer).toEqual({ kind: "ended_run", staff: "op_017" });
+    }
+    {
+      // retry_decision and reconciliation_decision words resolve their own answer
+      const rows = [
+        ["retry_decision", "retry", "retry", 30],
+        ["retry_decision", "no_retry", "no_retry", 30],
+        ["reconciliation_decision", "found", "found", 240],
+        ["reconciliation_decision", "not_found", "not_found", 240],
+      ] as const;
+      for (const [asked, word, kind, minutes] of rows) {
+        const { sup, desk, box } = await setup(minutes);
+        const answer =
+          asked === "retry_decision"
+            ? sup.retryDecision({ step: "s", screenshot: null })
+            : sup.reconciliationDecision({ step: "s" });
+        await until(join(box("01_" + asked), "request.json"));
+        await desk.decide("keystone", RUN, "01_" + asked, decision(word));
+        expect(await answer, `${asked} ${word}`).toEqual({ kind, staff: "op_017" });
+      }
+    }
   });
 });
 
 describe("case 4: deadlines (section 7 §13.3)", () => {
-  test("takeover's own default deadline (30 min) with no policy field", async () => {
-    const { sup, box } = await setup(30);
-    void sup.takeover({
-      reason: "stuck",
-      step: { id: "s", intent: null },
-      trouble: null,
-      ladder: [],
-      commit: { state: "none", notice: null },
-      operatorNote: null,
-      screenshot: null,
-    });
-    await until(join(box("01_takeover"), "request.json"));
-    const req = JSON.parse(readFileSync(join(box("01_takeover"), "request.json"), "utf8")) as { deadline: string };
-    expect(req.deadline).toBe("2026-09-28T14:30:00.000Z");
+  test("each request kind opens with its own default deadline when the policy has no field", async () => {
+    {
+      // takeover's own default deadline (30 min) with no policy field
+      const { sup, box } = await setup(30);
+      void sup.takeover({
+        reason: "stuck",
+        step: { id: "s", intent: null },
+        trouble: null,
+        ladder: [],
+        commit: { state: "none", notice: null },
+        operatorNote: null,
+        screenshot: null,
+      });
+      await until(join(box("01_takeover"), "request.json"));
+      const req = JSON.parse(readFileSync(join(box("01_takeover"), "request.json"), "utf8")) as { deadline: string };
+      expect(req.deadline).toBe("2026-09-28T14:30:00.000Z");
+    }
+    {
+      // retry_decision's own default deadline (30 min) with no policy field
+      const { sup, box } = await setup(30);
+      void sup.retryDecision({ step: "s", screenshot: null });
+      await until(join(box("01_retry_decision"), "request.json"));
+      const req = JSON.parse(readFileSync(join(box("01_retry_decision"), "request.json"), "utf8")) as { deadline: string };
+      expect(req.deadline).toBe("2026-09-28T14:30:00.000Z");
+    }
+    {
+      // reconciliation_decision's own default deadline (4 h) with no policy field
+      const { sup, box } = await setup(240);
+      void sup.reconciliationDecision({ step: "s" });
+      await until(join(box("01_reconciliation_decision"), "request.json"));
+      const req = JSON.parse(readFileSync(join(box("01_reconciliation_decision"), "request.json"), "utf8")) as { deadline: string };
+      expect(req.deadline).toBe("2026-09-28T18:00:00.000Z");
+    }
   });
 
-  test("retry_decision's own default deadline (30 min) with no policy field", async () => {
-    const { sup, box } = await setup(30);
-    void sup.retryDecision({ step: "s", screenshot: null });
-    await until(join(box("01_retry_decision"), "request.json"));
-    const req = JSON.parse(readFileSync(join(box("01_retry_decision"), "request.json"), "utf8")) as { deadline: string };
-    expect(req.deadline).toBe("2026-09-28T14:30:00.000Z");
+  test("a policy range clamps the resolved minutes: no bound leaves it unset, a tenant pick inside the range wins", () => {
+    {
+      // a policy range clamps the resolved minutes: no bound at all leaves the field unset
+      const global = GlobalPolicy.parse({
+        schema: "intyy.policy/1.0",
+        scope: { level: "global" },
+        revision: 1,
+        reason: "Test policy: no escalation block at all.",
+      });
+      const merged = mergePolicy({ global });
+      expect(merged.ok).toBe(true);
+      if (!merged.ok) return;
+      expect(merged.value.effective.escalation.takeover_minutes).toBeUndefined();
+    }
+    {
+      // a policy range clamps the resolved minutes: a tenant pick inside the global range wins
+      // Only the tenant layer picks an `escalation` number (app has no such field, section 4).
+      const global = GlobalPolicy.parse({
+        schema: "intyy.policy/1.0",
+        scope: { level: "global" },
+        revision: 1,
+        reason: "Test policy: a takeover_minutes range.",
+        escalation: { takeover_minutes: { min: 15, max: 120, default: 30 } },
+      });
+      const tenant = TenantPolicy.parse({
+        schema: "intyy.policy/1.0",
+        scope: { level: "tenant", tenant: "keystone" },
+        revision: 1,
+        reason: "Test policy: picks 60.",
+        escalation: { takeover_minutes: 60 },
+      });
+      const merged = mergePolicy({ global, tenant, appName: "kvfcu" });
+      expect(merged.ok).toBe(true);
+      if (!merged.ok) return;
+      expect(merged.value.effective.escalation.takeover_minutes).toBe(60);
+    }
   });
 
-  test("reconciliation_decision's own default deadline (4 h) with no policy field", async () => {
-    const { sup, box } = await setup(240);
-    void sup.reconciliationDecision({ step: "s" });
-    await until(join(box("01_reconciliation_decision"), "request.json"));
-    const req = JSON.parse(readFileSync(join(box("01_reconciliation_decision"), "request.json"), "utf8")) as { deadline: string };
-    expect(req.deadline).toBe("2026-09-28T18:00:00.000Z");
-  });
-
-  test("a policy range clamps the resolved minutes: no bound at all leaves the field unset", () => {
-    const global = GlobalPolicy.parse({
-      schema: "intyy.policy/1.0",
-      scope: { level: "global" },
-      revision: 1,
-      reason: "Test policy: no escalation block at all.",
-    });
-    const merged = mergePolicy({ global });
-    expect(merged.ok).toBe(true);
-    if (!merged.ok) return;
-    expect(merged.value.effective.escalation.takeover_minutes).toBeUndefined();
-  });
-
-  test("a policy range clamps the resolved minutes: a tenant pick inside the global range wins", () => {
-    // Only the tenant layer picks an `escalation` number (app has no such field, section 4).
-    const global = GlobalPolicy.parse({
-      schema: "intyy.policy/1.0",
-      scope: { level: "global" },
-      revision: 1,
-      reason: "Test policy: a takeover_minutes range.",
-      escalation: { takeover_minutes: { min: 15, max: 120, default: 30 } },
-    });
-    const tenant = TenantPolicy.parse({
-      schema: "intyy.policy/1.0",
-      scope: { level: "tenant", tenant: "keystone" },
-      revision: 1,
-      reason: "Test policy: picks 60.",
-      escalation: { takeover_minutes: 60 },
-    });
-    const merged = mergePolicy({ global, tenant, appName: "kvfcu" });
-    expect(merged.ok).toBe(true);
-    if (!merged.ok) return;
-    expect(merged.value.effective.escalation.takeover_minutes).toBe(60);
-  });
-
-  test.each([
-    ["takeover", (h: { sup: OperatorSupervisor }) => h.sup.takeover({ reason: "stuck", step: { id: "s", intent: null }, trouble: null, ladder: [], commit: { state: "none", notice: null }, operatorNote: null, screenshot: null }), "01_takeover", { kind: "timed_out" }],
-    ["retry_decision", (h: { sup: OperatorSupervisor }) => h.sup.retryDecision({ step: "s", screenshot: null }), "01_retry_decision", { kind: "timed_out" }],
-    ["reconciliation_decision", (h: { sup: OperatorSupervisor }) => h.sup.reconciliationDecision({ step: "s" }), "01_reconciliation_decision", { kind: "timed_out" }],
-  ] as const)("%s times out on the clock port; closed.json says timed_out", async (_name, ask, folder, want) => {
-    const { clock, sup, box } = await setup(30);
-    const answer = ask({ sup });
-    await until(join(box(folder), "request.json"));
-    clock.advance(30 * 60_000);
-    expect(await answer).toEqual(want);
-    expect(JSON.parse(readFileSync(join(box(folder), "closed.json"), "utf8"))).toMatchObject({ how: "timed_out" });
+  test("each request kind times out on the clock port; closed.json says timed_out", async () => {
+    const takeover = (h: { sup: OperatorSupervisor }) =>
+      h.sup.takeover({ reason: "stuck", step: { id: "s", intent: null }, trouble: null, ladder: [], commit: { state: "none", notice: null }, operatorNote: null, screenshot: null });
+    const rows = [
+      ["takeover", takeover, "01_takeover"],
+      ["retry_decision", (h: { sup: OperatorSupervisor }) => h.sup.retryDecision({ step: "s", screenshot: null }), "01_retry_decision"],
+      ["reconciliation_decision", (h: { sup: OperatorSupervisor }) => h.sup.reconciliationDecision({ step: "s" }), "01_reconciliation_decision"],
+    ] as const;
+    for (const [name, ask, folder] of rows) {
+      const { clock, sup, box } = await setup(30);
+      const answer = ask({ sup });
+      await until(join(box(folder), "request.json"));
+      clock.advance(30 * 60_000);
+      expect(await answer, name).toEqual({ kind: "timed_out" });
+      expect(JSON.parse(readFileSync(join(box(folder), "closed.json"), "utf8")), name).toMatchObject({ how: "timed_out" });
+    }
   });
 });

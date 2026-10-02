@@ -72,16 +72,19 @@ function negAction(): TaggedAction {
 }
 
 describe("alignNegativeRun", () => {
-  test("aligns by role and words; returns the last matching step", () => {
-    expect(alignNegativeRun([negAction()], STEPS, TARGETS)).toBe("click_search");
-  });
-
-  test("null when not even the first step aligns", () => {
-    const base = negAction();
-    const fingerprint = base.fingerprint;
-    if (fingerprint === null) throw new Error("expected a fingerprint");
-    const other = { ...base, fingerprint: { ...fingerprint, name: "Cancel" } };
-    expect(alignNegativeRun([other], STEPS, TARGETS)).toBeNull();
+  test("alignNegativeRun aligns by role and words, and returns null when the first step does not align", () => {
+    {
+      // aligns by role and words; returns the last matching step
+      expect(alignNegativeRun([negAction()], STEPS, TARGETS)).toBe("click_search");
+    }
+    {
+      // null when not even the first step aligns
+      const base = negAction();
+      const fingerprint = base.fingerprint;
+      if (fingerprint === null) throw new Error("expected a fingerprint");
+      const other = { ...base, fingerprint: { ...fingerprint, name: "Cancel" } };
+      expect(alignNegativeRun([other], STEPS, TARGETS)).toBeNull();
+    }
   });
 });
 
@@ -103,51 +106,54 @@ const SPEC = RunSpec.parse({
 });
 
 describe("buildOutcome", () => {
-  test("builds the outcome condition from the report_outcome proof text", () => {
-    const issues: RecorderIssue[] = [];
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map(),
-      proof: { turn: 3, ids: ["e5"] },
-      proofElementListText: 'e5 text "No member found"',
-    };
-    const registry = new ConditionRegistry();
-    const built = buildOutcome(SPEC, "click_search", snapshots, registry, issues);
-    expect(issues).toEqual([]);
-    expect(built?.stepId).toBe("click_search");
-    expect(built?.outcome).toMatchObject({ code: "member_not_found", description: "No member has this ID" });
-    const condition = registry.list().find((c) => c.id === built?.outcome.condition);
-    expect(condition).toMatchObject({ check: "text_visible", text: "No member found" });
-  });
-
-  test("scopes the outcome condition within a matching recorded target", () => {
-    const issues: RecorderIssue[] = [];
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map(),
-      proof: { turn: 3, ids: ["e5"] },
-      proofElementListText: 'e5 button "Search"',
-    };
-    const registry = new ConditionRegistry();
-    const built = buildOutcome(SPEC, "click_search", snapshots, registry, issues, TARGETS);
-    const condition = registry.list().find((c) => c.id === built?.outcome.condition);
-    expect(condition).toMatchObject({ check: "text_visible", text: "Search", within: "search_button" });
-  });
-
-  test("falls back to the missing-proof issue when the only id's text proves nothing", () => {
-    const issues: RecorderIssue[] = [];
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map(),
-      proof: { turn: 3, ids: ["e5"] },
-      proofElementListText: 'e5 text "{secret.operator_username}"',
-    };
-    expect(buildOutcome(SPEC, "click_search", snapshots, new ConditionRegistry(), issues)).toBeNull();
-    expect(issues).toMatchObject([{ level: "blocking", code: "no_outcome_proof" }]);
-  });
-
-  test("failed alignment is a blocking issue", () => {
-    const issues: RecorderIssue[] = [];
-    const snapshots: Snapshots = { a11yByTurn: new Map(), proof: null, proofElementListText: null };
-    expect(buildOutcome(SPEC, null, snapshots, new ConditionRegistry(), issues)).toBeNull();
-    expect(issues).toMatchObject([{ level: "blocking", code: "failed_alignment" }]);
+  test("buildOutcome builds, scopes, and falls back to issues", () => {
+    {
+      // builds the outcome condition from the report_outcome proof text
+      const issues: RecorderIssue[] = [];
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map(),
+        proof: { turn: 3, ids: ["e5"] },
+        proofElementListText: 'e5 text "No member found"',
+      };
+      const registry = new ConditionRegistry();
+      const built = buildOutcome(SPEC, "click_search", snapshots, registry, issues);
+      expect(issues).toEqual([]);
+      expect(built?.stepId).toBe("click_search");
+      expect(built?.outcome).toMatchObject({ code: "member_not_found", description: "No member has this ID" });
+      const condition = registry.list().find((c) => c.id === built?.outcome.condition);
+      expect(condition).toMatchObject({ check: "text_visible", text: "No member found" });
+    }
+    {
+      // scopes the outcome condition within a matching recorded target
+      const issues: RecorderIssue[] = [];
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map(),
+        proof: { turn: 3, ids: ["e5"] },
+        proofElementListText: 'e5 button "Search"',
+      };
+      const registry = new ConditionRegistry();
+      const built = buildOutcome(SPEC, "click_search", snapshots, registry, issues, TARGETS);
+      const condition = registry.list().find((c) => c.id === built?.outcome.condition);
+      expect(condition).toMatchObject({ check: "text_visible", text: "Search", within: "search_button" });
+    }
+    {
+      // falls back to the missing-proof issue when the only id's text proves nothing
+      const issues: RecorderIssue[] = [];
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map(),
+        proof: { turn: 3, ids: ["e5"] },
+        proofElementListText: 'e5 text "{secret.operator_username}"',
+      };
+      expect(buildOutcome(SPEC, "click_search", snapshots, new ConditionRegistry(), issues)).toBeNull();
+      expect(issues).toMatchObject([{ level: "blocking", code: "no_outcome_proof" }]);
+    }
+    {
+      // failed alignment is a blocking issue
+      const issues: RecorderIssue[] = [];
+      const snapshots: Snapshots = { a11yByTurn: new Map(), proof: null, proofElementListText: null };
+      expect(buildOutcome(SPEC, null, snapshots, new ConditionRegistry(), issues)).toBeNull();
+      expect(issues).toMatchObject([{ level: "blocking", code: "failed_alignment" }]);
+    }
   });
 });
 

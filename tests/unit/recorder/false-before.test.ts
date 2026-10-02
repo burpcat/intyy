@@ -115,104 +115,110 @@ describe("checkFalseBefore: a landmark fixes it", () => {
   const BEFORE = '- button "Expand"\n- button "OK"';
   const AFTER = '- button "Expand"\n- button "OK"\n- heading "Details"';
 
-  test("without the landmark, the plain screen condition is already true before the click", () => {
-    const before = fromA11ySnapshot(BEFORE, "/page");
-    const withoutLandmark = allOf([locationCheck("/page"), elementVisibleCheck("ok_button")]);
-    const answer = evaluate(withoutLandmark, before, {
-      targets: new Map([["ok_button", { id: "ok_button", description: "x", clues: { role: "button", name: "OK" } }]]),
-    });
-    expect(answer).toBe("true");
-  });
-
-  test("the recorder's own checkpoint adds the landmark, so no issue is raised", () => {
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map([
-        [1, BEFORE],
-        [2, AFTER],
-        // Turn 3, right after clicking OK: its own landmark, so click_ok's checkpoint is not
-        // the plain "still on /page" check this fixture would otherwise leave it with.
-        [3, `${AFTER}\n- heading "Saved"`],
-      ]),
-      proof: null,
-      proofElementListText: null,
-    };
-    const { issues, steps, conditions } = buildSteps([showDetails, clickOk], snapshots);
-    expect(issues).toEqual([]);
-    const checkpoint = conditions.find((c) => c.id === steps[0]?.checkpoint);
-    expect(JSON.stringify(checkpoint)).toContain("Details");
+  test("a landmark fixes a screen condition that is true before the click", () => {
+    {
+      // without the landmark, the plain screen condition is already true before the click
+      const before = fromA11ySnapshot(BEFORE, "/page");
+      const withoutLandmark = allOf([locationCheck("/page"), elementVisibleCheck("ok_button")]);
+      const answer = evaluate(withoutLandmark, before, {
+        targets: new Map([["ok_button", { id: "ok_button", description: "x", clues: { role: "button", name: "OK" } }]]),
+      });
+      expect(answer).toBe("true");
+    }
+    {
+      // the recorder's own checkpoint adds the landmark, so no issue is raised
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map([
+          [1, BEFORE],
+          [2, AFTER],
+          // Turn 3, right after clicking OK: its own landmark, so click_ok's checkpoint is not
+          // the plain "still on /page" check this fixture would otherwise leave it with.
+          [3, `${AFTER}\n- heading "Saved"`],
+        ]),
+        proof: null,
+        proofElementListText: null,
+      };
+      const { issues, steps, conditions } = buildSteps([showDetails, clickOk], snapshots);
+      expect(issues).toEqual([]);
+      const checkpoint = conditions.find((c) => c.id === steps[0]?.checkpoint);
+      expect(JSON.stringify(checkpoint)).toContain("Details");
+    }
   });
 });
 
 describe("checkFalseBefore: unknown gives a warning", () => {
-  test("a11y carries no field values, so a type checkpoint is always unknown, never a pass or a block", () => {
-    const a = action({
-      turn: 1,
-      tool: "type",
-      target: "e2",
-      value: "{secret.operator_username}",
-      fingerprint: {
-        role: "textbox",
-        name: null,
-        label: "Username",
-        text: null,
-        region: null,
-        crop: null,
-        crop_dropped: "no_crop_rule",
-        path: "form > input[1]",
-        within: null,
-        max_length: null,
-        field_kind: "text",
-        uniqueness: 1,
-      },
-    });
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map([[1, '- textbox "Username"']]),
-      proof: null,
-      proofElementListText: null,
-    };
-    const { issues } = buildSteps([a], snapshots);
-    expect(issues).toMatchObject([{ level: "warning", code: "checkpoint_unknown_before" }]);
-    expect(issues.some((i) => i.level === "blocking")).toBe(false);
-  });
-
-  test("a secret type step with a `*` checkpoint still warns checkpoint_unknown_before, never blocks", () => {
-    const a = action({
-      turn: 1,
-      tool: "type",
-      target: "e2",
-      value: "{secret.operator_password}",
-      fingerprint: {
-        role: "textbox",
-        name: null,
-        label: "Password",
-        text: null,
-        region: null,
-        crop: null,
-        crop_dropped: "no_crop_rule",
-        path: "form > input[2]",
-        within: null,
-        max_length: null,
-        field_kind: "password",
-        uniqueness: 1,
-      },
-    });
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map([[1, '- textbox "Password"']]),
-      proof: null,
-      proofElementListText: null,
-    };
-    const { conditions, issues } = buildSteps([a], snapshots);
-    // Why: pins that the checkpoint under test is the `*` wildcard (section 6 §14.5).
-    expect(conditions).toContainEqual(expect.objectContaining({ check: "field_value", value: "*", match: "wildcard" }));
-    expect(issues).toMatchObject([{ level: "warning", code: "checkpoint_unknown_before" }]);
-    expect(issues.some((i) => i.level === "blocking")).toBe(false);
-  });
-
-  test("with no saved snapshot for the turn, the check is silent", () => {
-    const a = action({ turn: 1, tool: "type", target: "e2", value: "{input.x}" });
-    const { issues } = buildSteps([a], EMPTY);
-    expect(issues.some((i) => i.code === "checkpoint_true_before" || i.code === "checkpoint_unknown_before")).toBe(
-      false,
-    );
+  test("an unknown type checkpoint warns, never blocks, and no snapshot stays silent", () => {
+    {
+      // a11y carries no field values, so a type checkpoint is always unknown, never a pass or a block
+      const a = action({
+        turn: 1,
+        tool: "type",
+        target: "e2",
+        value: "{secret.operator_username}",
+        fingerprint: {
+          role: "textbox",
+          name: null,
+          label: "Username",
+          text: null,
+          region: null,
+          crop: null,
+          crop_dropped: "no_crop_rule",
+          path: "form > input[1]",
+          within: null,
+          max_length: null,
+          field_kind: "text",
+          uniqueness: 1,
+        },
+      });
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map([[1, '- textbox "Username"']]),
+        proof: null,
+        proofElementListText: null,
+      };
+      const { issues } = buildSteps([a], snapshots);
+      expect(issues).toMatchObject([{ level: "warning", code: "checkpoint_unknown_before" }]);
+      expect(issues.some((i) => i.level === "blocking")).toBe(false);
+    }
+    {
+      // a secret type step with a `*` checkpoint still warns checkpoint_unknown_before, never blocks
+      const a = action({
+        turn: 1,
+        tool: "type",
+        target: "e2",
+        value: "{secret.operator_password}",
+        fingerprint: {
+          role: "textbox",
+          name: null,
+          label: "Password",
+          text: null,
+          region: null,
+          crop: null,
+          crop_dropped: "no_crop_rule",
+          path: "form > input[2]",
+          within: null,
+          max_length: null,
+          field_kind: "password",
+          uniqueness: 1,
+        },
+      });
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map([[1, '- textbox "Password"']]),
+        proof: null,
+        proofElementListText: null,
+      };
+      const { conditions, issues } = buildSteps([a], snapshots);
+      // Why: pins that the checkpoint under test is the `*` wildcard (section 6 §14.5).
+      expect(conditions).toContainEqual(expect.objectContaining({ check: "field_value", value: "*", match: "wildcard" }));
+      expect(issues).toMatchObject([{ level: "warning", code: "checkpoint_unknown_before" }]);
+      expect(issues.some((i) => i.level === "blocking")).toBe(false);
+    }
+    {
+      // with no saved snapshot for the turn, the check is silent
+      const a = action({ turn: 1, tool: "type", target: "e2", value: "{input.x}" });
+      const { issues } = buildSteps([a], EMPTY);
+      expect(issues.some((i) => i.code === "checkpoint_true_before" || i.code === "checkpoint_unknown_before")).toBe(
+        false,
+      );
+    }
   });
 });

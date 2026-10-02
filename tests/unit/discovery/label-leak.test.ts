@@ -37,22 +37,25 @@ describe("D: the element list builder, labels from context.left (§9.7)", () => 
   // Why a title with the name: it is built after the list, so the run has learned the name.
   const view = buildScreen(screen(elements, { title: `Member ${NAME}` }), leakRedactor());
 
-  test("the list, the title, and the row and table names hold no raw value", () => {
-    const all = `${view.list}\n${view.title}\n${view.location}`;
-    for (const raw of RAW) expect(all).not.toContain(raw);
-  });
-
-  test("the joined names read the same tokens as the cells", () => {
-    expect(view.list).toContain('table "Name [name#1] Date of Birth [dob#1] Address [address#1]"');
-    expect(view.list).toContain('row "Name [name#1]"');
-    expect(view.list).toContain('cell "[address#1]"');
-    expect(view.title).toContain("[name#1]");
-  });
-
-  test("the label cells stay readable", () => {
-    expect(view.list).toContain('cell "Name"');
-    expect(view.list).toContain('cell "Date of Birth"');
-    expect(view.list).toContain('cell "Address"');
+  test("the element list builder holds no raw value, joins names from the same tokens, and keeps label cells readable", () => {
+    {
+      // the list, the title, and the row and table names hold no raw value
+      const all = `${view.list}\n${view.title}\n${view.location}`;
+      for (const raw of RAW) expect(all).not.toContain(raw);
+    }
+    {
+      // the joined names read the same tokens as the cells
+      expect(view.list).toContain('table "Name [name#1] Date of Birth [dob#1] Address [address#1]"');
+      expect(view.list).toContain('row "Name [name#1]"');
+      expect(view.list).toContain('cell "[address#1]"');
+      expect(view.title).toContain("[name#1]");
+    }
+    {
+      // the label cells stay readable
+      expect(view.list).toContain('cell "Name"');
+      expect(view.list).toContain('cell "Date of Birth"');
+      expect(view.list).toContain('cell "Address"');
+    }
   });
 });
 

@@ -18,14 +18,10 @@ function line(kind: string): unknown {
 }
 
 describe("parseLine: escalation kinds", () => {
-  test.each(["start_confirmation", "reconciliation_decision", "retry_decision", "approval", "takeover"])(
-    "accepts %s",
-    (kind) => {
-      expect(parseLine(line(kind)).kind).toBe("escalation");
-    },
-  );
-
-  test("rejects an unknown kind", () => {
+  test("accepts each known kind and rejects an unknown one", () => {
+    for (const kind of ["start_confirmation", "reconciliation_decision", "retry_decision", "approval", "takeover"]) {
+      expect(parseLine(line(kind)).kind, kind).toBe("escalation");
+    }
     expect(() => parseLine(line("no_such_kind"))).toThrow();
   });
 });

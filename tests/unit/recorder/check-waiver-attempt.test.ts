@@ -78,50 +78,55 @@ const waiver = (extra: Record<string, unknown>): string => JSON.stringify({ reas
 const HEAD = "a waiver needs attempt_run: the discovery run that found no screen to read the result";
 
 describe("checkWaiverAttempt", () => {
-  test("a value that is not JSON is invalid", async () => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, "not json");
-    expect(got).toMatchObject({ ok: false, failure: "invalid" });
-    expect(detailOf(got)).toContain(HEAD);
+  test("a waiver value that is not JSON, lacks a good attempt_run, or cites the wrong run is invalid", async () => {
+    {
+      // a value that is not JSON is invalid
+      const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, "not json");
+      expect(got).toMatchObject({ ok: false, failure: "invalid" });
+      expect(detailOf(got)).toContain(HEAD);
+    }
+    {
+      // no attempt_run is invalid and names attempt_run
+      const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({}));
+      expect(got).toMatchObject({ ok: false, failure: "invalid" });
+      expect(detailOf(got)).toContain("attempt_run");
+    }
+    {
+      // a malformed attempt_run is invalid and names attempt_run
+      const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: "run_x" }));
+      expect(got).toMatchObject({ ok: false, failure: "invalid" });
+      expect(detailOf(got)).toContain("attempt_run");
+    }
+    {
+      // a run that is not in the tenant's store is invalid
+      const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: UNKNOWN_RUN }));
+      expect(got).toMatchObject({ ok: false, failure: "invalid" });
+      expect(detailOf(got)).toContain(HEAD);
+      expect(detailOf(got)).toContain(UNKNOWN_RUN);
+    }
+    {
+      // a run that exists only under another tenant is invalid
+      const got = await checkWaiverAttempt({ evidence: await store() }, "othertenant", waiver({ attempt_run: "run_2026-10-01_0000000004" }));
+      expect(got).toMatchObject({ ok: false, failure: "invalid" });
+    }
+    {
+      // a replay run is invalid
+      const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: REPLAY_RUN }));
+      expect(got).toMatchObject({ ok: false, failure: "invalid" });
+      expect(detailOf(got)).toContain("replay");
+    }
+    {
+      // a discovery run that ended success is invalid: it found a screen
+      const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: "run_2026-10-01_0000000003" }));
+      expect(got).toMatchObject({ ok: false, failure: "invalid" });
+      expect(detailOf(got)).toContain("success");
+    }
   });
 
-  test("no attempt_run is invalid and names attempt_run", async () => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({}));
-    expect(got).toMatchObject({ ok: false, failure: "invalid" });
-    expect(detailOf(got)).toContain("attempt_run");
-  });
-
-  test("a malformed attempt_run is invalid and names attempt_run", async () => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: "run_x" }));
-    expect(got).toMatchObject({ ok: false, failure: "invalid" });
-    expect(detailOf(got)).toContain("attempt_run");
-  });
-
-  test("a run that is not in the tenant's store is invalid", async () => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: UNKNOWN_RUN }));
-    expect(got).toMatchObject({ ok: false, failure: "invalid" });
-    expect(detailOf(got)).toContain(HEAD);
-    expect(detailOf(got)).toContain(UNKNOWN_RUN);
-  });
-
-  test("a run that exists only under another tenant is invalid", async () => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, "othertenant", waiver({ attempt_run: "run_2026-10-01_0000000004" }));
-    expect(got).toMatchObject({ ok: false, failure: "invalid" });
-  });
-
-  test("a replay run is invalid", async () => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: REPLAY_RUN }));
-    expect(got).toMatchObject({ ok: false, failure: "invalid" });
-    expect(detailOf(got)).toContain("replay");
-  });
-
-  test("a discovery run that ended success is invalid: it found a screen", async () => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: "run_2026-10-01_0000000003" }));
-    expect(got).toMatchObject({ ok: false, failure: "invalid" });
-    expect(detailOf(got)).toContain("success");
-  });
-
-  test.each(["run_2026-10-01_0000000004", "run_2026-10-01_0000000005"])("a discovery run that did not succeed (%s) is ok", async (runId) => {
-    const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: runId }));
-    expect(got).toEqual({ ok: true, value: undefined });
+  test("a discovery run that did not succeed is ok", async () => {
+    for (const runId of ["run_2026-10-01_0000000004", "run_2026-10-01_0000000005"]) {
+      const got = await checkWaiverAttempt({ evidence: await store() }, TENANT, waiver({ attempt_run: runId }));
+      expect(got, runId).toEqual({ ok: true, value: undefined });
+    }
   });
 });

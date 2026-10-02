@@ -65,50 +65,113 @@ async function handback(extra: Partial<Parameters<typeof run>[0]> = {}): Promise
   return Object.assign(r, { surface });
 }
 
+const context = { tenant: "keystone", appVersion: "9.2", viewport: { width: 1280, height: 800, scale: 1 } };
+const recorded = (r: Ran, tags: Record<number, string> = {}) =>
+  record({
+    positive: { runId: r.result.runId, spec: SIGN_IN, lines: r.events },
+    decisions: Object.entries(tags).map(([seq, value]) => ({
+      what: "tag" as const,
+      subject: `${r.result.runId}#${seq}`,
+      value,
+    })) as never,
+    context,
+  });
+
 describe("claim, act, hand back (section 6 §10.5)", () => {
-  test("the run succeeds; the lease moves takeover_requested, claimed, handed_back, reverified", async () => {
+  test("a takeover hands back: lease, escalation, history, human actions, recorder tags, and no raw typed text", async () => {
     const r = await handback();
-    expect(r.result).toMatchObject({ status: "success", code: null });
-    expect(leaseReasons(r)).toEqual([
-      "run_start",
-      "takeover_requested",
-      "claimed",
-      "handed_back",
-      "reverified",
-      "run_end",
-    ]);
-  });
-
-  test("the request is claimable: lease nobody, decisions end_run only", async () => {
-    const r = await handback();
-    expect(r.operator.requests).toHaveLength(1);
-    expect(r.operator.requests[0]).toMatchObject({
-      kind: "takeover",
-      reason: "stuck",
-      lease: "nobody",
-      decisions: ["end_run"],
-    });
-    expect(r.operator.closed[0]).toBe("resolved");
-  });
-
-  test("the escalation lines: open, claimed, resolved handed_back", async () => {
-    const r = await handback();
-    const e = escalations(r).map((l) => l.data);
-    expect(e).toMatchObject([
-      { kind: "takeover", reason: "stuck", state: "open" },
-      { kind: "takeover", reason: "stuck", state: "claimed", staff_id: STAFF, implicit: false },
-      { kind: "takeover", reason: "stuck", state: "resolved", decision: "handed_back", staff_id: STAFF },
-    ]);
-  });
-
-  test("the model's next turn shows the new screen and one history line with the action count", async () => {
-    const r = await handback();
-    const seen = seenBy(r);
-    expect(seen).toHaveLength(2);
-    expect(seen[1]?.message).toContain("t1 operator took over: 2 actions");
-    expect(seen[1]?.message).toContain('<screen location="/home" title="Teller Workstation">');
-    // The first turn saw the sign-in page.
-    expect(seen[0]?.message).toContain('<screen location="/" title="Sign In">');
+    {
+      // the run succeeds; the lease moves takeover_requested, claimed, handed_back, reverified
+      expect(r.result).toMatchObject({ status: "success", code: null });
+      expect(leaseReasons(r)).toEqual([
+        "run_start",
+        "takeover_requested",
+        "claimed",
+        "handed_back",
+        "reverified",
+        "run_end",
+      ]);
+    }
+    {
+      // the request is claimable: lease nobody, decisions end_run only
+      expect(r.operator.requests).toHaveLength(1);
+      expect(r.operator.requests[0]).toMatchObject({
+        kind: "takeover",
+        reason: "stuck",
+        lease: "nobody",
+        decisions: ["end_run"],
+      });
+      expect(r.operator.closed[0]).toBe("resolved");
+    }
+    {
+      // the escalation lines: open, claimed, resolved handed_back
+      const e = escalations(r).map((l) => l.data);
+      expect(e).toMatchObject([
+        { kind: "takeover", reason: "stuck", state: "open" },
+        { kind: "takeover", reason: "stuck", state: "claimed", staff_id: STAFF, implicit: false },
+        { kind: "takeover", reason: "stuck", state: "resolved", decision: "handed_back", staff_id: STAFF },
+      ]);
+    }
+    {
+      // the model's next turn shows the new screen and one history line with the action count
+      const seen = seenBy(r);
+      expect(seen).toHaveLength(2);
+      expect(seen[1]?.message).toContain("t1 operator took over: 2 actions");
+      expect(seen[1]?.message).toContain('<screen location="/home" title="Teller Workstation">');
+      // The first turn saw the sign-in page.
+      expect(seen[0]?.message).toContain('<screen location="/" title="Sign In">');
+    }
+    {
+      // human actions are logged by the human, with no tag; the typed text is [human_text]
+      const acts = humanActions(r);
+      expect(acts.map((l) => l.data["type"])).toEqual(["type", "click"]);
+      expect(acts[0]?.data["value"]).toBe("[human_text]");
+      for (const a of acts) {
+        expect(a.data).not.toHaveProperty("tag");
+        expect(a.data).not.toHaveProperty("reason");
+        expect(a.data["staff_id"]).toBe(STAFF);
+      }
+      // Both took place under the turn the takeover opened on.
+      expect(acts.every((l) => l.step === "t1")).toBe(true);
+    }
+    {
+      // collectActions: two human actions, the gate's class, the light fingerprint, no typed value
+      const acts = collectActions(r.result.runId, r.events).filter((a) => a.byHuman === true);
+      expect(acts.map((a) => a.tool)).toEqual(["type", "click"]);
+      expect(acts[0]?.value).toBeNull();
+      expect(acts.every((a) => a.tag === "exploration")).toBe(true);
+      expect(acts.every((a) => a.gateRisk === "idempotent")).toBe(true);
+      expect(acts[1]?.fingerprint).toMatchObject({ role: "button", crop: null, crop_dropped: "human_action", within: null });
+      // The bot's own sign-in turns are not human actions.
+      expect(collectActions(r.result.runId, r.events).filter((a) => a.byHuman !== true)).toEqual([]);
+    }
+    {
+      // record: each human action raises a blocking human_action_untagged until a reviewer tags it
+      const out = recorded(r);
+      const untagged = out.issues.filter((i) => i.code === "human_action_untagged");
+      expect(untagged).toHaveLength(2);
+      expect(untagged.every((i) => i.level === "blocking")).toBe(true);
+      // No step came from them: a person's action is exploration until tagged.
+      expect(out.candidate.steps).toEqual([]);
+    }
+    {
+      // tagged flow_step: a click becomes a step; a type blocks as unsupported_step_action
+      const [typed, clicked] = humanActions(r);
+      if (typed === undefined || clicked === undefined) throw new Error("expected two human actions");
+      const out = recorded(r, { [typed.seq]: "flow_step", [clicked.seq]: "flow_step" });
+      expect(out.issues.filter((i) => i.code === "human_action_untagged")).toEqual([]);
+      expect(out.candidate.steps.map((s) => s.action.type)).toEqual(["click"]);
+      const blocking = out.issues.find((i) => i.code === "unsupported_step_action");
+      expect(blocking).toMatchObject({ level: "blocking", subject: `${r.result.runId}#${String(typed.seq)}` });
+    }
+    {
+      // the typed raw value appears in no file of the run folder and in no model message
+      expect(r.files.length).toBeGreaterThan(3);
+      for (const f of r.files) {
+        expect(Buffer.from(f.bytes).includes(RAW), `${f.path} holds the typed text`).toBe(false);
+      }
+      for (const turn of seenBy(r)) expect(JSON.stringify(turn)).not.toContain(RAW);
+    }
   });
 
   test("one action reads '1 action'", async () => {
@@ -121,20 +184,6 @@ describe("claim, act, hand back (section 6 §10.5)", () => {
     });
     expect(seenBy(r)[1]?.message).toContain("t1 operator took over: 1 action");
     expect(seenBy(r)[1]?.message).not.toContain("1 actions");
-  });
-
-  test("human actions are logged by the human, with no tag; the typed text is [human_text]", async () => {
-    const r = await handback();
-    const acts = humanActions(r);
-    expect(acts.map((l) => l.data["type"])).toEqual(["type", "click"]);
-    expect(acts[0]?.data["value"]).toBe("[human_text]");
-    for (const a of acts) {
-      expect(a.data).not.toHaveProperty("tag");
-      expect(a.data).not.toHaveProperty("reason");
-      expect(a.data["staff_id"]).toBe(STAFF);
-    }
-    // Both took place under the turn the takeover opened on.
-    expect(acts.every((l) => l.step === "t1")).toBe(true);
   });
 
   test("after the handback the gate takes a new token: the old one is never used again", async () => {
@@ -255,53 +304,6 @@ describe("a person touches the browser while the bot drives (section 7 §12.4)",
   });
 });
 
-describe("the recorder reads a takeover's human actions (section 6 §10.5, §14)", () => {
-  test("collectActions: two human actions, the gate's class, the light fingerprint, no typed value", async () => {
-    const r = await handback();
-    const acts = collectActions(r.result.runId, r.events).filter((a) => a.byHuman === true);
-    expect(acts.map((a) => a.tool)).toEqual(["type", "click"]);
-    expect(acts[0]?.value).toBeNull();
-    expect(acts.every((a) => a.tag === "exploration")).toBe(true);
-    expect(acts.every((a) => a.gateRisk === "idempotent")).toBe(true);
-    expect(acts[1]?.fingerprint).toMatchObject({ role: "button", crop: null, crop_dropped: "human_action", within: null });
-    // The bot's own sign-in turns are not human actions.
-    expect(collectActions(r.result.runId, r.events).filter((a) => a.byHuman !== true)).toEqual([]);
-  });
-
-  const context = { tenant: "keystone", appVersion: "9.2", viewport: { width: 1280, height: 800, scale: 1 } };
-  const recorded = (r: Ran, tags: Record<number, string> = {}) =>
-    record({
-      positive: { runId: r.result.runId, spec: SIGN_IN, lines: r.events },
-      decisions: Object.entries(tags).map(([seq, value]) => ({
-        what: "tag" as const,
-        subject: `${r.result.runId}#${seq}`,
-        value,
-      })) as never,
-      context,
-    });
-
-  test("record: each human action raises a blocking human_action_untagged until a reviewer tags it", async () => {
-    const r = await handback();
-    const out = recorded(r);
-    const untagged = out.issues.filter((i) => i.code === "human_action_untagged");
-    expect(untagged).toHaveLength(2);
-    expect(untagged.every((i) => i.level === "blocking")).toBe(true);
-    // No step came from them: a person's action is exploration until tagged.
-    expect(out.candidate.steps).toEqual([]);
-  });
-
-  test("tagged flow_step: a click becomes a step; a type blocks as unsupported_step_action", async () => {
-    const r = await handback();
-    const [typed, clicked] = humanActions(r);
-    if (typed === undefined || clicked === undefined) throw new Error("expected two human actions");
-    const out = recorded(r, { [typed.seq]: "flow_step", [clicked.seq]: "flow_step" });
-    expect(out.issues.filter((i) => i.code === "human_action_untagged")).toEqual([]);
-    expect(out.candidate.steps.map((s) => s.action.type)).toEqual(["click"]);
-    const blocking = out.issues.find((i) => i.code === "unsupported_step_action");
-    expect(blocking).toMatchObject({ level: "blocking", subject: `${r.result.runId}#${String(typed.seq)}` });
-  });
-});
-
 describe("the log line parser (section 6 §14)", () => {
   const base = {
     seq: 7,
@@ -324,23 +326,16 @@ describe("the log line parser (section 6 §14)", () => {
     fingerprint: null,
   };
 
-  test("an action by a human parses as human_action", () => {
-    expect(parseLine({ ...base, data })).toMatchObject({ kind: "human_action", by: "human", data: { type: "click" } });
-  });
-
-  test("a human action with a tag or an unknown field is malformed: it throws", () => {
-    expect(() => parseLine({ ...base, data: { ...data, tag: "flow_step" } })).toThrow();
-    expect(() => parseLine({ ...base, data: { type: "click" } })).toThrow();
-  });
-});
-
-describe("safety (section 4 §8.10)", () => {
-  test("the typed raw value appears in no file of the run folder and in no model message", async () => {
-    const r = await handback();
-    expect(r.files.length).toBeGreaterThan(3);
-    for (const f of r.files) {
-      expect(Buffer.from(f.bytes).includes(RAW), `${f.path} holds the typed text`).toBe(false);
+  test("the log line parser reads a human action and rejects a tagged or malformed one", () => {
+    {
+      // an action by a human parses as human_action
+      expect(parseLine({ ...base, data })).toMatchObject({ kind: "human_action", by: "human", data: { type: "click" } });
     }
-    for (const turn of seenBy(r)) expect(JSON.stringify(turn)).not.toContain(RAW);
+    {
+      // a human action with a tag or an unknown field is malformed: it throws
+      expect(() => parseLine({ ...base, data: { ...data, tag: "flow_step" } })).toThrow();
+      expect(() => parseLine({ ...base, data: { type: "click" } })).toThrow();
+    }
   });
 });
+

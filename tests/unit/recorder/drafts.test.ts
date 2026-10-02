@@ -52,54 +52,60 @@ function incidental(): TaggedAction {
 const EMPTY: Snapshots = { a11yByTurn: new Map(), proof: null, proofElementListText: null };
 
 describe("buildDrafts", () => {
-  test("one draft per run of incidental actions, recoverable when nothing needs a human", () => {
-    const a = incidental();
-    const { drafts, became } = buildDrafts([a], "kvfcu", "keystone", "9.2", EMPTY);
-    expect(drafts).toHaveLength(1);
-    const draft = drafts[0];
-    if (draft === undefined) throw new Error("expected one draft");
-    expect(draft.source).toMatchObject({ kind: "recorder", seq: [6], tenant: "keystone" });
-    expect(draft.targets.map((t) => t.id)).toEqual(["remind_later_button"]);
-    expect(draft.fixtures).toEqual({ fire: `${draft.id}_fire`, no_fire: [] });
-    expect((draft.handler as { class: string }).class).toBe("recoverable");
-    expect(became.get(a)).toBe(`handler_draft:${draft.id}`);
-  });
-
-  test("an approved irreversible action needs a human", () => {
-    const a = { ...incidental(), riskHint: "irreversible" as const };
-    const { drafts } = buildDrafts([a], "kvfcu", "keystone", "9.2", EMPTY);
-    expect((drafts[0]?.handler as { class: string }).class).toBe("needs_human");
+  test("buildDrafts makes one draft per incidental run, and an approved irreversible action needs a human", () => {
+    {
+      // one draft per run of incidental actions, recoverable when nothing needs a human
+      const a = incidental();
+      const { drafts, became } = buildDrafts([a], "kvfcu", "keystone", "9.2", EMPTY);
+      expect(drafts).toHaveLength(1);
+      const draft = drafts[0];
+      if (draft === undefined) throw new Error("expected one draft");
+      expect(draft.source).toMatchObject({ kind: "recorder", seq: [6], tenant: "keystone" });
+      expect(draft.targets.map((t) => t.id)).toEqual(["remind_later_button"]);
+      expect(draft.fixtures).toEqual({ fire: `${draft.id}_fire`, no_fire: [] });
+      expect((draft.handler as { class: string }).class).toBe("recoverable");
+      expect(became.get(a)).toBe(`handler_draft:${draft.id}`);
+    }
+    {
+      // an approved irreversible action needs a human
+      const a = { ...incidental(), riskHint: "irreversible" as const };
+      const { drafts } = buildDrafts([a], "kvfcu", "keystone", "9.2", EMPTY);
+      expect((drafts[0]?.handler as { class: string }).class).toBe("needs_human");
+    }
   });
 });
 
 describe("buildNormalFixtures", () => {
-  test("one fixture per distinct kept-step location, with that turn's own saved files", () => {
-    const observationFiles = new Map([
-      [1, ["a11y/00001_observation.yaml"]],
-      [2, ["a11y/00004_observation.yaml"]],
-      [3, ["a11y/00007_observation.yaml", "screens/00007_observation.png"]],
-    ]);
-    const fixtures = buildNormalFixtures(
-      [
-        { turn: 1, location: "/login.do" },
-        { turn: 2, location: "/login.do" },
-        { turn: 3, location: "/main.do" },
-      ],
-      observationFiles,
-    );
-    expect(fixtures).toEqual([
-      { id: "normal_login", location: "/login.do", turn: 1, files: ["a11y/00001_observation.yaml"] },
-      {
-        id: "normal_main",
-        location: "/main.do",
-        turn: 3,
-        files: ["a11y/00007_observation.yaml", "screens/00007_observation.png"],
-      },
-    ]);
-  });
-
-  test("a turn with no saved files gets an empty list, never a guess", () => {
-    const fixtures = buildNormalFixtures([{ turn: 5, location: "/done" }], new Map());
-    expect(fixtures).toEqual([{ id: "normal_done", location: "/done", turn: 5, files: [] }]);
+  test("buildNormalFixtures makes one fixture per location, and a turn with no files gets an empty list", () => {
+    {
+      // one fixture per distinct kept-step location, with that turn's own saved files
+      const observationFiles = new Map([
+        [1, ["a11y/00001_observation.yaml"]],
+        [2, ["a11y/00004_observation.yaml"]],
+        [3, ["a11y/00007_observation.yaml", "screens/00007_observation.png"]],
+      ]);
+      const fixtures = buildNormalFixtures(
+        [
+          { turn: 1, location: "/login.do" },
+          { turn: 2, location: "/login.do" },
+          { turn: 3, location: "/main.do" },
+        ],
+        observationFiles,
+      );
+      expect(fixtures).toEqual([
+        { id: "normal_login", location: "/login.do", turn: 1, files: ["a11y/00001_observation.yaml"] },
+        {
+          id: "normal_main",
+          location: "/main.do",
+          turn: 3,
+          files: ["a11y/00007_observation.yaml", "screens/00007_observation.png"],
+        },
+      ]);
+    }
+    {
+      // a turn with no saved files gets an empty list, never a guess
+      const fixtures = buildNormalFixtures([{ turn: 5, location: "/done" }], new Map());
+      expect(fixtures).toEqual([{ id: "normal_done", location: "/done", turn: 5, files: [] }]);
+    }
   });
 });

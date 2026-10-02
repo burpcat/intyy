@@ -17,41 +17,40 @@ function line(over: Record<string, unknown> = {}): unknown {
 }
 
 describe("parseLine: lease", () => {
-  test("accepts a lease line", () => {
+  test("accepts a lease line, every reason, and an implicit human claim", () => {
     const p = parseLine(line());
     expect(p.kind).toBe("lease");
     if (p.kind !== "lease") throw new Error("expected lease");
     expect(p.data).toMatchObject({ from: "nobody", to: "bot", reason: "run_start" });
+    for (const reason of [
+      "run_start",
+      "awaiting_decision",
+      "decided",
+      "takeover_requested",
+      "claimed",
+      "handed_back",
+      "reverified",
+      "reverify_failed",
+      "run_end",
+    ]) {
+      expect(parseLine(line({ reason })).kind, reason).toBe("lease");
+    }
+    expect(
+      parseLine(line({ from: "nobody", to: "human", reason: "claimed", staff_id: "op_1", implicit: true })).kind,
+      "implicit human claim",
+    ).toBe("lease");
   });
 
-  test.each([
-    "run_start",
-    "awaiting_decision",
-    "decided",
-    "takeover_requested",
-    "claimed",
-    "handed_back",
-    "reverified",
-    "reverify_failed",
-    "run_end",
-  ])("accepts reason %s", (reason) => {
-    expect(parseLine(line({ reason })).kind).toBe("lease");
-  });
-
-  test("accepts an implicit human claim", () => {
-    expect(parseLine(line({ from: "nobody", to: "human", reason: "claimed", staff_id: "op_1", implicit: true })).kind).toBe(
-      "lease",
-    );
-  });
-
-  test.each([
-    ["an unknown holder", { to: "robot" }],
-    ["an unknown reason", { reason: "no_such_reason" }],
-    ["a missing implicit flag", { implicit: undefined }],
-    ["a non-boolean implicit", { implicit: "yes" }],
-    ["a numeric staff ID", { staff_id: 7 }],
-    ["an extra field", { extra: 1 }],
-  ])("rejects %s", (_name, over) => {
-    expect(() => parseLine(line(over))).toThrow();
+  test("rejects a malformed lease line", () => {
+    for (const [name, over] of [
+      ["an unknown holder", { to: "robot" }],
+      ["an unknown reason", { reason: "no_such_reason" }],
+      ["a missing implicit flag", { implicit: undefined }],
+      ["a non-boolean implicit", { implicit: "yes" }],
+      ["a numeric staff ID", { staff_id: 7 }],
+      ["an extra field", { extra: 1 }],
+    ] as const) {
+      expect(() => parseLine(line(over)), name).toThrow();
+    }
   });
 });

@@ -54,25 +54,28 @@ describe("buildSteps", () => {
     });
   });
 
-  test("a repeated `type` into the same target keeps only the last one", () => {
-    const { steps } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
-    expect(steps.map((s) => s.id)).toEqual(["type_member_id", "click_search"]);
-    expect(steps[0]?.action).toMatchObject({ value: "{input.member_id}" });
-  });
-
-  test("a click's precondition includes its own target visible, section 6 §14.5's screen condition", () => {
-    const { steps, conditions } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
-    const click = steps.find((s) => s.id === "click_search");
-    const precondition = conditions.find((c) => c.id === click?.precondition);
-    if (precondition?.check !== "all_of") throw new Error("expected an all_of precondition");
-    expect(precondition.checks).toContainEqual({ check: "element_visible", target: "search_button" });
-  });
-
-  test("with no approval hint and no gate risk line, risk drafts irreversible and is flagged", () => {
-    // repeated_type.jsonl has no `gate` lines and no approval escalation.
-    const { steps, issues } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
-    expect(steps.every((s) => s.risk === "irreversible")).toBe(true);
-    expect(issues.filter((i) => i.code === "no_risk_class")).toHaveLength(2);
+  test("a repeated type keeps the last, a click's precondition shows its target, and a missing risk drafts irreversible", () => {
+    {
+      // a repeated `type` into the same target keeps only the last one
+      const { steps } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
+      expect(steps.map((s) => s.id)).toEqual(["type_member_id", "click_search"]);
+      expect(steps[0]?.action).toMatchObject({ value: "{input.member_id}" });
+    }
+    {
+      // a click's precondition includes its own target visible, section 6 §14.5's screen condition
+      const { steps, conditions } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
+      const click = steps.find((s) => s.id === "click_search");
+      const precondition = conditions.find((c) => c.id === click?.precondition);
+      if (precondition?.check !== "all_of") throw new Error("expected an all_of precondition");
+      expect(precondition.checks).toContainEqual({ check: "element_visible", target: "search_button" });
+    }
+    {
+      // with no approval hint and no gate risk line, risk drafts irreversible and is flagged
+      // repeated_type.jsonl has no `gate` lines and no approval escalation.
+      const { steps, issues } = stepsFor("repeated_type.jsonl", "run_2026-09-24_0000000002");
+      expect(steps.every((s) => s.risk === "irreversible")).toBe(true);
+      expect(issues.filter((i) => i.code === "no_risk_class")).toHaveLength(2);
+    }
   });
 
   test("a same-URL fill is carried only while its field is still on the screen before the step", () => {
@@ -89,84 +92,90 @@ describe("buildSteps", () => {
     expect(refsOfSearch('- columnheader "Member ID"\n- button "Search"')).toEqual([]);
   });
 
-  test("a click checkpoint adds one new landmark from the saved snapshots", () => {
-    const actions = collectActions(
-      "run_2026-09-24_0000000004",
-      loadLog("within_container.jsonl"),
-    );
-    const kept = keptActions(applyTags(actions, []));
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map([
-        [1, '- button "Edit"\n- button "Edit"'],
-        [2, '- heading "Edit Member A"\n- button "Edit"'],
-      ]),
-      proof: null,
-      proofElementListText: null,
-    };
-    const { steps, conditions } = buildSteps(kept, snapshots);
-    const checkpoint = conditions.find((c) => c.id === steps[0]?.checkpoint);
-    expect(checkpoint).toMatchObject({ check: "all_of" });
-    expect(JSON.stringify(checkpoint)).toContain("Edit Member A");
+  test("a click checkpoint adds a new landmark and skips one already shown in another role", () => {
+    {
+      // a click checkpoint adds one new landmark from the saved snapshots
+      const actions = collectActions(
+        "run_2026-09-24_0000000004",
+        loadLog("within_container.jsonl"),
+      );
+      const kept = keptActions(applyTags(actions, []));
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map([
+          [1, '- button "Edit"\n- button "Edit"'],
+          [2, '- heading "Edit Member A"\n- button "Edit"'],
+        ]),
+        proof: null,
+        proofElementListText: null,
+      };
+      const { steps, conditions } = buildSteps(kept, snapshots);
+      const checkpoint = conditions.find((c) => c.id === steps[0]?.checkpoint);
+      expect(checkpoint).toMatchObject({ check: "all_of" });
+      expect(JSON.stringify(checkpoint)).toContain("Edit Member A");
+    }
+    {
+      // a landmark already shown in another role is skipped; a new column header is used
+      const kept = keptActions(applyTags(collectActions("run_2026-09-24_0000000004", loadLog("within_container.jsonl")), []));
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map([
+          [1, '- link "Member A"\n- button "Edit"\n- button "Edit"'],
+          [2, '- text "Member A"\n- columnheader "[money#1]"\n- columnheader "Customer Information"\n- button "Edit"'],
+        ]),
+        proof: null,
+        proofElementListText: null,
+      };
+      const { steps, conditions } = buildSteps(kept, snapshots);
+      const checkpoint = JSON.stringify(conditions.find((c) => c.id === steps[0]?.checkpoint));
+      expect(checkpoint).toContain("Customer Information");
+      expect(checkpoint).not.toContain("Member A");
+      expect(checkpoint).not.toContain('"text":"*"');
+    }
   });
 
-  test("a landmark already shown in another role is skipped; a new column header is used", () => {
-    const kept = keptActions(applyTags(collectActions("run_2026-09-24_0000000004", loadLog("within_container.jsonl")), []));
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map([
-        [1, '- link "Member A"\n- button "Edit"\n- button "Edit"'],
-        [2, '- text "Member A"\n- columnheader "[money#1]"\n- columnheader "Customer Information"\n- button "Edit"'],
-      ]),
-      proof: null,
-      proofElementListText: null,
-    };
-    const { steps, conditions } = buildSteps(kept, snapshots);
-    const checkpoint = JSON.stringify(conditions.find((c) => c.id === steps[0]?.checkpoint));
-    expect(checkpoint).toContain("Customer Information");
-    expect(checkpoint).not.toContain("Member A");
-    expect(checkpoint).not.toContain('"text":"*"');
-  });
-
-  test("the last step's checkpoint uses done.proof's text when the snapshots supply it", () => {
-    const { steps: base } = stepsFor("sign_in_basic.jsonl", "run_2026-09-24_0000000001");
-    const actions = collectActions(
-      "run_2026-09-24_0000000001",
-      loadLog("sign_in_basic.jsonl"),
-    );
-    const kept = keptActions(applyTags(actions, []));
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map(),
-      proof: { turn: 4, ids: ["e1"] },
-      proofElementListText: 'e1 heading "Welcome, teller"',
-    };
-    const { steps, conditions } = buildSteps(kept, snapshots);
-    expect(steps.map((s) => s.id)).toEqual(base.map((s) => s.id));
-    const last = steps[steps.length - 1];
-    const checkpoint = conditions.find((c) => c.id === last?.checkpoint);
-    expect(checkpoint).toMatchObject({ check: "text_visible", text: "Welcome, teller" });
-  });
-
-  test("a proof element with no text falls back to the after-location, with a blocking issue", () => {
-    const actions = collectActions(
-      "run_2026-09-24_0000000001",
-      loadLog("sign_in_basic.jsonl"),
-    );
-    const kept = keptActions(applyTags(actions, []));
-    const snapshots: Snapshots = {
-      a11yByTurn: new Map(),
-      proof: { turn: 4, ids: ["e9"] },
-      proofElementListText: 'e1 heading "Welcome, teller"',
-    };
-    const { steps, conditions, issues } = buildSteps(kept, snapshots);
-    const last = steps[steps.length - 1];
-    const checkpoint = conditions.find((c) => c.id === last?.checkpoint);
-    expect(checkpoint).toMatchObject({ check: "location", pattern: "/main.do" });
-    expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({
-      level: "blocking",
-      code: "no_proof_text",
-      subject: "run_2026-09-24_0000000001#done",
-    });
-    expect(issues[0]?.message).toContain("falls back to the after-location");
+  test("done.proof's text becomes the last checkpoint, and a proof with no text falls back with a blocking issue", () => {
+    {
+      // the last step's checkpoint uses done.proof's text when the snapshots supply it
+      const { steps: base } = stepsFor("sign_in_basic.jsonl", "run_2026-09-24_0000000001");
+      const actions = collectActions(
+        "run_2026-09-24_0000000001",
+        loadLog("sign_in_basic.jsonl"),
+      );
+      const kept = keptActions(applyTags(actions, []));
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map(),
+        proof: { turn: 4, ids: ["e1"] },
+        proofElementListText: 'e1 heading "Welcome, teller"',
+      };
+      const { steps, conditions } = buildSteps(kept, snapshots);
+      expect(steps.map((s) => s.id)).toEqual(base.map((s) => s.id));
+      const last = steps[steps.length - 1];
+      const checkpoint = conditions.find((c) => c.id === last?.checkpoint);
+      expect(checkpoint).toMatchObject({ check: "text_visible", text: "Welcome, teller" });
+    }
+    {
+      // a proof element with no text falls back to the after-location, with a blocking issue
+      const actions = collectActions(
+        "run_2026-09-24_0000000001",
+        loadLog("sign_in_basic.jsonl"),
+      );
+      const kept = keptActions(applyTags(actions, []));
+      const snapshots: Snapshots = {
+        a11yByTurn: new Map(),
+        proof: { turn: 4, ids: ["e9"] },
+        proofElementListText: 'e1 heading "Welcome, teller"',
+      };
+      const { steps, conditions, issues } = buildSteps(kept, snapshots);
+      const last = steps[steps.length - 1];
+      const checkpoint = conditions.find((c) => c.id === last?.checkpoint);
+      expect(checkpoint).toMatchObject({ check: "location", pattern: "/main.do" });
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatchObject({
+        level: "blocking",
+        code: "no_proof_text",
+        subject: "run_2026-09-24_0000000001#done",
+      });
+      expect(issues[0]?.message).toContain("falls back to the after-location");
+    }
   });
 
   test("select, set_checked, and press become blocking issues, not fabricated steps", () => {

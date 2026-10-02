@@ -18,57 +18,60 @@ function keptFrom(file: string, runId: string) {
 }
 
 describe("buildTargets", () => {
-  test("one target per distinct control, by role and structure path", () => {
-    const kept = keptFrom("sign_in_basic.jsonl", "run_2026-09-24_0000000001");
-    const { targets, targetIdOf } = buildTargets(kept);
-    expect(targets.map((t) => t.id)).toEqual(["user_id_box", "password_box", "login_button"]);
-    expect(targets[0]?.clues).toMatchObject({ role: "textbox", label: "User ID" });
-    expect(targets[2]?.clues).toMatchObject({ role: "button", name: "Login", image: "crops/login_button.png" });
-    expect(targetIdOf.get(kept[2] as (typeof kept)[number])).toBe("login_button");
-  });
-
-  test("a non-unique control gets a `within` container target, and a clash on the ID adds the screen's name", () => {
-    const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004");
-    const { targets, crops } = buildTargets(kept);
-    const buttons = targets.filter((t) => t.clues.role === "button");
-    expect(buttons.map((t) => t.id)).toEqual(["edit_button", "edit_button_list"]);
-    expect(buttons[0]?.within).toBe("member_a_row");
-    expect(buttons[1]?.within).toBe("member_b_row");
-    const containers = targets.filter((t) => t.clues.role === "row");
-    expect(containers.map((t) => t.id)).toEqual(["member_a_row", "member_b_row"]);
-    expect(crops.get("edit_button")).toBe("crops/00002_e5.png");
-  });
-
-  test("a container named with a mask token gives no `within`: the live name never holds the token", () => {
-    const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004").map((a, i) =>
-      i === 0 && a.fingerprint !== null ? { ...a, fingerprint: { ...a.fingerprint, within: 'row "Member A [money#1]"' } } : a,
-    );
-    const { targets } = buildTargets(kept);
-    const buttons = targets.filter((t) => t.clues.role === "button");
-    expect(buttons[0]?.within).toBeUndefined();
-    expect(buttons[1]?.within).toBe("member_b_row");
-    expect(targets.filter((t) => t.clues.role === "row").map((t) => t.id)).toEqual(["member_b_row"]);
-  });
-
-  test("a read value with no words of its own takes its row's other words as its label", () => {
-    const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004").map((a, i) =>
-      i === 0 && a.fingerprint !== null
-        ? {
-            ...a,
-            fingerprint: {
-              ...a.fingerprint,
-              role: "generic",
-              name: "{output.account_number}",
-              text: "{output.account_number}",
-              within: 'row "Account No. {output.account_number}"',
-              uniqueness: 1,
-            },
-          }
-        : a,
-    );
-    const { targets } = buildTargets(kept);
-    expect(targets[0]).toMatchObject({ id: "account_no_generic", clues: { role: "generic", label: "Account No." } });
-    expect(targets[0]?.clues).not.toHaveProperty("name");
+  test("buildTargets builds one target per control, adds within and ID clashes, and labels read values", () => {
+    {
+      // one target per distinct control, by role and structure path
+      const kept = keptFrom("sign_in_basic.jsonl", "run_2026-09-24_0000000001");
+      const { targets, targetIdOf } = buildTargets(kept);
+      expect(targets.map((t) => t.id)).toEqual(["user_id_box", "password_box", "login_button"]);
+      expect(targets[0]?.clues).toMatchObject({ role: "textbox", label: "User ID" });
+      expect(targets[2]?.clues).toMatchObject({ role: "button", name: "Login", image: "crops/login_button.png" });
+      expect(targetIdOf.get(kept[2] as (typeof kept)[number])).toBe("login_button");
+    }
+    {
+      // a non-unique control gets a `within` container target, and a clash on the ID adds the screen's name
+      const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004");
+      const { targets, crops } = buildTargets(kept);
+      const buttons = targets.filter((t) => t.clues.role === "button");
+      expect(buttons.map((t) => t.id)).toEqual(["edit_button", "edit_button_list"]);
+      expect(buttons[0]?.within).toBe("member_a_row");
+      expect(buttons[1]?.within).toBe("member_b_row");
+      const containers = targets.filter((t) => t.clues.role === "row");
+      expect(containers.map((t) => t.id)).toEqual(["member_a_row", "member_b_row"]);
+      expect(crops.get("edit_button")).toBe("crops/00002_e5.png");
+    }
+    {
+      // a container named with a mask token gives no `within`: the live name never holds the token
+      const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004").map((a, i) =>
+        i === 0 && a.fingerprint !== null ? { ...a, fingerprint: { ...a.fingerprint, within: 'row "Member A [money#1]"' } } : a,
+      );
+      const { targets } = buildTargets(kept);
+      const buttons = targets.filter((t) => t.clues.role === "button");
+      expect(buttons[0]?.within).toBeUndefined();
+      expect(buttons[1]?.within).toBe("member_b_row");
+      expect(targets.filter((t) => t.clues.role === "row").map((t) => t.id)).toEqual(["member_b_row"]);
+    }
+    {
+      // a read value with no words of its own takes its row's other words as its label
+      const kept = keptFrom("within_container.jsonl", "run_2026-09-24_0000000004").map((a, i) =>
+        i === 0 && a.fingerprint !== null
+          ? {
+              ...a,
+              fingerprint: {
+                ...a.fingerprint,
+                role: "generic",
+                name: "{output.account_number}",
+                text: "{output.account_number}",
+                within: 'row "Account No. {output.account_number}"',
+                uniqueness: 1,
+              },
+            }
+          : a,
+      );
+      const { targets } = buildTargets(kept);
+      expect(targets[0]).toMatchObject({ id: "account_no_generic", clues: { role: "generic", label: "Account No." } });
+      expect(targets[0]?.clues).not.toHaveProperty("name");
+    }
   });
 });
 

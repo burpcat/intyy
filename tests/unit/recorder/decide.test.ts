@@ -29,42 +29,28 @@ function baseArtifact(): Artifact {
 }
 
 describe("applyRiskDecisions", () => {
-  test("a lowering from the rules' irreversible class needs a second look by another staff ID", () => {
+  test("a lowering needs a second look by another staff ID, which clears it; a disagreeing reviewer wins", () => {
     const steps = [
       { id: "click_confirm", intent: "x", action: { type: "click" as const, target: "confirm_button" }, precondition: "p", checkpoint: "c", outcomes: [], risk: "irreversible" as const, timeout_ms: 15000 },
     ];
-    const decisions = [decision({ what: "risk", subject: "click_confirm", value: "idempotent", by: "op_017" })];
-    const issues: RecorderIssue[] = [];
-    const out = applyRiskDecisions(steps, decisions, new Map([["click_confirm", "irreversible"]]), new Map(), issues);
-    expect(out[0]?.risk).toBe("idempotent");
-    expect(issues).toMatchObject([{ level: "blocking", code: "risk_second_look", subject: "click_confirm" }]);
-  });
+    const rules = new Map([["click_confirm", "irreversible" as const]]);
+    const lowered = decision({ what: "risk", subject: "click_confirm", value: "idempotent", by: "op_017" });
 
-  test("a risk_second_look by a different staff ID clears the issue", () => {
-    const steps = [
-      { id: "click_confirm", intent: "x", action: { type: "click" as const, target: "confirm_button" }, precondition: "p", checkpoint: "c", outcomes: [], risk: "irreversible" as const, timeout_ms: 15000 },
-    ];
-    const decisions = [
-      decision({ what: "risk", subject: "click_confirm", value: "idempotent", by: "op_017" }),
-      decision({ what: "risk_second_look", subject: "click_confirm", value: "idempotent", by: "op_022" }),
-    ];
-    const issues: RecorderIssue[] = [];
-    applyRiskDecisions(steps, decisions, new Map([["click_confirm", "irreversible"]]), new Map(), issues);
-    expect(issues).toEqual([]);
-  });
+    const lowIssues: RecorderIssue[] = [];
+    const low = applyRiskDecisions(steps, [lowered], rules, new Map(), lowIssues);
+    expect(low[0]?.risk).toBe("idempotent");
+    expect(lowIssues).toMatchObject([{ level: "blocking", code: "risk_second_look", subject: "click_confirm" }]);
 
-  test("a disagreeing second reviewer's own risk decision wins, and needs no second look", () => {
-    const steps = [
-      { id: "click_confirm", intent: "x", action: { type: "click" as const, target: "confirm_button" }, precondition: "p", checkpoint: "c", outcomes: [], risk: "irreversible" as const, timeout_ms: 15000 },
-    ];
-    const decisions = [
-      decision({ what: "risk", subject: "click_confirm", value: "idempotent", by: "op_017" }),
-      decision({ what: "risk", subject: "click_confirm", value: "irreversible", by: "op_022" }),
-    ];
-    const issues: RecorderIssue[] = [];
-    const out = applyRiskDecisions(steps, decisions, new Map([["click_confirm", "irreversible"]]), new Map(), issues);
-    expect(out[0]?.risk).toBe("irreversible");
-    expect(issues).toEqual([]);
+    const clearedIssues: RecorderIssue[] = [];
+    const secondLook = decision({ what: "risk_second_look", subject: "click_confirm", value: "idempotent", by: "op_022" });
+    applyRiskDecisions(steps, [lowered, secondLook], rules, new Map(), clearedIssues);
+    expect(clearedIssues).toEqual([]);
+
+    const winIssues: RecorderIssue[] = [];
+    const disagree = decision({ what: "risk", subject: "click_confirm", value: "irreversible", by: "op_022" });
+    const win = applyRiskDecisions(steps, [lowered, disagree], rules, new Map(), winIssues);
+    expect(win[0]?.risk).toBe("irreversible");
+    expect(winIssues).toEqual([]);
   });
 
   test("a step with no risk decision at all is blocking, even when its risk was never lowered", () => {
@@ -224,87 +210,89 @@ describe("applyOutcomeNameDecisions", () => {
 describe("applyRecoveryDecisions", () => {
   const recovery = { commit_point: "click_confirm", reconciliation: null };
 
-  test("a waiver decision fills in the waiver", () => {
-    const decisions = [decision({ what: "waiver", subject: "recovery.reconciliation", value: JSON.stringify({ reason: "No check screen exists.", attempt_run: "run_2026-10-01_0123456789" }) })];
-    const issues: RecorderIssue[] = [];
-    const out = applyRecoveryDecisions(recovery, decisions, issues);
-    expect(out?.reconciliation).toEqual({ waiver: { reason: "No check screen exists.", attempt_run: "run_2026-10-01_0123456789" } });
-    expect(issues).toEqual([]);
-  });
+  test("a waiver or recovery decision fills in the reconciliation, and a link's mode defaults to reference", () => {
+    const waiverIssues: RecorderIssue[] = [];
+    const waived = applyRecoveryDecisions(
+      recovery,
+      [decision({ what: "waiver", subject: "recovery.reconciliation", value: JSON.stringify({ reason: "No check screen exists.", attempt_run: "run_2026-10-01_0123456789" }) })],
+      waiverIssues,
+    );
+    expect(waived?.reconciliation).toEqual({ waiver: { reason: "No check screen exists.", attempt_run: "run_2026-10-01_0123456789" } });
+    expect(waiverIssues).toEqual([]);
 
-  test("a recovery decision fills in the reconciliation link", () => {
     const value = JSON.stringify({
       capability: "kvfcu/find_account_by_reference@1",
       inputs: { member_id: "{input.member_id}" },
     });
-    const decisions = [decision({ what: "recovery", subject: "recovery.reconciliation", value })];
-    const out = applyRecoveryDecisions(recovery, decisions, []);
-    expect(out?.reconciliation).toMatchObject({
+    const linked = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value })], []);
+    expect(linked?.reconciliation).toMatchObject({
       check: { capability: "kvfcu/find_account_by_reference@1", not_found_outcomes: [], outputs: {} },
     });
-  });
+    expect(linked?.reconciliation).toMatchObject({ check: { mode: "reference" } });
 
-  test("a waiver without attempt_run is a blocking issue, and recovery is unchanged", () => {
-    const decisions = [decision({ what: "waiver", subject: "recovery.reconciliation", value: JSON.stringify({ reason: "No check screen exists." }) })];
-    const issues: RecorderIssue[] = [];
-    const out = applyRecoveryDecisions(recovery, decisions, issues);
-    expect(out).toBe(recovery);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_recovery_decision" }]);
-  });
-
-  test("a recovery link without a mode is a reference check", () => {
-    const value = JSON.stringify({ capability: "kvfcu/find_account_by_reference@1", inputs: { member_id: "{input.member_id}" } });
-    const out = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value })], []);
-    expect(out?.reconciliation).toMatchObject({ check: { mode: "reference" } });
-  });
-
-  test("a count_diff link carries mode and count_output", () => {
-    const value = JSON.stringify({
+    const diffValue = JSON.stringify({
       capability: "kvfcu/count_member_subaccounts@1",
       mode: "count_diff",
       count_output: "sub_account_count",
       inputs: { member_id: "{input.member_id}" },
     });
     const issues: RecorderIssue[] = [];
-    const out = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value })], issues);
-    expect(out?.reconciliation).toMatchObject({ check: { mode: "count_diff", count_output: "sub_account_count" } });
+    const diffed = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value: diffValue })], issues);
+    expect(diffed?.reconciliation).toMatchObject({ check: { mode: "count_diff", count_output: "sub_account_count" } });
     expect(issues).toEqual([]);
   });
 
-  test("an unknown mode is a blocking issue, and recovery is unchanged", () => {
-    const value = JSON.stringify({ capability: "kvfcu/count_member_subaccounts@1", mode: "bogus", inputs: {} });
-    const issues: RecorderIssue[] = [];
-    const out = applyRecoveryDecisions(recovery, [decision({ what: "recovery", subject: "recovery.reconciliation", value })], issues);
-    expect(out).toBe(recovery);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_recovery_decision" }]);
-  });
-
-  test("a value that will not parse is a blocking issue, and recovery is unchanged", () => {
-    const decisions = [decision({ what: "waiver", subject: "recovery.reconciliation", value: "not json" })];
-    const issues: RecorderIssue[] = [];
-    const out = applyRecoveryDecisions(recovery, decisions, issues);
-    expect(out).toBe(recovery);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_recovery_decision" }]);
+  test("an invalid recovery decision is a blocking issue, and recovery is unchanged", () => {
+    const badValues: [string, string, string][] = [
+      ["a waiver without attempt_run", "waiver", JSON.stringify({ reason: "No check screen exists." })],
+      [
+        "an unknown mode",
+        "recovery",
+        JSON.stringify({ capability: "kvfcu/count_member_subaccounts@1", mode: "bogus", inputs: {} }),
+      ],
+      ["a value that will not parse", "waiver", "not json"],
+    ];
+    for (const [name, what, value] of badValues) {
+      const issues: RecorderIssue[] = [];
+      const out = applyRecoveryDecisions(
+        recovery,
+        [decision({ what: what as "waiver" | "recovery", subject: "recovery.reconciliation", value })],
+        issues,
+      );
+      expect(out, name).toBe(recovery);
+      expect(issues, name).toMatchObject([{ level: "blocking", code: "invalid_recovery_decision" }]);
+    }
   });
 });
 
 describe("applyEditDecisions", () => {
-  test("edits a plain field", () => {
+  test("edits a plain field, renames with every reference, and replaces paths", () => {
     const artifact = baseArtifact();
-    const decisions = [decision({ what: "edit", subject: "about.when_to_use", value: "Use when opening a share account." })];
-    const out = applyEditDecisions(artifact, decisions, []);
-    expect(out.about.when_to_use).toBe("Use when opening a share account.");
-  });
+    const plain = applyEditDecisions(
+      artifact,
+      [decision({ what: "edit", subject: "about.when_to_use", value: "Use when opening a share account." })],
+      [],
+    );
+    expect(plain.about.when_to_use).toBe("Use when opening a share account.");
 
-  test("a rename updates every reference to the old ID", () => {
-    const artifact = baseArtifact();
-    const decisions = [decision({ what: "edit", subject: "targets.search_button.id", value: "find_button" })];
-    const issues: RecorderIssue[] = [];
-    const out = applyEditDecisions(artifact, decisions, issues);
-    expect(issues).toEqual([]);
-    expect(out.targets.some((t) => t.id === "find_button")).toBe(true);
-    const step = out.steps.find((s) => s.id === "click_search");
-    expect(step?.action).toMatchObject({ target: "find_button" });
+    const renameIssues: RecorderIssue[] = [];
+    const renamed = applyEditDecisions(
+      artifact,
+      [decision({ what: "edit", subject: "targets.search_button.id", value: "find_button" })],
+      renameIssues,
+    );
+    expect(renameIssues).toEqual([]);
+    expect(renamed.targets.some((t) => t.id === "find_button")).toBe(true);
+    expect(renamed.steps.find((s) => s.id === "click_search")?.action).toMatchObject({ target: "find_button" });
+
+    const pathIssues: RecorderIssue[] = [];
+    const paths = applyEditDecisions(
+      artifact,
+      [decision({ what: "edit", subject: "runs_on.paths", value: JSON.stringify(["/login", "/home"]) })],
+      pathIssues,
+    );
+    expect(pathIssues).toEqual([]);
+    expect(paths.runs_on.paths).toEqual(["/login", "/home"]);
   });
 
   test("an edit that would produce an invalid artifact is a blocking issue, not a throw", () => {
@@ -316,31 +304,18 @@ describe("applyEditDecisions", () => {
     expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit" }]);
   });
 
-  test("runs_on.paths replaces the whole list", () => {
-    const artifact = baseArtifact();
-    const decisions = [decision({ what: "edit", subject: "runs_on.paths", value: JSON.stringify(["/login", "/home"]) })];
-    const issues: RecorderIssue[] = [];
-    const out = applyEditDecisions(artifact, decisions, issues);
-    expect(issues).toEqual([]);
-    expect(out.runs_on.paths).toEqual(["/login", "/home"]);
-  });
-
-  test("runs_on.paths with bad JSON is a blocking invalid_edit, and the candidate is unchanged", () => {
-    const artifact = baseArtifact();
-    const decisions = [decision({ what: "edit", subject: "runs_on.paths", value: "not json" })];
-    const issues: RecorderIssue[] = [];
-    const out = applyEditDecisions(artifact, decisions, issues);
-    expect(out).toEqual(artifact);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "runs_on.paths" }]);
-  });
-
-  test("runs_on.paths with a pattern that fails the path-pattern parse is a blocking invalid_edit", () => {
-    const artifact = baseArtifact();
-    const decisions = [decision({ what: "edit", subject: "runs_on.paths", value: JSON.stringify(["home"]) })];
-    const issues: RecorderIssue[] = [];
-    const out = applyEditDecisions(artifact, decisions, issues);
-    expect(out).toEqual(artifact);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "runs_on.paths" }]);
+  test("runs_on.paths with bad JSON or a bad path pattern is a blocking invalid_edit, candidate unchanged", () => {
+    const bad: [string, string][] = [
+      ["bad JSON", "not json"],
+      ["a pattern that fails the path-pattern parse", JSON.stringify(["home"])],
+    ];
+    for (const [name, value] of bad) {
+      const artifact = baseArtifact();
+      const issues: RecorderIssue[] = [];
+      const out = applyEditDecisions(artifact, [decision({ what: "edit", subject: "runs_on.paths", value })], issues);
+      expect(out, name).toEqual(artifact);
+      expect(issues, name).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "runs_on.paths" }]);
+    }
   });
 
   test("conditions.<id> replaces a condition's check, keeping its id and description", () => {
@@ -363,38 +338,26 @@ describe("applyEditDecisions", () => {
     });
   });
 
-  test("conditions.<id> with bad JSON is a blocking invalid_edit", () => {
-    const artifact = baseArtifact();
-    const decisions = [decision({ what: "edit", subject: "conditions.home_page_shown", value: "not json" })];
-    const issues: RecorderIssue[] = [];
-    const out = applyEditDecisions(artifact, decisions, issues);
-    expect(out).toEqual(artifact);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "conditions.home_page_shown" }]);
-  });
-
-  test("conditions.<id> pointing at a target that does not exist is a blocking invalid_edit", () => {
-    const artifact = baseArtifact();
-    const decisions = [
-      decision({
-        what: "edit",
-        subject: "conditions.home_page_shown",
-        value: JSON.stringify({ check: "element_visible", target: "no_such_target" }),
-      }),
+  test("conditions.<id> with bad JSON, a missing target, or an unknown condition is a blocking invalid_edit", () => {
+    const cases: [string, string, string][] = [
+      ["bad JSON", "conditions.home_page_shown", "not json"],
+      [
+        "a target that does not exist",
+        "conditions.home_page_shown",
+        JSON.stringify({ check: "element_visible", target: "no_such_target" }),
+      ],
+      [
+        "an unknown condition",
+        "conditions.no_such_condition",
+        JSON.stringify({ check: "location", pattern: "/home" }),
+      ],
     ];
-    const issues: RecorderIssue[] = [];
-    const out = applyEditDecisions(artifact, decisions, issues);
-    expect(out).toEqual(artifact);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "conditions.home_page_shown" }]);
-  });
-
-  test("conditions.<id> for an unknown condition is a blocking invalid_edit", () => {
-    const artifact = baseArtifact();
-    const decisions = [
-      decision({ what: "edit", subject: "conditions.no_such_condition", value: JSON.stringify({ check: "location", pattern: "/home" }) }),
-    ];
-    const issues: RecorderIssue[] = [];
-    const out = applyEditDecisions(artifact, decisions, issues);
-    expect(out).toEqual(artifact);
-    expect(issues).toMatchObject([{ level: "blocking", code: "invalid_edit", subject: "conditions.no_such_condition" }]);
+    for (const [name, subject, value] of cases) {
+      const artifact = baseArtifact();
+      const issues: RecorderIssue[] = [];
+      const out = applyEditDecisions(artifact, [decision({ what: "edit", subject, value })], issues);
+      expect(out, name).toEqual(artifact);
+      expect(issues, name).toMatchObject([{ level: "blocking", code: "invalid_edit", subject }]);
+    }
   });
 });

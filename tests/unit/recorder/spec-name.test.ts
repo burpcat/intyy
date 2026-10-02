@@ -80,18 +80,16 @@ describe("which spec the recorder loads for a run", () => {
 });
 
 describe("RunJson's spec field", () => {
-  test.each(["kvfcu/x", "kvfcu/open_share_subaccount.at_limit"])("accepts %s", (spec) => {
-    expect(RunJson.safeParse(runJson({ spec })).success).toBe(true);
-  });
-
-  test("is optional", () => {
+  test("is optional and accepts a well-formed name", () => {
+    for (const spec of ["kvfcu/x", "kvfcu/open_share_subaccount.at_limit"]) {
+      expect(RunJson.safeParse(runJson({ spec })).success, spec).toBe(true);
+    }
     expect(RunJson.safeParse(runJson({})).success).toBe(true);
   });
 
-  test.each(["x", "kvfcu/", "kvfcu/x.", "KVFCU/x", "kvfcu/x.a.b", "kvfcu/x y", ""])(
-    "rejects %j",
-    (spec) => {
-      expect(RunJson.safeParse(runJson({ spec })).success).toBe(false);
-    },
-  );
+  test("rejects a malformed name", () => {
+    for (const spec of ["x", "kvfcu/", "kvfcu/x.", "KVFCU/x", "kvfcu/x.a.b", "kvfcu/x y", ""]) {
+      expect(RunJson.safeParse(runJson({ spec })).success, JSON.stringify(spec)).toBe(false);
+    }
+  });
 });

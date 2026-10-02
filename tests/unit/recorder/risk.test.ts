@@ -18,27 +18,30 @@ function step(id: string, risk: "idempotent" | "irreversible"): Step {
 }
 
 describe("pickCommitPoint", () => {
-  test("read-only capabilities never have a commit point", () => {
-    expect(pickCommitPoint([step("a", "irreversible")], "read_only", [])).toBeNull();
-  });
-
-  test("exactly one irreversible step is the commit point", () => {
-    const issues: RecorderIssue[] = [];
-    expect(
-      pickCommitPoint([step("a", "idempotent"), step("b", "irreversible")], "commits", issues),
-    ).toBe("b");
-    expect(issues).toEqual([]);
-  });
-
-  test("zero or two irreversible steps is a blocking issue", () => {
-    const none: RecorderIssue[] = [];
-    expect(pickCommitPoint([step("a", "idempotent")], "commits", none)).toBeNull();
-    expect(none).toHaveLength(1);
-    const two: RecorderIssue[] = [];
-    expect(
-      pickCommitPoint([step("a", "irreversible"), step("b", "irreversible")], "commits", two),
-    ).toBeNull();
-    expect(two).toHaveLength(1);
+  test("pickCommitPoint finds none for read-only, one for a single irreversible step, and blocks otherwise", () => {
+    {
+      // read-only capabilities never have a commit point
+      expect(pickCommitPoint([step("a", "irreversible")], "read_only", [])).toBeNull();
+    }
+    {
+      // exactly one irreversible step is the commit point
+      const issues: RecorderIssue[] = [];
+      expect(
+        pickCommitPoint([step("a", "idempotent"), step("b", "irreversible")], "commits", issues),
+      ).toBe("b");
+      expect(issues).toEqual([]);
+    }
+    {
+      // zero or two irreversible steps is a blocking issue
+      const none: RecorderIssue[] = [];
+      expect(pickCommitPoint([step("a", "idempotent")], "commits", none)).toBeNull();
+      expect(none).toHaveLength(1);
+      const two: RecorderIssue[] = [];
+      expect(
+        pickCommitPoint([step("a", "irreversible"), step("b", "irreversible")], "commits", two),
+      ).toBeNull();
+      expect(two).toHaveLength(1);
+    }
   });
 });
 

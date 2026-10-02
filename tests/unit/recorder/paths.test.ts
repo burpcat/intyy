@@ -4,17 +4,14 @@ import { describe, expect, test } from "vitest";
 import { buildPaths, toPathPattern } from "../../../src/core/recorder/paths.js";
 
 describe("toPathPattern", () => {
-  test("a dynamic path segment becomes *", () => {
+  test("toPathPattern makes dynamic segments *, keeps a constant query value, and keeps a plain location", () => {
+    // a dynamic path segment becomes *
     expect(toPathPattern("/members/48213")).toBe("/members/*");
     expect(toPathPattern("/members/{input.member_id}")).toBe("/members/*");
-  });
-
-  test("a constant query value stays; a dynamic one is dropped", () => {
+    // a constant query value stays; a dynamic one is dropped
     expect(toPathPattern("/main.do?cmd=view")).toBe("/main.do?cmd=view");
     expect(toPathPattern("/main.do?cmd=view&id=48213")).toBe("/main.do?cmd=view");
-  });
-
-  test("a plain location with no dynamic part is kept as is", () => {
+    // a plain location with no dynamic part is kept as is
     expect(toPathPattern("/login.do")).toBe("/login.do");
     expect(toPathPattern("/")).toBe("/");
   });
