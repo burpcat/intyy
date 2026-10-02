@@ -322,7 +322,7 @@ describe("DOM snapshots (section 4 §9.13, section 3 §7.6)", () => {
 
   const masked = maskDom(html, redactor());
 
-  test("no raw member text survives anywhere", () => {
+  test("a DOM snapshot masks member text, strips risky parts, keeps layout, and labels table cells", () => {
     for (const raw of [
       "100107",
       "Dana",
@@ -337,33 +337,22 @@ describe("DOM snapshots (section 4 §9.13, section 3 §7.6)", () => {
     ]) {
       expect(masked, raw).not.toContain(raw);
     }
-  });
-
-  test("scripts, inline handlers, comments, hidden fields, values, and textarea text are removed", () => {
     expect(masked).not.toMatch(/var m|onload|onclick|<!--|type="hidden"|value=|call /);
     expect(masked).toContain("<script></script>");
     expect(masked).toContain("<textarea");
-  });
-
-  test("text attributes and addresses pass the text rules", () => {
     expect(masked).toContain('href="/members/{input.member_id}"');
     expect(masked).toContain('action="/members/{input.member_id}/save"');
     expect(masked).toMatch(/placeholder="SSN \[ssn#1\]"/);
     expect(masked).toMatch(/title="Member Name: \[name#\d\]"/);
-  });
-
-  test("table cells use their column header, else the cell to the left, as a label", () => {
     expect(masked).toMatch(/<td>\[name#\d\]<\/td>/);
     expect(masked).toContain("<td>Main</td>");
     expect(masked).toMatch(/<td>\[address#\d\]<\/td>/);
-  });
-
-  test("layout survives: tags and plain words stay", () => {
     expect(masked).toContain("<!DOCTYPE html>");
     expect(masked).toContain("<th>Branch</th>");
     expect(masked).toContain(">Open</a>");
     expect(masked).toContain("&amp;");
   });
+
 });
 
 describe("accessibility snapshots (section 4 §9.13)", () => {

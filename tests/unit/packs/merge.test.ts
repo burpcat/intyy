@@ -65,66 +65,70 @@ const APP = { level: "app" as const, app: "kvfcu" };
 const TENANT = { level: "tenant" as const, tenant: "keystone", app: "kvfcu" };
 
 describe("merge by ID: the most specific scope wins whole", () => {
-  test("an app-scope handler with the same ID replaces the global one", () => {
-    const globalLayer = layer(GLOBAL, 1);
-    const appLayer = layer(APP, 4, { overrides: true, response: [{ type: "click", target: "ok_button", risk: "reversible" }] });
-    const result = buildFrozenSet([globalLayer, appLayer], { appVersion: "9.2" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.handlers).toHaveLength(1);
-    expect(result.value.handlers[0]).toMatchObject({ id: "popup_handler", response: [{ type: "click", target: "ok_button", risk: "reversible" }] });
-    expect(result.value.runStart.from).toEqual({ popup_handler: "app:kvfcu" });
-    expect(result.value.runStart.packs).toEqual({ global: 1, "app:kvfcu": 4 });
-  });
-
-  test("a tenant pack can replace just one condition; the inherited handler then reads it", () => {
-    const globalLayer = layer(GLOBAL, 1);
-    const tenantConditionOnly: PackLayer = {
-      scope: TENANT,
-      revision: 1,
-      pack: Pack.parse({
-        schema: "intyy.pack/1.0",
+  test("merge by ID: the most specific scope wins whole", () => {
+    {
+      const globalLayer = layer(GLOBAL, 1);
+      const appLayer = layer(APP, 4, { overrides: true, response: [{ type: "click", target: "ok_button", risk: "reversible" }] });
+      const result = buildFrozenSet([globalLayer, appLayer], { appVersion: "9.2" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.handlers).toHaveLength(1);
+      expect(result.value.handlers[0]).toMatchObject({ id: "popup_handler", response: [{ type: "click", target: "ok_button", risk: "reversible" }] });
+      expect(result.value.runStart.from).toEqual({ popup_handler: "app:kvfcu" });
+      expect(result.value.runStart.packs).toEqual({ global: 1, "app:kvfcu": 4 });
+    }
+    {
+      const globalLayer = layer(GLOBAL, 1);
+      const tenantConditionOnly: PackLayer = {
         scope: TENANT,
         revision: 1,
-        reason: "Reword the detector.",
-        targets: [],
-        conditions: [
-          { id: "popup_shown", overrides: true, check: "element_visible", description: "Tenant's own words", target: "ok_button" },
-        ],
-        handlers: [],
-        provenance: { runs: [], decisions: [], sealed: null },
-      }),
-    };
-    const result = buildFrozenSet([globalLayer, tenantConditionOnly], { appVersion: "9.2" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.conditions).toHaveLength(1);
-    expect(result.value.conditions[0]).toMatchObject({ description: "Tenant's own words" });
-    expect(result.value.handlers.map((h) => h.id)).toEqual(["popup_handler"]);
+        pack: Pack.parse({
+          schema: "intyy.pack/1.0",
+          scope: TENANT,
+          revision: 1,
+          reason: "Reword the detector.",
+          targets: [],
+          conditions: [
+            { id: "popup_shown", overrides: true, check: "element_visible", description: "Tenant's own words", target: "ok_button" },
+          ],
+          handlers: [],
+          provenance: { runs: [], decisions: [], sealed: null },
+        }),
+      };
+      const result = buildFrozenSet([globalLayer, tenantConditionOnly], { appVersion: "9.2" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.conditions).toHaveLength(1);
+      expect(result.value.conditions[0]).toMatchObject({ description: "Tenant's own words" });
+      expect(result.value.handlers.map((h) => h.id)).toEqual(["popup_handler"]);
+    }
   });
+
 });
 
 describe("disable", () => {
-  test("a tenant pack disables an inherited handler; it drops with no warning", () => {
-    const globalLayer = layer(GLOBAL, 1);
-    const tenantLayer = layer(TENANT, 1, { disable: ["popup_handler"], handlerId: "tenant_only", detector: "tenant_only_shown" });
-    const result = buildFrozenSet([globalLayer, tenantLayer], { appVersion: "9.2" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.handlers.map((h) => h.id)).toEqual(["tenant_only"]);
-    expect(result.value.warnings).toEqual([]);
+  test("disable: an inherited handler drops quietly, an unknown ID only warns", () => {
+    {
+      const globalLayer = layer(GLOBAL, 1);
+      const tenantLayer = layer(TENANT, 1, { disable: ["popup_handler"], handlerId: "tenant_only", detector: "tenant_only_shown" });
+      const result = buildFrozenSet([globalLayer, tenantLayer], { appVersion: "9.2" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.handlers.map((h) => h.id)).toEqual(["tenant_only"]);
+      expect(result.value.warnings).toEqual([]);
+    }
+    {
+      const globalLayer = layer(GLOBAL, 1);
+      const tenantLayer = layer(TENANT, 1, { disable: ["no_such_handler"], handlerId: "tenant_only", detector: "tenant_only_shown" });
+      const result = buildFrozenSet([globalLayer, tenantLayer], { appVersion: "9.2" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.warnings).toEqual([
+        { code: "handler_disable_unknown", handlerId: "no_such_handler", message: "disable names no_such_handler, which does not exist" },
+      ]);
+    }
   });
 
-  test("disabling an unknown ID is a warning, never fatal: the parent may have removed it", () => {
-    const globalLayer = layer(GLOBAL, 1);
-    const tenantLayer = layer(TENANT, 1, { disable: ["no_such_handler"], handlerId: "tenant_only", detector: "tenant_only_shown" });
-    const result = buildFrozenSet([globalLayer, tenantLayer], { appVersion: "9.2" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.warnings).toEqual([
-      { code: "handler_disable_unknown", handlerId: "no_such_handler", message: "disable names no_such_handler, which does not exist" },
-    ]);
-  });
 });
 
 describe("no pack files: an empty frozen set, never handler_set_invalid", () => {
@@ -176,93 +180,92 @@ describe("step 4: app_versions", () => {
 });
 
 describe("steps 5 to 7: policy, artifact-paths, and session filters", () => {
-  test("policyAllows: false drops the handler, with a warning", () => {
-    const result = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2", policyAllows: () => false });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.handlers).toEqual([]);
-    expect(result.value.warnings).toEqual([{ code: "handler_excluded_by_policy", handlerId: "popup_handler", message: "popup_handler was dropped (handler_excluded_by_policy)" }]);
+  test("steps 5 to 7: policy, artifact-path, and session filters", () => {
+    {
+      const result = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2", policyAllows: () => false });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.handlers).toEqual([]);
+      expect(result.value.warnings).toEqual([{ code: "handler_excluded_by_policy", handlerId: "popup_handler", message: "popup_handler was dropped (handler_excluded_by_policy)" }]);
+    }
+    {
+      const result = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2", pathsAllow: () => false });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.warnings.map((w) => w.code)).toEqual(["handler_excluded_by_paths"]);
+    }
+    {
+      const result = buildFrozenSet([layer(GLOBAL, 1, { signInResponse: true })], { appVersion: "9.2", hasSession: false });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.warnings.map((w) => w.code)).toEqual(["handler_excluded_no_session"]);
+    }
+    {
+      const result = buildFrozenSet([layer(GLOBAL, 1, { signInResponse: true })], { appVersion: "9.2", hasSession: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.handlers.map((h) => h.id)).toEqual(["popup_handler"]);
+    }
+    {
+      const pack = Pack.parse({
+        schema: "intyy.pack/1.0",
+        scope: GLOBAL,
+        revision: 1,
+        reason: "Naming handler.",
+        targets: [],
+        conditions: [{ id: "maintenance_shown", check: "text_visible", description: "x", text: "under maintenance", match: "contains" }],
+        handlers: [
+          { id: "maintenance", description: "x", class: "hard_failure", detector: "maintenance_shown", failure: "app_error", fixtures: { fire: ["a"], no_fire: ["b"] } },
+        ],
+        provenance: { runs: [], decisions: [], sealed: null },
+      });
+      const result = buildFrozenSet([{ scope: GLOBAL, revision: 1, pack }], { appVersion: "9.2", hasSession: false });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.handlers.map((h) => h.id)).toEqual(["maintenance"]);
+      expect(result.value.warnings).toEqual([]);
+    }
+    {
+      const result = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.handlers.map((h) => h.id)).toEqual(["popup_handler"]);
+      expect(result.value.warnings).toEqual([]);
+    }
   });
 
-  test("pathsAllow: false drops the handler, with a warning", () => {
-    const result = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2", pathsAllow: () => false });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.warnings.map((w) => w.code)).toEqual(["handler_excluded_by_paths"]);
-  });
-
-  test("a sign_in response with no session link is dropped, with a warning", () => {
-    const result = buildFrozenSet([layer(GLOBAL, 1, { signInResponse: true })], { appVersion: "9.2", hasSession: false });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.warnings.map((w) => w.code)).toEqual(["handler_excluded_no_session"]);
-  });
-
-  test("a sign_in response is kept when the artifact does link a session", () => {
-    const result = buildFrozenSet([layer(GLOBAL, 1, { signInResponse: true })], { appVersion: "9.2", hasSession: true });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.handlers.map((h) => h.id)).toEqual(["popup_handler"]);
-  });
-
-  test("a non-recoverable handler is never dropped by the session filter", () => {
-    const pack = Pack.parse({
-      schema: "intyy.pack/1.0",
-      scope: GLOBAL,
-      revision: 1,
-      reason: "Naming handler.",
-      targets: [],
-      conditions: [{ id: "maintenance_shown", check: "text_visible", description: "x", text: "under maintenance", match: "contains" }],
-      handlers: [
-        { id: "maintenance", description: "x", class: "hard_failure", detector: "maintenance_shown", failure: "app_error", fixtures: { fire: ["a"], no_fire: ["b"] } },
-      ],
-      provenance: { runs: [], decisions: [], sealed: null },
-    });
-    const result = buildFrozenSet([{ scope: GLOBAL, revision: 1, pack }], { appVersion: "9.2", hasSession: false });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.handlers.map((h) => h.id)).toEqual(["maintenance"]);
-    expect(result.value.warnings).toEqual([]);
-  });
-
-  test("undefined skips a filter (no policy or artifact context supplied)", () => {
-    const result = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.handlers.map((h) => h.id)).toEqual(["popup_handler"]);
-    expect(result.value.warnings).toEqual([]);
-  });
 });
 
 describe("step 8: validation, step 9: hash", () => {
-  test("a dangling detector fails the whole run: handler_set_invalid", () => {
-    const bad = layer(GLOBAL, 1, { detector: "popup_shown" });
-    // Why direct mutation, not the schema: a merged set with a broken cross-reference is
-    // exactly what step 8 exists to catch; the pack itself parses fine on its own.
-    const brokenPack = { ...bad.pack, conditions: [] };
-    const result = buildFrozenSet([{ ...bad, pack: brokenPack }], { appVersion: "9.2" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.failure).toBe("handler_set_invalid");
-    expect(result.detail).toContain("popup_handler.detector -> popup_shown");
+  test("step 8 and 9: a dangling detector fails the run, and the hash tracks the handlers", () => {
+    {
+      const bad = layer(GLOBAL, 1, { detector: "popup_shown" });
+      // Why direct mutation, not the schema: a merged set with a broken cross-reference is
+      // exactly what step 8 exists to catch; the pack itself parses fine on its own.
+      const brokenPack = { ...bad.pack, conditions: [] };
+      const result = buildFrozenSet([{ ...bad, pack: brokenPack }], { appVersion: "9.2" });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.failure).toBe("handler_set_invalid");
+      expect(result.detail).toContain("popup_handler.detector -> popup_shown");
+    }
+    {
+      const layers = [layer(GLOBAL, 1), layer(APP, 2, { handlerId: "other_handler", detector: "other_shown" })];
+      const a = buildFrozenSet(layers, { appVersion: "9.2" });
+      const b = buildFrozenSet(layers, { appVersion: "9.2" });
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      expect(a.value.runStart.hash).toBe(b.value.runStart.hash);
+    }
+    {
+      const a = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2" });
+      const b = buildFrozenSet([layer(GLOBAL, 1, { priority: 5 })], { appVersion: "9.2" });
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      expect(a.value.runStart.hash).not.toBe(b.value.runStart.hash);
+    }
   });
 
-  test("the same layers always give the same hash", () => {
-    const layers = [layer(GLOBAL, 1), layer(APP, 2, { handlerId: "other_handler", detector: "other_shown" })];
-    const a = buildFrozenSet(layers, { appVersion: "9.2" });
-    const b = buildFrozenSet(layers, { appVersion: "9.2" });
-    expect(a.ok && b.ok).toBe(true);
-    if (!a.ok || !b.ok) return;
-    expect(a.value.runStart.hash).toBe(b.value.runStart.hash);
-  });
-
-  test("a changed handler changes the hash", () => {
-    const a = buildFrozenSet([layer(GLOBAL, 1)], { appVersion: "9.2" });
-    const b = buildFrozenSet([layer(GLOBAL, 1, { priority: 5 })], { appVersion: "9.2" });
-    expect(a.ok && b.ok).toBe(true);
-    if (!a.ok || !b.ok) return;
-    expect(a.value.runStart.hash).not.toBe(b.value.runStart.hash);
-  });
 });
 
 describe("breakTie (section 5 §7.6)", () => {
@@ -283,27 +286,26 @@ describe("breakTie (section 5 §7.6)", () => {
     handlerScope: new Map(ids.map((i) => [i.id, i.scope])),
   });
 
-  test("one match is always the winner, with no comparison", () => {
-    expect(breakTie(["only_one"], scoped([{ id: "only_one", scope: GLOBAL }]))).toEqual({ winner: "only_one" });
+  test("breakTie: one match wins, then scope, then priority, then a named tie, and an empty list throws", () => {
+    {
+      expect(breakTie(["only_one"], scoped([{ id: "only_one", scope: GLOBAL }]))).toEqual({ winner: "only_one" });
+    }
+    {
+      const frozen = scoped([{ id: "g", scope: GLOBAL }, { id: "t", scope: TENANT }]);
+      expect(breakTie(["g", "t"], frozen)).toEqual({ winner: "t" });
+    }
+    {
+      const frozen = scoped([{ id: "low", scope: APP, priority: 0 }, { id: "high", scope: APP, priority: 1 }]);
+      expect(breakTie(["low", "high"], frozen)).toEqual({ winner: "high" });
+    }
+    {
+      const frozen = scoped([{ id: "a", scope: APP, priority: 1 }, { id: "b", scope: APP, priority: 1 }]);
+      const result = breakTie(["a", "b"], frozen);
+      expect("tied" in result && [...result.tied].sort()).toEqual(["a", "b"]);
+    }
+    {
+      expect(() => breakTie([], scoped([]))).toThrow();
+    }
   });
 
-  test("the more specific scope wins", () => {
-    const frozen = scoped([{ id: "g", scope: GLOBAL }, { id: "t", scope: TENANT }]);
-    expect(breakTie(["g", "t"], frozen)).toEqual({ winner: "t" });
-  });
-
-  test("same scope: the higher priority wins", () => {
-    const frozen = scoped([{ id: "low", scope: APP, priority: 0 }, { id: "high", scope: APP, priority: 1 }]);
-    expect(breakTie(["low", "high"], frozen)).toEqual({ winner: "high" });
-  });
-
-  test("same scope, same priority: tied, naming every candidate", () => {
-    const frozen = scoped([{ id: "a", scope: APP, priority: 1 }, { id: "b", scope: APP, priority: 1 }]);
-    const result = breakTie(["a", "b"], frozen);
-    expect("tied" in result && [...result.tied].sort()).toEqual(["a", "b"]);
-  });
-
-  test("throws on an empty match list: only a bug calls it with none", () => {
-    expect(() => breakTie([], scoped([]))).toThrow();
-  });
 });

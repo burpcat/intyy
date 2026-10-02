@@ -84,254 +84,250 @@ describe("a clean pack passes every check", () => {
 });
 
 describe("format", () => {
-  test("a duplicate handler ID is rejected", () => {
-    const codes = check((p) => {
-      const handlers = p.handlers as Record<string, unknown>[];
-      handlers.push({ ...handlers[0] });
-    });
-    expect(codes).toContain("duplicate_id");
+  test("format: a duplicate ID, disable scope, and app_versions scope", () => {
+    {
+      const codes = check((p) => {
+        const handlers = p.handlers as Record<string, unknown>[];
+        handlers.push({ ...handlers[0] });
+      });
+      expect(codes).toContain("duplicate_id");
+    }
+    {
+      const p = basePack();
+      firstTarget(p).id = "OkButton";
+      expect(Pack.safeParse(p).success).toBe(false);
+    }
+    {
+      const codes = check((p) => {
+        p.disable = ["some_handler"];
+      });
+      expect(codes).toContain("disable_not_versioned");
+    }
+    {
+      const codes = check((p) => {
+        p.scope = { level: "tenant", tenant: "keystone", app: "kvfcu" };
+        p.disable = ["some_handler"];
+      });
+      expect(codes).not.toContain("disable_not_versioned");
+    }
+    {
+      const codes = check((p) => {
+        firstHandler(p).app_versions = ["9.*"];
+      });
+      expect(codes).toContain("app_versions_not_tenant");
+    }
+    {
+      const codes = check((p) => {
+        p.scope = { level: "tenant", tenant: "keystone", app: "kvfcu" };
+        firstHandler(p).app_versions = ["9.*"];
+      });
+      expect(codes).not.toContain("app_versions_not_tenant");
+    }
   });
 
-  test("a bad-case ID fails the schema itself, before checkPack ever runs", () => {
-    const p = basePack();
-    firstTarget(p).id = "OkButton";
-    expect(Pack.safeParse(p).success).toBe(false);
-  });
-
-  test("disable outside app_version/tenant scope is rejected", () => {
-    const codes = check((p) => {
-      p.disable = ["some_handler"];
-    });
-    expect(codes).toContain("disable_not_versioned");
-  });
-
-  test("disable at tenant scope is fine", () => {
-    const codes = check((p) => {
-      p.scope = { level: "tenant", tenant: "keystone", app: "kvfcu" };
-      p.disable = ["some_handler"];
-    });
-    expect(codes).not.toContain("disable_not_versioned");
-  });
-
-  test("app_versions on a handler outside tenant scope is rejected", () => {
-    const codes = check((p) => {
-      firstHandler(p).app_versions = ["9.*"];
-    });
-    expect(codes).toContain("app_versions_not_tenant");
-  });
-
-  test("app_versions on a handler at tenant scope is fine", () => {
-    const codes = check((p) => {
-      p.scope = { level: "tenant", tenant: "keystone", app: "kvfcu" };
-      firstHandler(p).app_versions = ["9.*"];
-    });
-    expect(codes).not.toContain("app_versions_not_tenant");
-  });
 });
 
 describe("references", () => {
-  test("a handler's detector naming an unknown condition is a dangling ref", () => {
-    const codes = check((p) => {
-      firstHandler(p).detector = "no_such_condition";
-    });
-    expect(codes).toContain("dangling_ref");
-  });
-
-  test("a condition's target naming an unknown target is a dangling ref", () => {
-    const codes = check((p) => {
-      firstCondition(p).target = "no_such_target";
-    });
-    expect(codes).toContain("dangling_ref");
-  });
-
-  test("a ref cycle between two conditions is rejected", () => {
-    const codes = check((p) => {
-      p.conditions = [
-        { id: "a", description: "a", check: "ref", ref: "b" },
-        { id: "b", description: "b", check: "ref", ref: "a" },
-      ];
-      firstHandler(p).detector = "a";
-    });
-    expect(codes).toContain("ref_cycle");
-  });
-
-  test("{input.*} in a target's clue text is rejected: packs cannot know a capability's inputs", () => {
-    const codes = check((p) => {
-      firstTarget(p).clues = { role: "button", name: "OK", text: "{input.member_id}" };
-    });
-    expect(codes).toContain("bad_namespace");
-  });
-
-  test("{system.last_good_path} inside condition text is rejected: it belongs only in navigate", () => {
-    const codes = check((p) => {
-      (p.conditions as Record<string, unknown>[])[0] = {
-        id: "popup_shown",
-        check: "text_visible",
-        description: "The popup is showing",
-        text: "{system.last_good_path}",
-        match: "contains",
-      };
-    });
-    expect(codes).toContain("bad_namespace");
-  });
-
-  test("{system.last_good_path} as a navigate response location is fine", () => {
-    const codes = check((p) => {
-      const h = firstHandler(p);
-      h.response = [{ type: "navigate", location: "{system.last_good_path}", risk: "idempotent" }];
-      withRiskStamp(p);
-    });
-    expect(codes).toEqual([]);
-  });
-
-  test("a {secret.*} reference that is not the whole type value is rejected", () => {
-    const codes = check((p) => {
-      const h = firstHandler(p);
-      h.response = [{ type: "type", target: "ok_button", value: "prefix {secret.operator_password} suffix", risk: "idempotent" }];
-      withRiskStamp(p);
-    });
-    expect(codes).toContain("secret_not_whole_value");
-  });
-
-  test("a whole {secret.*} type value is fine when the policy declares it", () => {
-    const codes = check(
-      (p) => {
+  test("references: dangling refs, cycles, input, system, secret, output, and result references", () => {
+    {
+      const codes = check((p) => {
+        firstHandler(p).detector = "no_such_condition";
+      });
+      expect(codes).toContain("dangling_ref");
+    }
+    {
+      const codes = check((p) => {
+        firstCondition(p).target = "no_such_target";
+      });
+      expect(codes).toContain("dangling_ref");
+    }
+    {
+      const codes = check((p) => {
+        p.conditions = [
+          { id: "a", description: "a", check: "ref", ref: "b" },
+          { id: "b", description: "b", check: "ref", ref: "a" },
+        ];
+        firstHandler(p).detector = "a";
+      });
+      expect(codes).toContain("ref_cycle");
+    }
+    {
+      const codes = check((p) => {
+        firstTarget(p).clues = { role: "button", name: "OK", text: "{input.member_id}" };
+      });
+      expect(codes).toContain("bad_namespace");
+    }
+    {
+      const codes = check((p) => {
+        (p.conditions as Record<string, unknown>[])[0] = {
+          id: "popup_shown",
+          check: "text_visible",
+          description: "The popup is showing",
+          text: "{system.last_good_path}",
+          match: "contains",
+        };
+      });
+      expect(codes).toContain("bad_namespace");
+    }
+    {
+      const codes = check((p) => {
         const h = firstHandler(p);
-        h.response = [{ type: "type", target: "ok_button", value: "{secret.operator_password}", risk: "idempotent" }];
+        h.response = [{ type: "navigate", location: "{system.last_good_path}", risk: "idempotent" }];
         withRiskStamp(p);
-      },
-      { secretDeclared: (name) => name === "operator_password" },
-    );
-    expect(codes).toEqual([]);
+      });
+      expect(codes).toEqual([]);
+    }
+    {
+      const codes = check((p) => {
+        const h = firstHandler(p);
+        h.response = [{ type: "type", target: "ok_button", value: "prefix {secret.operator_password} suffix", risk: "idempotent" }];
+        withRiskStamp(p);
+      });
+      expect(codes).toContain("secret_not_whole_value");
+    }
+    {
+      const codes = check(
+        (p) => {
+          const h = firstHandler(p);
+          h.response = [{ type: "type", target: "ok_button", value: "{secret.operator_password}", risk: "idempotent" }];
+          withRiskStamp(p);
+        },
+        { secretDeclared: (name) => name === "operator_password" },
+      );
+      expect(codes).toEqual([]);
+    }
+    {
+      const codes = check((p) => {
+        const h = firstHandler(p);
+        h.response = [{ type: "type", target: "ok_button", value: "{result.account_number}", risk: "idempotent" }];
+        withRiskStamp(p);
+      });
+      expect(codes).toContain("bad_namespace");
+    }
   });
 
-  test("an {output.*} or {result.*} reference in a type value is rejected outright", () => {
-    const codes = check((p) => {
-      const h = firstHandler(p);
-      h.response = [{ type: "type", target: "ok_button", value: "{result.account_number}", risk: "idempotent" }];
-      withRiskStamp(p);
-    });
-    expect(codes).toContain("bad_namespace");
-  });
 });
 
 describe("detectors", () => {
-  test("a field_value check inside a pack condition is rejected", () => {
-    const codes = check((p) => {
-      p.conditions = [
-        { id: "popup_shown", check: "field_value", description: "x", target: "ok_button", value: "*", match: "wildcard" },
-      ];
-    });
-    expect(codes).toContain("no_field_value_in_pack");
+  test("detectors: field_value checks and masked text are rejected", () => {
+    {
+      const codes = check((p) => {
+        p.conditions = [
+          { id: "popup_shown", check: "field_value", description: "x", target: "ok_button", value: "*", match: "wildcard" },
+        ];
+      });
+      expect(codes).toContain("no_field_value_in_pack");
+    }
+    {
+      const codes = check((p) => {
+        p.conditions = [
+          { id: "popup_shown", check: "text_visible", description: "x", text: "Hello [name#1]", match: "contains" },
+        ];
+      });
+      expect(codes).toContain("mask_text_in_detector");
+    }
   });
 
-  test("mask text inside a detector's text_visible check is rejected", () => {
-    const codes = check((p) => {
-      p.conditions = [
-        { id: "popup_shown", check: "text_visible", description: "x", text: "Hello [name#1]", match: "contains" },
-      ];
-    });
-    expect(codes).toContain("mask_text_in_detector");
-  });
 });
 
 describe("actions (schema level)", () => {
-  test("a read action is not a legal pack response action", () => {
-    const p = basePack();
-    firstHandler(p).response = [{ type: "read", output: "x", risk: "idempotent" }];
-    expect(Pack.safeParse(p).success).toBe(false);
+  test("actions: legal response actions, risk, navigate paths, and provenance", () => {
+    {
+      const p = basePack();
+      firstHandler(p).response = [{ type: "read", output: "x", risk: "idempotent" }];
+      expect(Pack.safeParse(p).success).toBe(false);
+    }
+    {
+      const p = basePack();
+      firstHandler(p).response = [{ type: "click", target: "ok_button", risk: "irreversible" }];
+      expect(Pack.safeParse(p).success).toBe(false);
+    }
+    {
+      const p = basePack();
+      firstHandler(p).response = [{ type: "navigate", location: "home", risk: "idempotent" }];
+      expect(Pack.safeParse(p).success).toBe(false);
+    }
+    {
+      const codes = check((p) => {
+        (p.provenance as { decisions: unknown[] }).decisions = [];
+      });
+      expect(codes).toContain("missing_risk_decision");
+    }
+    {
+      const codes = check(
+        (p) => {
+          const h = firstHandler(p);
+          h.response = [{ type: "navigate", location: "/denied", risk: "idempotent" }];
+          withRiskStamp(p);
+        },
+        { pathAllowed: (path) => path !== "/denied" },
+      );
+      expect(codes).toContain("policy_path_denied");
+    }
   });
 
-  test("an irreversible risk on a response action is rejected by the schema", () => {
-    const p = basePack();
-    firstHandler(p).response = [{ type: "click", target: "ok_button", risk: "irreversible" }];
-    expect(Pack.safeParse(p).success).toBe(false);
-  });
-
-  test("a navigate location with no leading slash, and not {system.last_good_path}, fails the schema", () => {
-    const p = basePack();
-    firstHandler(p).response = [{ type: "navigate", location: "home", risk: "idempotent" }];
-    expect(Pack.safeParse(p).success).toBe(false);
-  });
-
-  test("every response action needs a risk decision in provenance", () => {
-    const codes = check((p) => {
-      (p.provenance as { decisions: unknown[] }).decisions = [];
-    });
-    expect(codes).toContain("missing_risk_decision");
-  });
-
-  test("a fixed navigate path outside the app's allowed paths is rejected, given a policy context", () => {
-    const codes = check(
-      (p) => {
-        const h = firstHandler(p);
-        h.response = [{ type: "navigate", location: "/denied", risk: "idempotent" }];
-        withRiskStamp(p);
-      },
-      { pathAllowed: (path) => path !== "/denied" },
-    );
-    expect(codes).toContain("policy_path_denied");
-  });
 });
 
 describe("classes (schema level)", () => {
-  test("a business_outcome handler with a recoverable-only field fails the schema", () => {
-    const p = basePack();
-    (p.handlers as Record<string, unknown>[])[0] = {
-      id: "member_not_found",
-      description: "No such member.",
-      class: "business_outcome",
-      detector: "popup_shown",
-      outcome: { code: "member_not_found", description: "No such member." },
-      response: [{ type: "click", target: "ok_button", risk: "idempotent" }],
-      fixtures: { fire: ["a"], no_fire: ["b"] },
-    };
-    expect(Pack.safeParse(p).success).toBe(false);
+  test("classes: schema rejects wrong fields and unlisted codes", () => {
+    {
+      const p = basePack();
+      (p.handlers as Record<string, unknown>[])[0] = {
+        id: "member_not_found",
+        description: "No such member.",
+        class: "business_outcome",
+        detector: "popup_shown",
+        outcome: { code: "member_not_found", description: "No such member." },
+        response: [{ type: "click", target: "ok_button", risk: "idempotent" }],
+        fixtures: { fire: ["a"], no_fire: ["b"] },
+      };
+      expect(Pack.safeParse(p).success).toBe(false);
+    }
+    {
+      const p = basePack();
+      (p.handlers as Record<string, unknown>[])[0] = {
+        id: "maintenance",
+        description: "Maintenance page.",
+        class: "hard_failure",
+        detector: "popup_shown",
+        failure: "not_a_real_code",
+        fixtures: { fire: ["a"], no_fire: ["b"] },
+      };
+      expect(Pack.safeParse(p).success).toBe(false);
+    }
   });
 
-  test("a hard_failure naming an unlisted code fails the schema", () => {
-    const p = basePack();
-    (p.handlers as Record<string, unknown>[])[0] = {
-      id: "maintenance",
-      description: "Maintenance page.",
-      class: "hard_failure",
-      detector: "popup_shown",
-      failure: "not_a_real_code",
-      fixtures: { fire: ["a"], no_fire: ["b"] },
-    };
-    expect(Pack.safeParse(p).success).toBe(false);
-  });
 });
 
 describe("overrides", () => {
-  test("a new ID must not set overrides: true", () => {
-    const codes = check((p) => {
-      firstHandler(p).overrides = true;
-    }, { ancestorHandlerIds: new Set() });
-    expect(codes).toContain("overrides_new_id");
-  });
-
-  test("an ID that reuses a parent's ID must set overrides: true", () => {
-    const codes = check(() => undefined, { ancestorHandlerIds: new Set(["popup_handler"]) });
-    expect(codes).toContain("overrides_missing");
-  });
-
-  test("overrides: true on a reused ID is fine", () => {
-    const codes = check(
-      (p) => {
+  test("overrides: a new ID, a reused ID, and no ancestor context", () => {
+    {
+      const codes = check((p) => {
         firstHandler(p).overrides = true;
-      },
-      { ancestorHandlerIds: new Set(["popup_handler"]) },
-    );
-    expect(codes).not.toContain("overrides_missing");
-    expect(codes).not.toContain("overrides_new_id");
+      }, { ancestorHandlerIds: new Set() });
+      expect(codes).toContain("overrides_new_id");
+    }
+    {
+      const codes = check(() => undefined, { ancestorHandlerIds: new Set(["popup_handler"]) });
+      expect(codes).toContain("overrides_missing");
+    }
+    {
+      const codes = check(
+        (p) => {
+          firstHandler(p).overrides = true;
+        },
+        { ancestorHandlerIds: new Set(["popup_handler"]) },
+      );
+      expect(codes).not.toContain("overrides_missing");
+      expect(codes).not.toContain("overrides_new_id");
+    }
+    {
+      const codes = check((p) => {
+        firstHandler(p).overrides = true;
+      });
+      expect(codes).not.toContain("overrides_new_id");
+      expect(codes).not.toContain("overrides_missing");
+    }
   });
 
-  test("with no ancestor context, override checks are skipped, not guessed", () => {
-    const codes = check((p) => {
-      firstHandler(p).overrides = true;
-    });
-    expect(codes).not.toContain("overrides_new_id");
-    expect(codes).not.toContain("overrides_missing");
-  });
 });

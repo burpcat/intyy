@@ -75,7 +75,7 @@ async function resealArtifact(f: Fixture, id: string, edit: (doc: Record<string,
 }
 
 describe("a clean publish", () => {
-  test("a run copies its folder, its batch's plan and report, and the artifacts it used", async () => {
+  test("a run copies its folder, its batch, and its artifacts; the manifest names and hashes each", async () => {
     const f = await certifyFixture();
     const got = await publish(f, runTarget(f.caseRunId));
     expect(got.ok).toBe(true);
@@ -102,12 +102,7 @@ describe("a clean publish", () => {
     }
     // The layout mirrors `state/evidence/`, and the baseline run was not named, so it stays out.
     expect(paths.some((p) => p.includes(f.baselineRunId))).toBe(false);
-  });
 
-  test("the manifest names every item, who and when, and a hash for every copied file", async () => {
-    const f = await certifyFixture();
-    const got = await publish(f, runTarget(f.caseRunId));
-    expect(got.ok).toBe(true);
     const manifest = PublishManifest.parse(JSON.parse(await text(f.dest, "manifest.json")));
     expect(manifest.schema).toBe("intyy.publish/1.0");
     expect(manifest.by).toBe("op_017");
@@ -120,19 +115,15 @@ describe("a clean publish", () => {
     );
     expect(manifest.items.filter((i) => i.kind === "artifact").map((i) => i.id)).toEqual(f.artifactIds);
 
-    const copied = f.dest.paths().filter((p) => p !== "manifest.json");
+    const copied = paths.filter((p) => p !== "manifest.json");
     expect(Object.keys(manifest.source_hashes).sort()).toEqual(copied);
     for (const path of copied) {
       const bytes = await f.dest.read(path);
       if (!bytes.ok) throw new Error(path);
       expect(manifest.source_hashes[path]).toBe(`sha256:${sha256Hex(bytes.value)}`);
     }
-  });
 
-  test("each artifact copy matches the seal hash the artifact index records", async () => {
-    const f = await certifyFixture();
-    await publish(f, runTarget(f.caseRunId));
-    const manifest = PublishManifest.parse(JSON.parse(await text(f.dest, "manifest.json")));
+    // Each artifact copy matches the seal hash the artifact index records.
     const artifacts = manifest.items.filter((i) => i.kind === "artifact");
     expect(artifacts.length).toBeGreaterThan(0);
     for (const item of artifacts) {
@@ -156,26 +147,18 @@ describe("a canary hit refuses the whole publish", () => {
     expect(f.dest.paths()).toEqual([]);
   }
 
-  test("in a run file", async () => {
+  test("in a run file: first marker, second marker, and base64 form", async () => {
     const f = await certifyFixture();
-    const events = await text(f.source, runPath(f.caseRunId, "events.jsonl"));
+    const path = runPath(f.caseRunId, "events.jsonl");
+    const events = await text(f.source, path);
     await replaceRunFile(f, f.caseRunId, "events.jsonl", `${events}{"note":"member ${CANARY} seen"}\n`);
-    await expectHit(f, runPath(f.caseRunId, "events.jsonl"), 1, CANARY);
-  });
-
-  test("in a run file, as the second marker (a bound secret value)", async () => {
-    const f = await certifyFixture();
-    const events = await text(f.source, runPath(f.caseRunId, "events.jsonl"));
+    await expectHit(f, path, 1, CANARY);
+    // Each variant rewrites the file from the original, so only one marker is present at a time.
     await replaceRunFile(f, f.caseRunId, "events.jsonl", `${events}{"note":"${SECRET}"}\n`);
-    await expectHit(f, runPath(f.caseRunId, "events.jsonl"), 2, SECRET);
-  });
-
-  test("in a base64 form", async () => {
-    const f = await certifyFixture();
-    const events = await text(f.source, runPath(f.caseRunId, "events.jsonl"));
+    await expectHit(f, path, 2, SECRET);
     const encoded = Buffer.from(SECRET).toString("base64");
     await replaceRunFile(f, f.caseRunId, "events.jsonl", `${events}{"blob":"${encoded}"}\n`);
-    await expectHit(f, runPath(f.caseRunId, "events.jsonl"), 2, SECRET);
+    await expectHit(f, path, 2, SECRET);
   });
 
   test("in a sealed artifact", async () => {
@@ -291,16 +274,15 @@ describe("refusals write nothing", () => {
     expect(f.dest.paths()).toEqual([]);
   });
 
-  test.each(["trace.zip", "session.har", "cookies.json", "storage_state.json", "traces/page.bin", "video/run.webm"])(
-    "forbidden_file: a run folder holds %s",
-    async (name) => {
+  test("forbidden_file: a run folder holding a trace, HAR, cookie, storage, or video file is refused", async () => {
+    for (const name of ["trace.zip", "session.har", "cookies.json", "storage_state.json", "traces/page.bin", "video/run.webm"]) {
       const f = await certifyFixture();
       f.source.seed(runPath(f.caseRunId, name), "x");
       const got = await publish(f, runTarget(f.caseRunId));
-      expect(got).toMatchObject({ ok: false, failure: "forbidden_file" });
-      expect(f.dest.paths()).toEqual([]);
-    },
-  );
+      expect(got, name).toMatchObject({ ok: false, failure: "forbidden_file" });
+      expect(f.dest.paths(), name).toEqual([]);
+    }
+  });
 
   test("manifest_invalid: an existing manifest does not parse, and is left alone", async () => {
     const f = await certifyFixture();
@@ -321,34 +303,24 @@ describe("refusals write nothing", () => {
 });
 
 describe("links resolve (section 9 §6.6, check 3)", () => {
-  test("a child run also publishes its parent", async () => {
+  test("a child run also publishes its parent, and a parent run also publishes its children", async () => {
     const f = await certifyFixture();
     await editRunJson(f, f.baselineRunId, (j) => {
       j.parent_run_id = f.caseRunId;
     });
-    const got = await publish(f, runTarget(f.baselineRunId));
-    expect(got.ok).toBe(true);
-    if (!got.ok) return;
-    expect(got.value.runs).toEqual([f.baselineRunId, f.caseRunId].sort());
-  });
+    const child = await publish(f, runTarget(f.baselineRunId));
+    expect(child.ok).toBe(true);
+    if (!child.ok) return;
+    expect(child.value.runs).toEqual([f.baselineRunId, f.caseRunId].sort());
 
-  test("a parent run also publishes its children", async () => {
-    const f = await certifyFixture();
-    await editRunJson(f, f.baselineRunId, (j) => {
-      j.parent_run_id = f.caseRunId;
+    const g = await certifyFixture();
+    await editRunJson(g, g.baselineRunId, (j) => {
+      j.parent_run_id = g.caseRunId;
     });
-    const got = await publish(f, runTarget(f.caseRunId));
-    expect(got.ok).toBe(true);
-    if (!got.ok) return;
-    expect(got.value.runs).toEqual([f.baselineRunId, f.caseRunId].sort());
-  });
-
-  test("a run in a batch also publishes the batch's plan and report", async () => {
-    const f = await certifyFixture();
-    await publish(f, runTarget(f.caseRunId));
-    expect(f.dest.paths()).toEqual(
-      expect.arrayContaining([`${TENANT}/batches/${f.batchId}/plan.json`, `${TENANT}/batches/${f.batchId}/report.json`]),
-    );
+    const parent = await publish(g, runTarget(g.caseRunId));
+    expect(parent.ok).toBe(true);
+    if (!parent.ok) return;
+    expect(parent.value.runs).toEqual([g.baselineRunId, g.caseRunId].sort());
   });
 });
 
@@ -426,15 +398,11 @@ describe("verifyEvidence", () => {
     return { f, verify };
   }
 
-  test("a fresh publish has no problems", async () => {
-    const { verify } = await published();
-    const got = await verify();
-    expect(got.ok).toBe(true);
-    if (got.ok) expect(got.value.problems).toEqual([]);
-  });
-
-  test("a changed file is one problem, naming the file", async () => {
+  test("a fresh publish has no problems; a changed file is one problem, naming the file", async () => {
     const { f, verify } = await published();
+    const fresh = await verify();
+    expect(fresh.ok).toBe(true);
+    if (fresh.ok) expect(fresh.value.problems).toEqual([]);
     const path = runPath(f.caseRunId, "events.jsonl");
     f.dest.seed(path, `${await text(f.dest, path)}x`);
     const got = await verify();

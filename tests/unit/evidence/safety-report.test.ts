@@ -32,29 +32,27 @@ const mixed: VitestJson = {
 };
 
 describe("buildSafetyReport", () => {
-  test("marks only the known-limit test, and the totals add up", () => {
+  test("buildSafetyReport marks the known-limit test, totals, success, paths, and status", () => {
     const r = buildSafetyReport(mixed, ROOT, AT);
     expect(SafetyReport.safeParse(r).success).toBe(true);
     const marked = r.files.flatMap((f) => f.tests).filter((x) => x.expected_failure === true);
     expect(marked.map((x) => x.name)).toEqual(["known limit (x) a name leaks"]);
     expect(r.totals).toEqual({ tests: 4, passed: 2, failed: 1, skipped: 1, expected_failures: 1 });
     expect(r.generated_at).toBe(AT);
-  });
-
-  test("a failed test makes success false", () => {
     expect(buildSafetyReport(mixed, ROOT, AT).success).toBe(false);
+    const names = (root: string): string[] => buildSafetyReport(mixed, root, AT).files.map((f) => f.file);
+    expect(names(ROOT)).toEqual(["tests/unit/safety/a.test.ts", "tests/unit/safety/redaction.test.ts"]);
+    expect(names(`${ROOT}/`)).toEqual(names(ROOT));
+    expect(buildSafetyReport(mixed, ROOT, AT).files.map((f) => f.status)).toEqual(["failed", "passed"]);
   });
 
-  test("with no failed test and a known-limit test, success is true", () => {
+  test("success needs no failed test and a known-limit test", () => {
     const ok: VitestJson = {
       testResults: [
         file(`${ROOT}/tests/unit/safety/a.test.ts`, "passed", t("a passes", "passed", ["a"]), t("known limit (x) leak", "passed", ["known limit (x)"])),
       ],
     };
     expect(buildSafetyReport(ok, ROOT, AT).success).toBe(true);
-  });
-
-  test("with no known-limit test, success is false even when every test passed", () => {
     const none: VitestJson = { testResults: [file(`${ROOT}/tests/unit/safety/a.test.ts`, "passed", t("a passes", "passed", ["a"]))] };
     const r = buildSafetyReport(none, ROOT, AT);
     expect(r.totals.failed).toBe(0);
@@ -62,15 +60,6 @@ describe("buildSafetyReport", () => {
     expect(r.success).toBe(false);
   });
 
-  test("the repo root is cut from each path, with or without a trailing slash", () => {
-    const names = (root: string): string[] => buildSafetyReport(mixed, root, AT).files.map((f) => f.file);
-    expect(names(ROOT)).toEqual(["tests/unit/safety/a.test.ts", "tests/unit/safety/redaction.test.ts"]);
-    expect(names(`${ROOT}/`)).toEqual(names(ROOT));
-  });
-
-  test("a file's status is passed or failed as Vitest says", () => {
-    expect(buildSafetyReport(mixed, ROOT, AT).files.map((f) => f.status)).toEqual(["failed", "passed"]);
-  });
 });
 
 describe("the known-limit test the report marks", () => {

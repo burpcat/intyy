@@ -36,37 +36,37 @@ const report = (): Record<string, unknown> => ({
 });
 
 describe("PublishManifest", () => {
-  test("a good manifest parses", () => {
+  test("PublishManifest parses a good manifest and rejects unknown keys, schemas, hashes, and kinds", () => {
     expect(PublishManifest.safeParse(manifest()).success).toBe(true);
-  });
-  test("an unknown key is rejected, at the top and inside an item", () => {
     expect(PublishManifest.safeParse({ ...manifest(), extra: 1 }).success).toBe(false);
     const m = manifest();
     (m.items as Record<string, unknown>[])[0] = { kind: "run", id: "x", tenant: "keystone", extra: 1 };
     expect(PublishManifest.safeParse(m).success).toBe(false);
-  });
-  test("a wrong schema name, a bad hash, and a bad item kind are rejected", () => {
     expect(PublishManifest.safeParse({ ...manifest(), schema: "intyy.publish/2.0" }).success).toBe(false);
     expect(PublishManifest.safeParse({ ...manifest(), source_hashes: { a: "sha256:abc" } }).success).toBe(false);
     expect(PublishManifest.safeParse({ ...manifest(), items: [{ kind: "trust", id: "x" }] }).success).toBe(false);
   });
+
 });
 
 describe("SafetyReport", () => {
-  test("a good report parses", () => {
-    expect(SafetyReport.safeParse(report()).success).toBe(true);
+  test("SafetyReport parses a good report and rejects unknown keys, schemas, and statuses", () => {
+    {
+      expect(SafetyReport.safeParse(report()).success).toBe(true);
+    }
+    {
+      expect(SafetyReport.safeParse({ ...report(), extra: 1 }).success).toBe(false);
+      expect(SafetyReport.safeParse({ ...report(), totals: { ...(report().totals as object), extra: 1 } }).success).toBe(false);
+      const r = report();
+      ((r.files as { tests: Record<string, unknown>[] }[])[0]?.tests ?? [])[0] = { name: "t", status: "passed", failure: "text" };
+      expect(SafetyReport.safeParse(r).success).toBe(false);
+    }
+    {
+      expect(SafetyReport.safeParse({ ...report(), schema: "intyy.safety_report/2.0" }).success).toBe(false);
+      const r = report();
+      ((r.files as { tests: Record<string, unknown>[] }[])[0]?.tests ?? [])[0] = { name: "t", status: "todo" };
+      expect(SafetyReport.safeParse(r).success).toBe(false);
+    }
   });
-  test("an unknown key is rejected, at the top, in totals, and in a test", () => {
-    expect(SafetyReport.safeParse({ ...report(), extra: 1 }).success).toBe(false);
-    expect(SafetyReport.safeParse({ ...report(), totals: { ...(report().totals as object), extra: 1 } }).success).toBe(false);
-    const r = report();
-    ((r.files as { tests: Record<string, unknown>[] }[])[0]?.tests ?? [])[0] = { name: "t", status: "passed", failure: "text" };
-    expect(SafetyReport.safeParse(r).success).toBe(false);
-  });
-  test("a wrong schema name or status is rejected", () => {
-    expect(SafetyReport.safeParse({ ...report(), schema: "intyy.safety_report/2.0" }).success).toBe(false);
-    const r = report();
-    ((r.files as { tests: Record<string, unknown>[] }[])[0]?.tests ?? [])[0] = { name: "t", status: "todo" };
-    expect(SafetyReport.safeParse(r).success).toBe(false);
-  });
+
 });

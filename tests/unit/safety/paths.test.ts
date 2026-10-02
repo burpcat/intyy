@@ -34,16 +34,12 @@ describe("section 4 §6.3 examples", () => {
     ],
     ["/login", ["/login", "/login?next=/home"], ["/login/help"]],
   ];
-  for (const [p, yes, no] of rows) {
-    for (const raw of yes)
-      test(`${p} matches ${raw}`, () => {
-        expect(matches(p, raw)).toBe(true);
-      });
-    for (const raw of no)
-      test(`${p} rejects ${raw}`, () => {
-        expect(matches(p, raw)).toBe(false);
-      });
-  }
+  test("each pattern matches its yes paths and rejects its no paths", () => {
+    for (const [p, yes, no] of rows) {
+      for (const raw of yes) expect(matches(p, raw), `${p} matches ${raw}`).toBe(true);
+      for (const raw of no) expect(matches(p, raw), `${p} rejects ${raw}`).toBe(false);
+    }
+  });
 });
 
 describe("pattern rules", () => {
@@ -84,11 +80,29 @@ describe("pattern rules", () => {
 });
 
 describe("normalizing (section 4 §6.3)", () => {
-  test("decodes percent codes once", () => {
+  test("normalizing decodes, collapses, resolves, strips, and folds as a browser does", () => {
     expect(matches("/members/*", "/members/%31%30%30107")).toBe(true);
+    expect(matches("/members/*/accounts", "//members///100107//accounts")).toBe(true);
+    expect(matches("/login", "/members/./../login")).toBe(true);
+    expect(matches("/login", "/../../login")).toBe(true);
+    expect(matches("/members/*", "/members/x/../100107")).toBe(true);
+    // Why: a trailing `..` leaves a trailing slash, as in a browser. `/members/100107/` is another page.
+    expect(matches("/members/*", "/members/100107/close/..")).toBe(false);
+    expect(matches("/members/*/", "/members/100107/close/..")).toBe(true);
+    expect(matches("/admin/*", "/members/%2e%2e/admin/users")).toBe(true);
+    expect(matches("/members/*", "/members/%2e%2e/admin/users")).toBe(false);
+    expect(matches("/login", "/login;jsessionid=ABC123")).toBe(true);
+    // Why: old Java servers read `..;x` as `..`. Resolving first would hide the jump.
+    expect(matches("/members/*", "/members/100107/..;x/admin")).toBe(true);
+    expect(matches("/admin", "/members/..;x/admin")).toBe(true);
+    expect(matches("/login", "/login#top")).toBe(true);
+    expect(matches("/Main.do?cmd=view*", "/Main.do#?cmd=viewMember")).toBe(false);
+    expect(matches("/login", "/LOGIN")).toBe(false);
+    expect(matches("/login", "/LOGIN", false)).toBe(true);
+    expect(matches("/Main.do?cmd=view*", "/main.DO?cmd=viewMember", false)).toBe(true);
   });
 
-  test("an encoded slash, a backslash, or a null byte is malformed", () => {
+  test("bad escapes, slashes, and null bytes are malformed", () => {
     for (const raw of [
       "/members/1%2F2",
       "/members/1%2f2",
@@ -101,46 +115,7 @@ describe("normalizing (section 4 §6.3)", () => {
       expect(n.ok, raw).toBe(false);
       if (!n.ok) expect(n.failure).toBe("malformed");
     }
-  });
-
-  test("broken percent codes are malformed", () => {
     expect(normalizePath("/members/%E0%A4%A", true).ok).toBe(false);
-  });
-
-  test("collapses repeated slashes", () => {
-    expect(matches("/members/*/accounts", "//members///100107//accounts")).toBe(true);
-  });
-
-  test("resolves . and .., and stops at the root", () => {
-    expect(matches("/login", "/members/./../login")).toBe(true);
-    expect(matches("/login", "/../../login")).toBe(true);
-    expect(matches("/members/*", "/members/x/../100107")).toBe(true);
-    // Why: a trailing `..` leaves a trailing slash, as in a browser. `/members/100107/` is another page.
-    expect(matches("/members/*", "/members/100107/close/..")).toBe(false);
-    expect(matches("/members/*/", "/members/100107/close/..")).toBe(true);
-  });
-
-  test("encoded dots resolve too", () => {
-    expect(matches("/admin/*", "/members/%2e%2e/admin/users")).toBe(true);
-    expect(matches("/members/*", "/members/%2e%2e/admin/users")).toBe(false);
-  });
-
-  test("strips ; path parameters before resolving ..", () => {
-    expect(matches("/login", "/login;jsessionid=ABC123")).toBe(true);
-    // Why: old Java servers read `..;x` as `..`. Resolving first would hide the jump.
-    expect(matches("/members/*", "/members/100107/..;x/admin")).toBe(true);
-    expect(matches("/admin", "/members/..;x/admin")).toBe(true);
-  });
-
-  test("drops the # fragment", () => {
-    expect(matches("/login", "/login#top")).toBe(true);
-    expect(matches("/Main.do?cmd=view*", "/Main.do#?cmd=viewMember")).toBe(false);
-  });
-
-  test("folds case only when the app says case_sensitive: false", () => {
-    expect(matches("/login", "/LOGIN")).toBe(false);
-    expect(matches("/login", "/LOGIN", false)).toBe(true);
-    expect(matches("/Main.do?cmd=view*", "/main.DO?cmd=viewMember", false)).toBe(true);
   });
 
   test("the normal form is plain", () => {
@@ -152,28 +127,23 @@ describe("normalizing (section 4 §6.3)", () => {
 describe("isSamePlace: is the browser already on a run's entry (docs/decisions.md, M05)", () => {
   const at = (path: string): string => `http://127.0.0.1:8080${path}`;
 
-  test("equal path, and equal path with equal query, are the same place", () => {
+  test("the same place: equal paths, queries, and tricks that change nothing", () => {
     expect(isSamePlace(at("/main.do"), "/main.do")).toBe(true);
     expect(isSamePlace(at("/Main.do?cmd=view&id=7"), "/Main.do?cmd=view&id=7")).toBe(true);
-  });
-
-  test("`;` parameters, `..`, and a fragment cannot hide or fake a difference", () => {
     expect(isSamePlace(at("/app/main.do;jsessionid=abc"), "/app/main.do")).toBe(true);
     expect(isSamePlace(at("/main.do"), "/app/../main.do")).toBe(true);
     expect(isSamePlace(at("/main.do#top"), "/main.do")).toBe(true);
     expect(isSamePlace(at("/app/main.do"), "/other/../main.do")).toBe(false);
   });
 
-  test("a different path or a different query is not the same place", () => {
+  test("different places and malformed addresses are never the same", () => {
     expect(isSamePlace(at("/main.do"), "/login.do")).toBe(false);
     expect(isSamePlace(at("/main.do?cmd=view"), "/main.do?cmd=edit")).toBe(false);
     expect(isSamePlace(at("/main.do?cmd=view"), "/main.do")).toBe(false);
-  });
-
-  test("a malformed address on either side is never equal", () => {
     expect(isSamePlace("not a url", "/main.do")).toBe(false);
     expect(isSamePlace(at("/a%2Fb"), "/a%2Fb")).toBe(false);
     expect(isSamePlace(at("/main.do"), "main.do")).toBe(false);
     expect(isSamePlace(at("/main.do"), "/a%2Fb")).toBe(false);
   });
+
 });

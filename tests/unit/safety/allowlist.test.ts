@@ -65,39 +65,24 @@ describe("hosts (section 4 §6.2)", () => {
 });
 
 describe("paths (section 4 §6.3, §6.4)", () => {
-  test("a path not on the list is blocked: deny by default", () => {
+  test("paths: deny by default, deny beats allow, queries count, tricks are blocked, irreversible paths are marked", () => {
     expect(list.check(`${ORIGIN}/admin`, "document")).toEqual({
       allowed: false,
       rule: "allowlist.path",
     });
-  });
-
-  test("deny beats allow", () => {
     expect(list.check(`${ORIGIN}/members/export`, "document")).toEqual({
       allowed: false,
       rule: "allowlist.path",
     });
     expect(list.check(`${ORIGIN}/__test__/faultlog`, "document").allowed).toBe(false);
-  });
-
-  test("the query counts for query patterns", () => {
     expect(list.check(`${ORIGIN}/Main.do?cmd=viewMember`, "document").allowed).toBe(true);
     expect(list.check(`${ORIGIN}/Main.do?cmd=deleteMember`, "document").allowed).toBe(false);
-  });
-
-  test("tricks are malformed", () => {
     expect(list.check(`${ORIGIN}/members/1%2F2`, "document")).toEqual({
       allowed: false,
       rule: "allowlist.path_malformed",
     });
-  });
-
-  test("normalizing cannot sneak past deny", () => {
     expect(list.check(`${ORIGIN}/members/x/..;y/export`, "document").allowed).toBe(false);
     expect(list.check(`${ORIGIN}/members/%2e%2e/__test__/reset`, "document").allowed).toBe(false);
-  });
-
-  test("irreversible paths are marked", () => {
     expect(list.check(`${ORIGIN}/accounts/9/close`, "document")).toEqual({
       allowed: true,
       irreversible: true,
@@ -136,14 +121,14 @@ describe("action types per actor (section 4 §6.9)", () => {
     reviewer: ["navigate", "click", "type", "select", "set_checked", "press"],
     human: all,
   };
-  for (const [actor, types] of Object.entries(allowed) as [Actor, ActionType[]][]) {
-    for (const type of all) {
-      const want = types.includes(type) ? null : "allowlist.action";
-      test(`${actor} ${type}: ${want ?? "allowed"}`, () => {
-        expect(checkActionType(actor, type, all)).toBe(want);
-      });
+  test("each actor gets exactly its action types", () => {
+    for (const [actor, types] of Object.entries(allowed) as [Actor, ActionType[]][]) {
+      for (const type of all) {
+        const want = types.includes(type) ? null : "allowlist.action";
+        expect(checkActionType(actor, type, all), `${actor} ${type}`).toBe(want);
+      }
     }
-  }
+  });
 
   test("the merged policy narrows every gated actor", () => {
     expect(checkActionType("llm", "scroll", ["click"])).toBe("allowlist.action");
@@ -162,28 +147,17 @@ describe("keys (section 4 §6.9)", () => {
     },
   };
 
-  test("global keys are allowed", () => {
+  test("keys: global keys pass, off-list and unmapped function keys block, reviewer and human differ", () => {
     expect(checkKey("engine", "Enter", policy)).toBeNull();
     expect(checkKey("llm", "PageDown", policy)).toBeNull();
-  });
-
-  test("a key off the list is blocked", () => {
     expect(checkKey("engine", "Delete", policy)).toBe("allowlist.key");
-  });
-
-  test("a function key needs an app mapping", () => {
     expect(checkKey("engine", "F2", policy)).toBeNull();
     expect(checkKey("engine", "F10", policy)).toBe("allowlist.key");
-  });
-
-  test("the reviewer presses Tab and Escape only", () => {
     expect(checkKey("reviewer", "Tab", policy)).toBeNull();
     expect(checkKey("reviewer", "Escape", policy)).toBeNull();
     expect(checkKey("reviewer", "Enter", policy)).toBe("allowlist.key");
     expect(checkKey("reviewer", "F2", policy)).toBe("allowlist.key");
-  });
-
-  test("a human is observed, not gated", () => {
     expect(checkKey("human", "F10", policy)).toBeNull();
   });
+
 });

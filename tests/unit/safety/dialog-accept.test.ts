@@ -45,65 +45,42 @@ function click(label: string, dialogMessage: string | null): ClickInput {
 const IRREVERSIBLE_UNSURE = { risk: "irreversible", unsure: true, reason: "unsure" };
 
 describe("C3 in the classifier: only the message words count", () => {
-  test("a message with no list word is unsure, so irreversible, though OK is a safe word", () => {
+  test("classify reads the message words only: unsure without a list word, by word with one, safe words ignored", () => {
     const safeOk: RiskWords = { ...words, safe_words: [...words.safe_words, "ok"] };
     expect(classify(click("OK", "Are you sure you want to go on?"), safeOk)).toEqual(
       IRREVERSIBLE_UNSURE,
     );
-  });
-
-  // Why: this is the message from the owner's real run (2026-09-30), on the real global lists,
-  // where "open" is a safe word. The owner's brief expects unsure, so a human must approve it.
-  test("the real run message, open this sub-account, is unsure on the global lists", () => {
     const real = testPolicy({ allow: ["/"], deny: [], irreversible: [] }).risk;
     expect(
       classify(click("OK", "Are you sure you want to open this sub-account?"), real),
     ).toEqual(IRREVERSIBLE_UNSURE);
-  });
-
-  test("an irreversible word in the message is irreversible by word, not unsure", () => {
     expect(classify(click("OK", "Delete member?"), words)).toEqual({
       risk: "irreversible",
       unsure: false,
       reason: "irreversible_word",
     });
-  });
-
-  test("a reversible word in the message is reversible", () => {
     expect(classify(click("OK", "Add a note to this member?"), words)).toEqual({
       risk: "reversible",
       unsure: false,
       reason: "reversible_word",
     });
-  });
-
-  // Why: owner decision 2026-09-30, a safe word in a box's message proves nothing about OK.
-  test("a safe word in the message is ignored: unsure, so irreversible", () => {
     expect(classify(click("OK", "Show the details?"), words)).toEqual(IRREVERSIBLE_UNSURE);
-  });
-
-  test("safe words still work on an ordinary button", () => {
     expect(classify(click("Open member detail", null), words)).toEqual({
       risk: "idempotent",
       unsure: false,
       reason: "safe_word",
     });
-  });
-
-  test("the button label OK with an empty message is unsure", () => {
     expect(classify(click("OK", ""), words)).toEqual(IRREVERSIBLE_UNSURE);
-  });
-
-  test("a label with a list word does not rescue a message with none", () => {
     expect(classify(click("Show", "Are you sure you want to go on?"), words)).toEqual(
       IRREVERSIBLE_UNSURE,
     );
-  });
-
-  test("Dismiss is unchanged: a click with no message reads its own label", () => {
     expect(classify(click("Cancel", null), words)).toEqual(IRREVERSIBLE_UNSURE);
     expect(classify(click("Close", null), words).risk).toBe("idempotent");
   });
+
+  // Why: this is the message from the owner's real run (2026-09-30), on the real global lists,
+  // where "open" is a safe word. The owner's brief expects unsure, so a human must approve it.
+  // Why: owner decision 2026-09-30, a safe word in a box's message proves nothing about OK.
 });
 
 const ORIGIN = "http://127.0.0.1:9182";
@@ -179,22 +156,26 @@ describe("C3 in the gate: accepting a box on the snapshot fake", () => {
     ["Show E", "risk.unsure", "irreversible"],
     ["Show F", "risk.needs_approval", "irreversible"],
   ];
-  for (const [opener, rule, risk] of cases) {
-    const message = BOXES[opener]?.message ?? "";
-    test(`${BOXES[opener]?.kind ?? ""} "${message}": ${rule}`, async () => {
+  test("accepting each box gets its rule, risk, decision, and a masked log line", async () => {
+    for (const [opener, rule, risk] of cases) {
+      const message = BOXES[opener]?.message ?? "";
+      const tag = `${BOXES[opener]?.kind ?? ""} "${message}": ${rule}`;
       const { g, accept: target } = await withBox(opener);
-      const r = await accept(g, { type: "click", target });
-      expect(r.rule).toBe(rule);
-      expect(r.risk).toBe(risk);
-      expect(r.decision).toBe(rule === "risk.allowed" ? "allowed" : "needs_approval");
-      // Why: the log label stays the masked Accept button name, never the message.
-      expect(g.lines.at(-1)).toMatchObject({
-        why: { ref: rule },
-        data: { action: "click", label: "OK", path: "/", risk },
-      });
-      await g.gate.close();
-    });
-  }
+      try {
+        const r = await accept(g, { type: "click", target });
+        expect(r.rule, tag).toBe(rule);
+        expect(r.risk, tag).toBe(risk);
+        expect(r.decision, tag).toBe(rule === "risk.allowed" ? "allowed" : "needs_approval");
+        // Why: the log label stays the masked Accept button name, never the message.
+        expect(g.lines.at(-1), tag).toMatchObject({
+          why: { ref: rule },
+          data: { action: "click", label: "OK", path: "/", risk },
+        });
+      } finally {
+        await g.gate.close();
+      }
+    }
+  });
 
   test("a human yes lets the unsure box be accepted, and it reports dispatched", async () => {
     const { g, accept: target } = await withBox("Show A");

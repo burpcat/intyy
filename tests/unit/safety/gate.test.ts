@@ -142,22 +142,26 @@ describe("gate matrix: actor × class × run kind (section 4 §14)", () => {
   };
 
   for (const [runName, byActor] of Object.entries(expected)) {
-    for (const [actor, answers] of Object.entries(byActor) as [Actor, string[]][]) {
-      for (const [i, [cls, name, confirmed]] of classes.entries()) {
-        const want = answers[i] ?? "";
-        test(`${runName} · ${actor} · ${cls}: ${want}`, async () => {
+    test(`${runName} run: every actor and class gets its answer`, async () => {
+      for (const [actor, answers] of Object.entries(byActor) as [Actor, string[]][]) {
+        for (const [i, [cls, name, confirmed]] of classes.entries()) {
+          const want = answers[i] ?? "";
           const g = await open(runs[runName]);
-          const target = await refOf(g.eyes, name);
-          // Why: engine steps and handler actions carry a human-confirmed flag (section 4 §7.8, §7.9).
-          const flag =
-            actor === "engine" || actor === "handler"
-              ? { confirmed: { risk: confirmed, words: [name] } }
-              : {};
-          expect(await decide(g, propose(actor, { type: "click", target }, flag))).toBe(want);
-          await g.gate.close();
-        });
+          try {
+            const target = await refOf(g.eyes, name);
+            // Why: engine steps and handler actions carry a human-confirmed flag (section 4 §7.8, §7.9).
+            const flag =
+              actor === "engine" || actor === "handler"
+                ? { confirmed: { risk: confirmed, words: [name] } }
+                : {};
+            const got = await decide(g, propose(actor, { type: "click", target }, flag));
+            expect(got, `${runName} · ${actor} · ${cls}`).toBe(want);
+          } finally {
+            await g.gate.close();
+          }
+        }
       }
-    }
+    });
   }
 });
 
