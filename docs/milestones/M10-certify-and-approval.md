@@ -90,7 +90,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 
 ### Live (`npm run test:live`)
 
-- [ ] A `quick` batch passes on the bank app, with jev and the reviewer faked.
+- [x] A `quick` batch passes on the bank app, with jev and the reviewer faked. (2026-10-02, certify-quick.test.ts)
 
 ### Owner checks
 
