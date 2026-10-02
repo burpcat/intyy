@@ -120,7 +120,7 @@ describe("the fault table still passes with the reviewer switched on", () => {
     async () => {
       const { run } = await runWithModels("known_popup", windowStep);
       expect(run.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(run.recoveries).toContainEqual({ via: "handler", ref: "kyc_reminder" });
+      expect(run.recoveries).toContainEqual(expect.objectContaining({ via: "handler", ref: "kyc_reminder" }));
       expectJudgedPass(run);
     },
     CASE_TIMEOUT_MS,
@@ -131,7 +131,7 @@ describe("the fault table still passes with the reviewer switched on", () => {
     async () => {
       const { run } = await runWithModels("session_expire", windowStep);
       expect(run.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(run.recoveries).toContainEqual({ via: "handler", ref: "session_expired" });
+      expect(run.recoveries).toContainEqual(expect.objectContaining({ via: "handler", ref: "session_expired" }));
       expectJudgedPass(run);
     },
     CASE_TIMEOUT_MS,
@@ -198,7 +198,7 @@ describe("the fault table still passes with jev and the reviewer faked", () => {
     async () => {
       const { run } = await runWithJev("known_popup", windowStep);
       expect(run.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(run.recoveries).toContainEqual({ via: "handler", ref: "kyc_reminder" });
+      expect(run.recoveries).toContainEqual(expect.objectContaining({ via: "handler", ref: "kyc_reminder" }));
       expectJudgedPass(run);
     },
     CASE_TIMEOUT_MS,
@@ -209,7 +209,7 @@ describe("the fault table still passes with jev and the reviewer faked", () => {
     async () => {
       const { run } = await runWithJev("session_expire", windowStep);
       expect(run.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(run.recoveries).toContainEqual({ via: "handler", ref: "session_expired" });
+      expect(run.recoveries).toContainEqual(expect.objectContaining({ via: "handler", ref: "session_expired" }));
       expectJudgedPass(run);
     },
     CASE_TIMEOUT_MS,

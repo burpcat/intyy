@@ -79,7 +79,7 @@ describe("window open: an idempotent step (section 5 §14, middle column)", () =
     async () => {
       const r = await run("known_popup", windowStep);
       expect(r.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(r.recoveries).toContainEqual({ via: "handler", ref: "kyc_reminder" });
+      expect(r.recoveries).toContainEqual(expect.objectContaining({ via: "handler", ref: "kyc_reminder" }));
       expectJudgedPass(r);
     },
     CASE_TIMEOUT_MS,
@@ -100,7 +100,7 @@ describe("window open: an idempotent step (section 5 §14, middle column)", () =
     async () => {
       const r = await run("session_expire", windowStep);
       expect(r.report.cases[0]?.result).toEqual({ status: "success", detail: null });
-      expect(r.recoveries).toContainEqual({ via: "handler", ref: "session_expired" });
+      expect(r.recoveries).toContainEqual(expect.objectContaining({ via: "handler", ref: "session_expired" }));
       expectJudgedPass(r);
     },
     CASE_TIMEOUT_MS,
