@@ -12,7 +12,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { FileDocumentStore } from "../../src/adapters/files/document-store.js";
 import { suiteKind } from "../../src/core/model/kinds.js";
 import type { LockHold } from "../../src/ports/locks.js";
-import { CASE_TIMEOUT_MS, certifyCase, requireCertifyPrereqs, type CaseRun } from "./certify-kit.js";
+import { CASE_TIMEOUT_MS, KEY, certifyCase, requireCertifyPrereqs, type CaseRun } from "./certify-kit.js";
 import { ROOT, acquireInstanceLock, clock, config, locks } from "./replay-demo-kit.js";
 
 const CASE = "supervisor_needed";
@@ -54,7 +54,7 @@ test(
     expect(c?.result.status).toBe("escalated");
     expect(c?.result.detail).toMatch(/^takeover\/needs_human_handler\/.+$/);
     expect(c?.verdict).toBe("pass");
-    expect(run.plan.pin).toBe("kvfcu/open_share_subaccount@1.0.0");
+    expect(run.plan.pin).toBe(KEY);
     // The scripted operator, not a mailbox: nobody waited for a person.
     expect(run.plan.operator).toBe("scripted");
     // The supervisor screen came after Confirm was sent: the commit is not `not_sent`.

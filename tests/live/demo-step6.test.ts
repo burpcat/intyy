@@ -16,6 +16,7 @@ import type { LockHold } from "../../src/ports/locks.js";
 import { acquireInstanceLock, locks } from "./replay-demo-kit.js";
 import {
   CASE_TIMEOUT_MS,
+  KEY,
   certifyCase,
   requireCertifyPrereqs,
   type CaseRun,
@@ -41,7 +42,7 @@ test(
     const c = run.report.cases[0];
     expect(c?.result.status).toBe("escalated");
     expect(c?.result.detail).toMatch(/^reconciliation_decision\/reconciliation_waived\/.+$/);
-    expect(run.plan.pin).toBe("kvfcu/open_share_subaccount@1.0.0");
+    expect(run.plan.pin).toBe(KEY);
     expect(run.commit).toBe("uncertain");
     expect(c?.truth.commit?.match).not.toBe(false);
     expect(c?.verdict).toBe("pass");

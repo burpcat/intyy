@@ -29,13 +29,15 @@ import { tempRoot } from "../unit/safety/canary-kit.js";
 import { call } from "../unit/cli/helpers.js";
 import { ROOT, clock, config } from "./replay-demo-kit.js";
 
-/** The capability under test, as `certify case` names it (the exact pin, as section 9 §13.2 row 6 writes it). */
-const KEY = "kvfcu/open_share_subaccount@1.0.0";
+/** The sealed version under test. Why 1.0.3, not section 9 §13.2's 1.0.0: 1.0.0 to 1.0.2 were
+ * sealed before the replay fixes of 2026-10-01 (a blocked menu step, a frameset label, a masked
+ * container); 1.0.3 is the one the M05 demos passed on. Bump it when the owner seals a newer one. */
+export const VERSION = "1.0.3";
+/** The capability under test, as `certify case` names it (the exact pin). */
+export const KEY = `kvfcu/open_share_subaccount@${VERSION}`;
 /** The suite's own ID: the suite is found by major. */
 const SUITE_ID = "kvfcu/open_share_subaccount@1";
 const TASK = "kvfcu/open_share_subaccount";
-/** The sealed version the owner's discoveries produce (M06 spec, "Owner checks"). */
-const VERSION = "1.0.0";
 /** An operator in the real `library/staff.json`. */
 const STAFF = "op_017";
 /** One fixed batch ID. A case's seed is `<batch_id>:case`, so every run uses the same seed
