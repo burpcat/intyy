@@ -161,6 +161,7 @@ async function buildDeps(
   }));
   const deps = {
     evidence: ctx.wiring.evidence,
+    locks: ctx.wiring.locks,
     clock: ctx.wiring.clock,
     ids: ctx.wiring.ids,
     secrets: ctx.wiring.secrets,

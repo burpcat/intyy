@@ -5,6 +5,7 @@
 // certify run spec is internal only); docs/decisions.md, M06 (this milestone's owner lines).
 import type { Clock, Ids } from "../../ports/clock.js";
 import type { FaultLogEntry, Harness, NamedFault, OracleAccount } from "../../ports/harness.js";
+import type { Locks } from "../../ports/locks.js";
 import { fail, ok, type Outcome } from "../../ports/outcome.js";
 import { Secret } from "../../ports/secret.js";
 import type { Secrets } from "../../ports/secrets.js";
@@ -117,6 +118,9 @@ export type CertifyDeps = {
   models?: ReplayDeps["models"];
   /** The jev version batch `under` records when jev is on, like `jev@1.4.2` (section 8 §5.1). */
   jevVersion?: string;
+  /** Run locks: each case run holds its own, as `replay` does, so another command's crash sweep
+   * never takes a live case run for a crashed one (section 9 §12.2). Omitted: no lock (tests). */
+  locks?: Locks;
   signal?: AbortSignal;
 };
 
@@ -206,6 +210,30 @@ export async function runOne(
 ): Promise<ReplayOutcome> {
   const now = deps.clock.now();
   const authorization = syntheticAuthorization(effect, input.batchId, input.staff, link, now);
+  const hold =
+    deps.locks === undefined
+      ? null
+      : await deps.locks.acquire("run", runId, { owner: runId, command: "certify", staff: input.staff, waitMs: 0 });
+  if (hold !== null && !hold.ok) throw new Error(`certify: run ${runId}'s lock is already held`);
+  try {
+    return await runOneUnlocked(runId, caseId, link, pin, inputs, input, deps, operator, authorization);
+  } finally {
+    if (hold?.ok === true) await deps.locks?.release(hold.value);
+  }
+}
+
+/** {@link runOne}'s replay itself, with its run lock already held. */
+function runOneUnlocked(
+  runId: string,
+  caseId: string,
+  link: string,
+  pin: string,
+  inputs: Record<string, string>,
+  input: BatchInput,
+  deps: CertifyDeps,
+  operator: CertifyOperator,
+  authorization: ReplayInput["request"]["authorization"],
+): Promise<ReplayOutcome> {
   return runReplay(
     {
       runId,

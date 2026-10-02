@@ -20,6 +20,7 @@ import { FakeOperator } from "../../../src/fakes/operator.js";
 import { SnapshotSurface, type FakeSite } from "../../../src/fakes/snapshot-surface/index.js";
 import { HoldingClock } from "../handoff/kit.js";
 import { toFactory } from "../../../src/ports/hands.js";
+import type { Locks } from "../../../src/ports/locks.js";
 import { ok } from "../../../src/ports/outcome.js";
 import { MEMBER_FOUND, MEMBER_MISSING, ORIGIN, TENANT, buildHarness, fixtureSite } from "../replay/executor-harness.js";
 import { idsNotifying, OPEN_SUB_ROUTE_FOR, RouteMappingHarness } from "./route-mapping-harness.js";
@@ -86,6 +87,32 @@ function inputFor(batchId: string, overrides: Partial<CertifyCaseInput> = {}): C
     ...overrides,
   };
 }
+
+describe("runCertifyCase: run locks", () => {
+  test("each run holds its own run lock while it replays, then releases it", async () => {
+    const { deps, ids } = await buildCertifyDeps(fixtureSite());
+    const held = new Set<string>();
+    const taken: string[] = [];
+    const locks: Locks = {
+      acquire: (kind, key) => {
+        taken.push(`${kind}:${key}`);
+        held.add(key);
+        return Promise.resolve(ok({ kind, key, owner: key, shared: false, cleared: null }));
+      },
+      release: (hold) => {
+        held.delete(hold.key);
+        return Promise.resolve();
+      },
+      inspect: () => Promise.resolve(null),
+      forceRelease: () => Promise.resolve(null),
+    };
+    const result = await runCertifyCase(inputFor(ids.batchId()), { ...deps, locks });
+    if (!result.ok) throw new Error("expected a finished batch");
+    const runIds = result.value.plan.cases.map((c) => c.run_id);
+    expect(taken).toEqual(runIds.map((r) => `run:${r}`));
+    expect(held.size).toBe(0);
+  });
+});
 
 describe("runCertifyCase: success", () => {
   test("the case matches its class's plain expectation: verdict pass", async () => {
