@@ -55,6 +55,8 @@ test(
       { staff: STAFF, claimed: true },
       { act: () => page().keyboard.press("Tab") },
       { staff: STAFF, released: true, note: "Looked at the screen." },
+      // The irreversible OK box asks for approval: the request carries no authorization.
+      { staff: STAFF, decision: "approved" },
     ]);
     const running = runOpenSub(demoFile("valid.json"), { operator: () => operator });
     await vi.waitFor(

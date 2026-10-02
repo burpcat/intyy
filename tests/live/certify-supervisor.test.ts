@@ -1,7 +1,7 @@
 // `certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile supervisor_needed` on
 // the live bank app, with the scripted operator (the default; spec M07, Live rows; updates file
-// §11.1 and §13.2). `supervisor_needed` is a suite `extra` case (section 8 §6.1): the bank asks for
-// a supervisor after Confirm, the `needs_human` handler matches, the run opens a takeover, and the
+// §11.1 and §13.2). `supervisor_needed` is a suite `extra` case (section 8 §6.1): kvfcu's review page
+// disables Confirm and asks for a supervisor (M07 capture, 2026-10-02), the `needs_human` handler matches, the run opens a takeover, and the
 // scripted operator ends it (section 8 §7.6). The case ends `escalated` with detail
 // `takeover/needs_human_handler/<step>`, the suite's own expectation, so the verdict is `pass`.
 // Until the owner's steps are done (the sealed artifact, the approved library files, and the
@@ -57,8 +57,9 @@ test(
     expect(run.plan.pin).toBe(KEY);
     // The scripted operator, not a mailbox: nobody waited for a person.
     expect(run.plan.operator).toBe("scripted");
-    // The supervisor screen came after Confirm was sent: the commit is not `not_sent`.
-    expect(run.commit).not.toBe("not_sent");
+    // The supervisor request stops the run at Confirm, before the commit step (OK): nothing sent.
+    expect(c?.result.detail).toBe("takeover/needs_human_handler/click_confirm");
+    expect(run.commit).toBe("not_sent");
   },
   CASE_TIMEOUT_MS,
 );
