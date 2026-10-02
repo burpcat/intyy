@@ -171,7 +171,7 @@ Keys must be sealed first (see the full path). Use `INTYY_STAFF` or `--staff <id
 3. Read the approval screen as another person (`op_022`). It ends with a record hash:
    `intyy --staff op_022 trust review kvfcu/sign_in@1.0.0`
 4. Approve with that hash. Standard input is your note:
-   `echo "Read the report." | intyy --staff op_022 trust approve kvfcu/sign_in@1.0.0 --expect-record sha256:<hash>`
+   `echo "Read the report." | intyy --staff op_022 trust approve kvfcu/sign_in@1.0.0 --batch <batch_id> --expect-record sha256:<hash>`
    Add `--ack <step>` for each fragile step the review asks you to read.
 5. Do steps 2 to 4 for each linked key, then for `kvfcu/open_share_subaccount@1.0.3`. The commit key waits for the keys it links.
 6. Repeat step 1. Expect `success`, exit 0.
