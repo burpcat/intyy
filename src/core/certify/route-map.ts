@@ -20,6 +20,9 @@ export type ActionTime = { step: string; at: string };
 export function actionTimesFromRunLog(lines: readonly unknown[]): ActionTime[] {
   const out: ActionTime[] = [];
   for (const raw of lines) {
+    // Why only gate lines: a replay's other lines, like a reviewer's `action`, are not the
+    // recorder's discovery shapes, and only `gate` lines say what was dispatched.
+    if (typeof raw !== "object" || raw === null || !("event" in raw) || raw.event !== "gate") continue;
     const parsed = parseLine(raw);
     if (parsed.kind !== "gate" || parsed.data.decision !== "allowed" || parsed.step === null) continue;
     out.push({ step: parsed.step, at: parsed.at });

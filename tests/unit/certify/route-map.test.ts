@@ -50,6 +50,15 @@ describe("actionTimesFromRunLog", () => {
     ]);
   });
 
+  test("replay action lines are skipped, not parsed as discovery actions: a reviewer's and a handler's", () => {
+    const lines = [
+      gateLine("click_a", "2026-01-15T09:00:00.000Z"),
+      { seq: 2, at: "2026-01-15T09:00:01.000Z", run_id: "r", step: "click_a", by: "reviewer", event: "action", data: { type: "type", ok: true, expected: "x" } },
+      { seq: 3, at: "2026-01-15T09:00:02.000Z", run_id: "r", step: "click_a", by: "engine", event: "action", data: { type: "sign_in", ok: false } },
+    ];
+    expect(actionTimesFromRunLog(lines)).toEqual([{ step: "click_a", at: "2026-01-15T09:00:00.000Z" }]);
+  });
+
   test("an empty log gives no actions", () => {
     expect(actionTimesFromRunLog([])).toEqual([]);
   });
