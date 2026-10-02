@@ -174,12 +174,16 @@ Keys must be sealed first (see the full path). Use `INTYY_STAFF` or `--staff <id
    `echo "Read the report." | intyy --staff op_022 trust approve kvfcu/sign_in@1.0.0 --batch <batch_id> --expect-record sha256:<hash>`
    Add `--ack <step>` for each fragile step the review asks you to read.
 5. Do steps 2 to 4 for each linked key, then for `kvfcu/open_share_subaccount@1.0.3`. The commit key waits for the keys it links.
-6. Repeat step 1. Expect `success`, exit 0.
+6. Make a fresh consent, then repeat step 1 with it. Expect `success`, exit 0. A consent must not be expired and must last at most 30 minutes, so `demo/auth.json` (an old example) is refused once a key is approved:
+   ```
+   python3 -c "import json,datetime as d;n=d.datetime.now(d.timezone.utc);f='%Y-%m-%dT%H:%M:%SZ';print(json.dumps({'consent_ref':'consent_demo_b4','granted_by':'member','granted_at':n.strftime(f),'expires_at':(n+d.timedelta(minutes=25)).strftime(f),'capability':'kvfcu/open_share_subaccount@1'}))" > /tmp/auth-now.json
+   intyy replay kvfcu/open_share_subaccount@1 --mode unattended --inputs demo/valid.json --authorization /tmp/auth-now.json
+   ```
 
 Once a key is approved, live runs score it. Three recipe failures in a row degrade it, and an unattended run is rejected again.
 Restore it with `trust restore` after a new passing batch, or after you exclude the bad runs.
 
-> Built, not proven: the full batches and approvals are not run yet. The owner runs them (M10 owner checks).
+Both keys were certified and approved on 2026-10-02 (evidence B3, B4).
 
 ## Operating trust and drift
 
