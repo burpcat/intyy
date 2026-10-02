@@ -18,6 +18,11 @@
     },
     {
       "kind": "batch",
+      "id": "batch_2026-10-02_gf018jxvqw",
+      "tenant": "keystone"
+    },
+    {
+      "kind": "batch",
       "id": "batch_2026-10-02_jk66pk4qsg",
       "tenant": "keystone"
     },
@@ -73,6 +78,11 @@
     },
     {
       "kind": "run",
+      "id": "run_2026-10-02_cc2qr85nj6",
+      "tenant": "keystone"
+    },
+    {
+      "kind": "run",
       "id": "run_2026-10-02_fmd346vwqj",
       "tenant": "keystone"
     },
@@ -88,6 +98,11 @@
     },
     {
       "kind": "run",
+      "id": "run_2026-10-02_ncyxw2vp7x",
+      "tenant": "keystone"
+    },
+    {
+      "kind": "run",
       "id": "run_2026-10-02_psb98k0ynt",
       "tenant": "keystone"
     },
@@ -98,7 +113,7 @@
     }
   ],
   "by": "op_017",
-  "at": "2026-10-02T17:52:41.580Z",
+  "at": "2026-10-02T18:24:37.457Z",
   "source_hashes": {
     "artifacts/kvfcu/open_share_subaccount/1.0.3/artifact.json": "sha256:9a6e0d4a5dafd58705d6f5542bf40d8f487104116e55c05bd6692732795eab98",
     "artifacts/kvfcu/open_share_subaccount/1.0.3/crops/confirm_button.png": "sha256:ebeab06f62d4d31940bb7d9b6a2ce40726aa180017a6c8f8aa6cdcc9e08846dd",
@@ -112,6 +127,8 @@
     "artifacts/kvfcu/sign_in/1.0.0/crops/user_id_box.png": "sha256:631e4e43e4df8432e591654d4f8ef63a5eeaba13df4e00c4273ffacfcdc5b212",
     "keystone/batches/batch_2026-10-02_ez872twjty/plan.json": "sha256:787c895dcba057310f4865188a17678f8741e315bf94bd4bf53be32bb0216364",
     "keystone/batches/batch_2026-10-02_ez872twjty/report.json": "sha256:af8e5c6a296ec28ca721d43156faf2a4162e4bd941d4cfd33c6acbc4c7092d8e",
+    "keystone/batches/batch_2026-10-02_gf018jxvqw/plan.json": "sha256:ce94cc93d901a513433fba495b4f4393631ab9a4a9d4a5352ad0682c1a39933a",
+    "keystone/batches/batch_2026-10-02_gf018jxvqw/report.json": "sha256:16cc8028159d218e912e327f8d4910c9aa2a3550bf77ff688eb438e94e0af3d1",
     "keystone/batches/batch_2026-10-02_jk66pk4qsg/plan.json": "sha256:2280942375bfc02ff8372a06d3673dbbae90bdd1a93a31d664f28fa1cbe90296",
     "keystone/batches/batch_2026-10-02_jk66pk4qsg/report.json": "sha256:44a32a901495678e34001f494db08e6b19dc942adbc42a3f0b3ad1fba8223417",
     "keystone/batches/batch_2026-10-02_mr0a5z9d55/plan.json": "sha256:ede1db51380f66ec8ea7cb092217b9b65802b6c00041d50e1c7b18d2aeedd215",
@@ -291,6 +308,10 @@
     "keystone/runs/run_2026-10-01_x5zb8h8hme/screens/00055_observation.png": "sha256:0b2ae9f333ee41663374b8a8084f49a2e7c24cb811b2f7599061725a6861ed16",
     "keystone/runs/run_2026-10-01_x5zb8h8hme/screens/00074_observation.png": "sha256:69e7970ef148019160d1623d65c9730773b12615857ef4a9d91e4cddd0a370f0",
     "keystone/runs/run_2026-10-01_x5zb8h8hme/screens/00078_observation.png": "sha256:69e7970ef148019160d1623d65c9730773b12615857ef4a9d91e4cddd0a370f0",
+    "keystone/runs/run_2026-10-02_cc2qr85nj6/a11y/00011_type_member_no_ladder.yaml": "sha256:f8c9df954bef935b1343d787b2c78900b0f51ac94d2f2590dc8fa522b936e05c",
+    "keystone/runs/run_2026-10-02_cc2qr85nj6/events.jsonl": "sha256:ceefdfb44a107cce642bcd1c93803fef595f07082f3689ab112d28f81911d296",
+    "keystone/runs/run_2026-10-02_cc2qr85nj6/run.json": "sha256:e7deb7316cdafd7645eb019b678afc983d79b48303abf7636b0ff56ac10b3e52",
+    "keystone/runs/run_2026-10-02_cc2qr85nj6/screens/00011_type_member_no_ladder.png": "sha256:04e7fd81b815635e1479f61687c41685ea62df6734a8048ffbd5b9df4ae4fd90",
     "keystone/runs/run_2026-10-02_fmd346vwqj/a11y/00035_click_confirm_ladder.yaml": "sha256:ad2c983433dd0943e2523212d5dc323ceee4276373c9166164a9f9fc5b6b03ae",
     "keystone/runs/run_2026-10-02_fmd346vwqj/a11y/00058_click_confirm_handback.yaml": "sha256:17560f39bb4865f453122e9743661541e1bce0a82d383c77a2f3c064d2664f05",
     "keystone/runs/run_2026-10-02_fmd346vwqj/events.jsonl": "sha256:f1ab0bdb52cd51003be6cc687c206ac38787ba84ceb1f57c5cbce8246c0f5fba",
@@ -322,6 +343,15 @@
     "keystone/runs/run_2026-10-02_jdepc13cmw/screens/00017_click_search_ladder.png": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
     "keystone/runs/run_2026-10-02_jdepc13cmw/screens/00022_click_search_ladder.png": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
     "keystone/runs/run_2026-10-02_jdepc13cmw/screens/00030_click_search_takeover_ended.png": "sha256:be5736ce8280c051a70147f21af027efb3251418473db9ffa3d06d8cc5ac7a3e",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/a11y/00014_click_search_ladder.yaml": "sha256:f53f532e883ce026f5562ef37bcbded7770d94c0b02e02930f05c73df8b2c747",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/events.jsonl": "sha256:944adfce59e00b5446f8a59bea35b187814b851d20cc9b937dce31deaab93b21",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/faults.jsonl": "sha256:f923091e26d3643d73241a995fe2aaa194944eae8135e748b54f32273005b581",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/llm/00016_jev_reply.json": "sha256:dc7d3c21f4e42e642ba38ff49a7cf09688ae70f57d9dbf83b2c9d421454558ea",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/llm/00016_jev_request.json": "sha256:9850edaf90a4c4b40f545b80a0d836297ea5e71661fb0036bb5bc1a64496b06a",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/llm/00017_reviewer_reply.json": "sha256:bc26304203522c7b255aebafedf84e2c236a496d3fe5fc2b7a95d22d186119a2",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/llm/00017_reviewer_request.json": "sha256:31c908e093d822c64d023069f96ceddd82e81e6f01c758c79951d3087cddaae2",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/run.json": "sha256:5578349dbcff762c28bdd966db5aec938dcbae01666e399eba6cc666b28824fd",
+    "keystone/runs/run_2026-10-02_ncyxw2vp7x/screens/00014_click_search_ladder.png": "sha256:6f0b2548c44ee0a5a88fe49b025a7f088c610ea08be23bfcda73c8594b21ca16",
     "keystone/runs/run_2026-10-02_psb98k0ynt/a11y/00040_click_ok_commit_after.yaml": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
     "keystone/runs/run_2026-10-02_psb98k0ynt/a11y/00042_click_ok_unclear.yaml": "sha256:601ea5f87f40f1305a35439ddc81edc9238d86a8f0e1743c26a6e0506a5e0fea",
     "keystone/runs/run_2026-10-02_psb98k0ynt/dom/00040_click_ok_commit_after.html": "sha256:68ed36ab7038d1e2a29e4f011ef91401b4682f698cf92c484e55082f82711463",

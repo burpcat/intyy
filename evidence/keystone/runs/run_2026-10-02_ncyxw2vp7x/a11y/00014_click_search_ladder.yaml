@@ -1,0 +1,75 @@
+- iframe:
+  - table "Keystone Valley Federal Credit Union Welcome, {secret.operator_username} | 01/15/2026 | Logout Do not press Back or Refresh buttons. Use the menu on the left. *** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***":
+    - row "Keystone Valley Federal Credit Union Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+      - cell:
+        - img
+      - cell "Keystone Valley Federal Credit Union":
+        - text: Keystone Valley Federal Credit Union
+      - cell "Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+        - table "Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+          - row "Welcome, {secret.operator_username} | 01/15/2026 | Logout":
+            - cell "Welcome, {secret.operator_username} | 01/15/2026 |":
+              - text: {secret.operator_username}
+            - cell "Logout":
+              - link "Logout":
+                - /url: http://127.0.0.1:8080/logout.do
+    - row "Do not press Back or Refresh buttons. Use the menu on the left.":
+      - cell "Do not press Back or Refresh buttons. Use the menu on the left."
+    - row "*** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***":
+      - cell "*** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***":
+        - text: *** Share Certificate rates revised w.e.f. 01/01/2026: 12 months @ [money#1]% APY *** Money Market Account now @ [money#2]% APY *** Share Savings dividend [money#3]% APY *** Beware of phishing e-mails. KVFCU will never ask for your password. ***
+- iframe:
+  - table "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+    - row "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+      - cell "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+        - table "Member Services Member Search Balance Enquiry Accounts Open Sub-Account Close Sub-Account Session Logout":
+          - row "Member Services":
+            - cell "Member Services"
+          - row "Member Search":
+            - cell "Member Search":
+              - img
+              - link "Member Search":
+                - /url: http://127.0.0.1:8080/memberSearch.do
+          - row "Balance Enquiry":
+            - cell "Balance Enquiry":
+              - img
+              - link "Balance Enquiry":
+                - /url: http://127.0.0.1:8080/balanceEnquiry.do
+          - row "Accounts":
+            - cell "Accounts"
+          - row "Open Sub-Account":
+            - cell "Open Sub-Account":
+              - img
+              - link "Open Sub-Account":
+                - /url: http://127.0.0.1:8080/openAccount.do
+              - img
+          - row "Close Sub-Account":
+            - cell "Close Sub-Account":
+              - img
+              - link "Close Sub-Account":
+                - /url: http://127.0.0.1:8080/closeAccount.do
+          - row "Session":
+            - cell "Session"
+          - row "Logout":
+            - cell "Logout":
+              - img
+              - link "Logout":
+                - /url: http://127.0.0.1:8080/logout.do
+- iframe:
+  - table "» Important Notice":
+    - row "» Important Notice":
+      - cell "» Important Notice"
+  - table "Important Notice Mandatory AML refresher training must be completed by month end.":
+    - row "Important Notice Mandatory AML refresher training must be completed by month end.":
+      - cell "Important Notice Mandatory AML refresher training must be completed by month end.":
+        - table "Important Notice Mandatory AML refresher training must be completed by month end.":
+          - row "Important Notice":
+            - columnheader "Important Notice"
+          - row "Mandatory AML refresher training must be completed by month end.":
+            - cell "Mandatory AML refresher training must be completed by month end.":
+              - form:
+                - button "OK"
+                - button "Close"
+  - table "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union.":
+    - row "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union.":
+      - cell "Best viewed in Internet Explorer 6.0 at 1024x768 resolution. © 2008 Keystone Valley Federal Credit Union."
