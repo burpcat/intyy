@@ -506,7 +506,7 @@ function failedResult(
       step,
       phase: failure.phase,
       expected: { condition: failure.phase, description: failure.message },
-      observed: { location, checks: [] },
+      observed: { location: location === "" ? NO_LOCATION : location, checks: [] },
       attempts: 0,
       ladder: { rung: 0, verdict: "hard_failure", ref: failure.phase },
       transient: false,
@@ -523,9 +523,13 @@ function isAborted(signal: AbortSignal | undefined): boolean {
 }
 
 /** The active page's address, or `""` when the screen cannot be read. Never throws. */
+/** Why `unknown`: a failure's `observed.location` may not be empty (section 3 §5.6), and a
+ * screen that is gone has no URL to name. */
+const NO_LOCATION = "unknown";
+
 async function currentLocation(eyes: Eyes, signal?: AbortSignal): Promise<string> {
   const o = await eyes.observe(signal);
-  return o.ok ? o.value.url : "";
+  return o.ok && o.value.url !== "" ? o.value.url : NO_LOCATION;
 }
 
 /** Whether a retry is safe, from the effect block alone (section 3 §5.5, "`safe_to_retry`"). */
