@@ -40,38 +40,29 @@ function issues(doc: Record<string, unknown>): string[] {
 }
 
 describe("reconciliation check mode", () => {
-  test("a check with no mode parses as reference", () => {
-    const parsed = Artifact.parse(structuredClone(artifactExample()));
-    expect(parsed.recovery?.reconciliation).toMatchObject({ check: { mode: "reference" } });
-  });
-
-  test("a valid count_diff check gives no issue", () => {
+  test("a reconciliation check validates its mode fields", () => {
+    // a check with no mode parses as reference
+    {
+      const parsed = Artifact.parse(structuredClone(artifactExample()));
+      expect(parsed.recovery?.reconciliation).toMatchObject({ check: { mode: "reference" } });
+    }
+    // a valid count_diff check gives no issue
     expect(issues(withCheck({}))).toEqual([]);
-  });
-
-  test("count_diff without count_output is reported at count_output", () => {
+    // count_diff without count_output is reported at count_output
     expect(issues(withCheck({ count_output: undefined }))).toEqual([`reconciliation_count_shape@${CHECK}.count_output`]);
-  });
-
-  test("count_diff with outputs is reported at outputs", () => {
+    // count_diff with outputs is reported at outputs
     expect(issues(withCheck({ outputs: { account_number: "{result.account_number}" } }))).toEqual([
       `reconciliation_count_shape@${CHECK}.outputs`,
     ]);
-  });
-
-  test("count_diff with not_found_outcomes is reported at not_found_outcomes", () => {
+    // count_diff with not_found_outcomes is reported at not_found_outcomes
     expect(issues(withCheck({ not_found_outcomes: ["not_found"] }))).toEqual([
       `reconciliation_count_shape@${CHECK}.not_found_outcomes`,
     ]);
-  });
-
-  test("a reference check naming count_output is reported at count_output", () => {
+    // a reference check naming count_output is reported at count_output
     expect(issues(withCheck({ count_output: "sub_account_count" }, false))).toEqual([
       `reconciliation_count_shape@${CHECK}.count_output`,
     ]);
-  });
-
-  test("an unknown mode fails the parse", () => {
+    // an unknown mode fails the parse
     expect(Artifact.safeParse(withCheck({ mode: "bogus" })).success).toBe(false);
   });
 });
@@ -84,15 +75,12 @@ describe("reconciliation waiver", () => {
     return doc;
   }
 
-  test("a waiver citing a well-formed attempt_run parses", () => {
+  test("a reconciliation waiver needs a well-formed attempt_run", () => {
+    // a waiver citing a well-formed attempt_run parses
     expect(Artifact.safeParse(withWaiver({ reason: "No screen shows the result.", attempt_run: ATTEMPT })).success).toBe(true);
-  });
-
-  test("a waiver without attempt_run fails the parse", () => {
+    // a waiver without attempt_run fails the parse
     expect(Artifact.safeParse(withWaiver({ reason: "No screen shows the result." })).success).toBe(false);
-  });
-
-  test("a waiver with a malformed attempt_run fails the parse", () => {
+    // a waiver with a malformed attempt_run fails the parse
     expect(Artifact.safeParse(withWaiver({ reason: "No screen.", attempt_run: "run_oops" })).success).toBe(false);
   });
 });

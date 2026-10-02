@@ -70,35 +70,37 @@ function built(lines: HistoryLine[]): ScoreRecord {
 }
 
 describe("record rebuild: golden", () => {
-  test("fixed lines give the exact record", () => {
+  test("rebuild gives the exact golden record, equal bytes and hashes, and keeps its input", () => {
+    // fixed lines give the exact record
     expect(built(LINES)).toEqual(GOLDEN);
     expect(ScoreRecord.safeParse(built(LINES)).success).toBe(true);
-  });
-
-  test("two runs give equal canonical JSON and equal record hashes", () => {
-    const a = built(LINES);
-    const b = built(structuredClone(LINES));
-    expect(canonicalJson(a)).toBe(canonicalJson(b));
-    expect(canonicalJson(a)).toBe(canonicalJson(GOLDEN));
-    expect(recordHash(a)).toBe(recordHash(b));
-    expect(recordHash(a)).toBe(hashJson(GOLDEN));
-    expect(recordHash(a)).toMatch(/^sha256:[0-9a-f]{64}$/);
-  });
-
-  test("the record hash changes when any field changes", () => {
-    const other = built([...LINES, degraded(10)]);
-    expect(recordHash(other)).not.toBe(recordHash(built(LINES)));
-  });
-
-  test("rebuild does not change its input lines", () => {
-    const copy = structuredClone(LINES);
-    built(LINES);
-    expect(LINES).toEqual(copy);
+    // two runs give equal canonical JSON and equal record hashes
+    {
+      const a = built(LINES);
+      const b = built(structuredClone(LINES));
+      expect(canonicalJson(a)).toBe(canonicalJson(b));
+      expect(canonicalJson(a)).toBe(canonicalJson(GOLDEN));
+      expect(recordHash(a)).toBe(recordHash(b));
+      expect(recordHash(a)).toBe(hashJson(GOLDEN));
+      expect(recordHash(a)).toMatch(/^sha256:[0-9a-f]{64}$/);
+    }
+    // the record hash changes when any field changes
+    {
+      const other = built([...LINES, degraded(10)]);
+      expect(recordHash(other)).not.toBe(recordHash(built(LINES)));
+    }
+    // rebuild does not change its input lines
+    {
+      const copy = structuredClone(LINES);
+      built(LINES);
+      expect(LINES).toEqual(copy);
+    }
   });
 });
 
 describe("record rebuild: what each line does", () => {
-  test("no lines give the synthetic draft, with null state fields", () => {
+  test("rebuild applies each kind of line to the record", () => {
+    // no lines give the synthetic draft, with null state fields
     expect(built([])).toEqual(draftRecord(KEY, HASHES));
     expect(DRAFT).toMatchObject({
       state: "draft",
@@ -109,71 +111,70 @@ describe("record rebuild: what each line does", () => {
       regression: null,
       approval: null,
     });
-  });
-
-  test("a quick batch changes no record field", () => {
+    // a quick batch changes no record field
     expect(built([batch(1, "batch_q", { kind: "quick" })])).toEqual(DRAFT);
     expect(built([batch(1, "batch_q", { kind: "quick", gate: "failed" })])).toEqual(DRAFT);
     expect(built([batch(1, "batch_a"), batch(2, "batch_q", { kind: "quick" })])).toEqual(
       built([batch(1, "batch_a")]),
     );
-  });
-
-  test("a full batch fills certify only; a later full batch replaces it", () => {
-    const one = built([batch(1, "batch_a")]);
-    expect(one.certify?.batch).toBe("batch_a");
-    expect(one.regression).toBeNull();
-    expect(one.state).toBe("draft");
-    const two = built([batch(1, "batch_a"), batch(2, "batch_b", { gate: "failed" })]);
-    expect(two.certify).toMatchObject({ batch: "batch_b", gate: "failed" });
-  });
-
-  test("a drill batch line leaves the record as it was, whatever its kind", () => {
-    const before = built([batch(1, "batch_a"), approved(2)]);
-    for (const kind of ["full", "regression"] as const) {
-      const drill = batch(3, "batch_d", { kind, drill: true, gate: "failed" });
-      expect(built([batch(1, "batch_a"), approved(2), drill])).toEqual(before);
+    // a full batch fills certify only; a later full batch replaces it
+    {
+      const one = built([batch(1, "batch_a")]);
+      expect(one.certify?.batch).toBe("batch_a");
+      expect(one.regression).toBeNull();
+      expect(one.state).toBe("draft");
+      const two = built([batch(1, "batch_a"), batch(2, "batch_b", { gate: "failed" })]);
+      expect(two.certify).toMatchObject({ batch: "batch_b", gate: "failed" });
     }
-    expect(built([batch(1, "batch_d", { drill: true })])).toEqual(DRAFT);
-  });
-
-  test("a regression batch fills regression only", () => {
-    const r = built([batch(1, "batch_r", { kind: "regression" })]);
-    expect(r.regression).toMatchObject({ batch: "batch_r", scores: null });
-    expect(r.certify).toBeNull();
-  });
-
-  test("excluded, autonomy, and rejected lines leave the record as it was", () => {
-    const before = built([batch(1, "batch_a"), approved(2)]);
-    expect(built([batch(1, "batch_a"), approved(2), ...LINES.slice(6)])).toEqual(before);
-  });
-
-  test("state lines set state, who, why, and when", () => {
-    const r = built([approved(1), degraded(2), restored(3, "op_031"), retired(4, "system")]);
-    expect(r).toMatchObject({
-      state: "retired",
-      state_by: "system",
-      state_reason: "Not needed.",
-      state_since: "2026-01-15T09:04:00.000Z",
-    });
-  });
-
-  test("reinstated makes a draft again and clears the approval", () => {
-    const r = built([approved(1), retired(2), reinstated(3)]);
-    expect(r.state).toBe("draft");
-    expect(r.approval).toBeNull();
-    expect(r.state_by).toBe("op_022");
-  });
-
-  test("a degraded key keeps its approval record until a new line replaces it", () => {
-    const r = built([approved(1), degraded(2)]);
-    expect(r.state).toBe("degraded");
-    expect(r.approval?.by).toBe("op_022");
+    // a drill batch line leaves the record as it was, whatever its kind
+    {
+      const before = built([batch(1, "batch_a"), approved(2)]);
+      for (const kind of ["full", "regression"] as const) {
+        const drill = batch(3, "batch_d", { kind, drill: true, gate: "failed" });
+        expect(built([batch(1, "batch_a"), approved(2), drill])).toEqual(before);
+      }
+      expect(built([batch(1, "batch_d", { drill: true })])).toEqual(DRAFT);
+    }
+    // a regression batch fills regression only
+    {
+      const r = built([batch(1, "batch_r", { kind: "regression" })]);
+      expect(r.regression).toMatchObject({ batch: "batch_r", scores: null });
+      expect(r.certify).toBeNull();
+    }
+    // excluded, autonomy, and rejected lines leave the record as it was
+    {
+      const before = built([batch(1, "batch_a"), approved(2)]);
+      expect(built([batch(1, "batch_a"), approved(2), ...LINES.slice(6)])).toEqual(before);
+    }
+    // state lines set state, who, why, and when
+    {
+      const r = built([approved(1), degraded(2), restored(3, "op_031"), retired(4, "system")]);
+      expect(r).toMatchObject({
+        state: "retired",
+        state_by: "system",
+        state_reason: "Not needed.",
+        state_since: "2026-01-15T09:04:00.000Z",
+      });
+    }
+    // reinstated makes a draft again and clears the approval
+    {
+      const r = built([approved(1), retired(2), reinstated(3)]);
+      expect(r.state).toBe("draft");
+      expect(r.approval).toBeNull();
+      expect(r.state_by).toBe("op_022");
+    }
+    // a degraded key keeps its approval record until a new line replaces it
+    {
+      const r = built([approved(1), degraded(2)]);
+      expect(r.state).toBe("degraded");
+      expect(r.approval?.by).toBe("op_022");
+    }
   });
 });
 
 describe("record rebuild: an illegal line", () => {
-  test.each([
+  test("each illegal line fails with bad_history at its line number", () => {
+    const cases = [
     ["degrade from draft", [batch(1, "batch_a"), degraded(2)], 2],
     ["approve from retired", [approved(1), retired(2), approved(3)], 3],
     ["restore from approved", [approved(1), restored(2)], 2],
@@ -182,9 +183,11 @@ describe("record rebuild: an illegal line", () => {
     ["an approval by certify", [approved(1, "certify")], 1],
     ["an approval by an empty actor", [batch(1, "batch_a"), batch(2, "batch_b"), approved(3, "")], 3],
     ["a retire by live_score", [approved(1), retired(2, "live_score")], 2],
-  ] as const)("%s fails with bad_history at line %i", (_name, lines, n) => {
-    const r = rebuild(KEY, HASHES, [...lines]);
-    expect(r).toMatchObject({ ok: false, failure: "bad_history" });
-    expect(r.ok ? "" : r.detail).toContain(`line ${String(n)}`);
+    ] as const;
+    for (const [name, lines, n] of cases) {
+      const r = rebuild(KEY, HASHES, [...lines]);
+      expect(r, name).toMatchObject({ ok: false, failure: "bad_history" });
+      expect(r.ok ? "" : r.detail, name).toContain(`line ${String(n)}`);
+    }
   });
 });

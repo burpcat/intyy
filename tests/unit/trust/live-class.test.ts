@@ -60,27 +60,25 @@ function linesOf(result: Result, events: unknown[] = [], over: Partial<RunForLiv
 const classOf = (result: Result, events: unknown[] = []) => linesOf(result, events).main.class;
 
 describe("classOfCode: section 8 §12.2", () => {
-  test.each(RECIPE)("%s is a recipe failure", (code) => {
-    expect(classOfCode(code)).toBe("recipe_failure");
-  });
-  test.each(APP)("%s is an app failure", (code) => {
-    expect(classOfCode(code)).toBe("app_failure");
-  });
-  test.each(NOT_COUNTED)("%s is not counted", (code) => {
-    expect(classOfCode(code)).toBe("not_counted");
+  test("classOfCode puts each recipe, app, and not-counted code in its class", () => {
+    for (const code of RECIPE) expect(classOfCode(code), code).toBe("recipe_failure");
+    for (const code of APP) expect(classOfCode(code), code).toBe("app_failure");
+    for (const code of NOT_COUNTED) expect(classOfCode(code), code).toBe("not_counted");
   });
 });
 
 describe("a failed run: the line carries the code and step", () => {
-  test.each(RECIPE)("%s gives a recipe_failure task line", (code) => {
-    const main = linesOf(failed(code, "click_search"), [runEnd("click_search", "failed", code)]).main;
-    expect(main).toMatchObject({ as: "task", class: "recipe_failure", code, step: "click_search" });
-  });
-  test.each(APP)("%s gives an app_failure task line", (code) => {
-    expect(linesOf(failed(code), [runEnd("click_search")]).main).toMatchObject({ class: "app_failure", code });
-  });
-  test.each(NOT_COUNTED)("%s gives a not_counted task line", (code) => {
-    expect(linesOf(failed(code), [runEnd("click_search")]).main).toMatchObject({ class: "not_counted", code });
+  test("each recipe, app, and not-counted code gives its task line", () => {
+    for (const code of RECIPE) {
+      const main = linesOf(failed(code, "click_search"), [runEnd("click_search", "failed", code)]).main;
+      expect(main, code).toMatchObject({ as: "task", class: "recipe_failure", code, step: "click_search" });
+    }
+    for (const code of APP) {
+      expect(linesOf(failed(code), [runEnd("click_search")]).main, code).toMatchObject({ class: "app_failure", code });
+    }
+    for (const code of NOT_COUNTED) {
+      expect(linesOf(failed(code), [runEnd("click_search")]).main, code).toMatchObject({ class: "not_counted", code });
+    }
   });
   test("a rejected run and an escalated run are not counted, with no code", () => {
     expect(linesOf(rejected()).main).toMatchObject({ class: "not_counted", code: null, step: null });
@@ -98,17 +96,13 @@ describe("a failed run: the line carries the code and step", () => {
 });
 
 describe("commit uncertain: when unsure, assume the worst (section 8 §12.1)", () => {
-  test("a success whose commit ends uncertain is a recipe failure", () => {
+  test("an uncertain commit is a recipe failure whatever else happened; a confirmed commit changes nothing", () => {
     const main = linesOf(success({ effect: { commit: "uncertain" } }), [runEnd("click_confirm", "success")]).main;
     expect(main).toMatchObject({ class: "recipe_failure", step: "click_confirm" });
-  });
-  test("a failed run with an intyy code and an uncertain commit is a recipe failure, not not_counted", () => {
+    // an intyy code with an uncertain commit is a recipe failure, not not_counted
     expect(classOf(failed("internal_error", "click_confirm", { effect: { commit: "uncertain" } }))).toBe("recipe_failure");
-  });
-  test("an uncertain commit beats an app code too", () => {
+    // an uncertain commit beats an app code too
     expect(classOf(failed("app_error", "click_confirm", { effect: { commit: "uncertain" } }))).toBe("recipe_failure");
-  });
-  test("a confirmed commit changes nothing", () => {
     expect(classOf(success({ effect: { commit: "confirmed" } }))).toBe("clean");
   });
 });
@@ -118,33 +112,28 @@ describe("success: clean or assisted (section 8 §12.1)", () => {
     expect(linesOf(success()).main).toMatchObject({ class: "clean", code: null, step: null });
     expect(classOf(outcome("code"))).toBe("clean");
   });
-  test("a rung 3 ladder line makes it assisted", () => {
+  test("a rung 3 ladder line, a rung 3 reviewer action, or a reviewer recovery makes it assisted", () => {
     expect(classOf(success(), [ladder("click_search", 3)])).toBe("assisted");
-  });
-  test("a rung 3 action by the reviewer makes it assisted", () => {
     expect(classOf(success(), [ev("action", "click_search", {}, "reviewer")])).toBe("assisted");
-  });
-  test("a recovery through the reviewer makes it assisted", () => {
     const recovery = { step: "click_search", rung: 3, via: "reviewer", ref: "r", resumed_at: "click_search", at: at(0) };
     expect(classOf(success({ recoveries: [recovery] }))).toBe("assisted");
   });
   test("rung 1 and rung 2 are not help", () => {
     expect(classOf(success(), [ladder("click_search", 1), ladder("click_search", 2)])).toBe("clean");
   });
-  test("an outcome decided by jev or a human is assisted", () => {
+  test("an outcome or reconciliation check decided by jev or a human is assisted", () => {
     expect(classOf(outcome("jev"))).toBe("assisted");
     expect(classOf(outcome("human"))).toBe("assisted");
-  });
-  test("a reconciliation check decided by jev or a human is assisted", () => {
     const check = (decided_by: string) => success({ effect: { commit: "found_by_check", check: { run_id: runId(2), decided_by, staff_id: null } } });
     expect(classOf(check("jev"))).toBe("assisted");
     expect(classOf(check("human"))).toBe("assisted");
     expect(classOf(check("code"))).toBe("clean");
   });
-  test.each(["stuck", "unsafe_state"])("a takeover for %s is assisted", (reason) => {
-    expect(classOf(success({ interventions: [intervention("takeover", reason, "click_search", "handed_back")] }))).toBe("assisted");
-  });
-  test("a takeover for a needs_human handler is clean", () => {
+  test("a takeover for stuck or unsafe_state is assisted; for a needs_human handler it is clean", () => {
+    for (const reason of ["stuck", "unsafe_state"]) {
+      const ints = [intervention("takeover", reason, "click_search", "handed_back")];
+      expect(classOf(success({ interventions: ints })), reason).toBe("assisted");
+    }
     expect(classOf(success({ interventions: [intervention("takeover", "needs_human_handler", "click_search", "handed_back")] }))).toBe("clean");
   });
   test("an approval and a start confirmation are the design working, so clean", () => {
@@ -158,11 +147,10 @@ describe("prelude failures and prelude lines (section 8 §5.5)", () => {
     const lines = linesOf(failed("target_not_found", "click_login"), [runEnd("session:click_login", "failed", "target_not_found")]);
     expect(lines.main).toMatchObject({ as: "task", class: "not_counted", step: null });
     expect(lines.prelude).toMatchObject({ as: "prelude", class: "recipe_failure", code: "target_not_found", step: "click_login", run_id: runId(1) });
-  });
-  test("an app failure in the prelude is an app failure for the session key only", () => {
-    const lines = linesOf(failed("session_lost", "click_login"), [runEnd("session:click_login", "failed", "session_lost")]);
-    expect(lines.main.class).toBe("not_counted");
-    expect(lines.prelude).toMatchObject({ class: "app_failure", code: "session_lost" });
+    // an app failure in the prelude is an app failure for the session key only
+    const app = linesOf(failed("session_lost", "click_login"), [runEnd("session:click_login", "failed", "session_lost")]);
+    expect(app.main.class).toBe("not_counted");
+    expect(app.prelude).toMatchObject({ class: "app_failure", code: "session_lost" });
   });
   test("a prelude that ran gives the session key a clean line; the task keeps its own class", () => {
     const events = [stepEnd("session:click_login", 800), stepEnd("click_search", 900)];
@@ -175,10 +163,8 @@ describe("prelude failures and prelude lines (section 8 §5.5)", () => {
     expect(lines.prelude?.class).toBe("assisted");
     expect(lines.main.class).toBe("clean");
   });
-  test("a run with no prelude steps writes no prelude line", () => {
+  test("a run with no prelude steps writes no prelude line; a reconciliation child writes a check line", () => {
     expect(linesOf(success(), [stepEnd("click_search", 900)]).prelude).toBeNull();
-  });
-  test("a reconciliation child writes a check line for its own key", () => {
     expect(linesOf(success(), [], { kind: "reconciliation" }).main.as).toBe("check");
   });
 });
@@ -198,17 +184,13 @@ describe("margins, differing clues, and step times", () => {
     const events = [vote("a", "t1", 0.5, ["text", "label"]), vote("b", "t1", 0.4, ["text", "role"]), vote("c", "t2", 1)];
     expect(linesOf(success(), events).main.differing).toEqual({ t1: ["label", "role", "text"] });
   });
-  test("step_ms holds each step's clean time", () => {
+  test("step_ms holds each clean step time, skips a laddered step, and leaves out prelude steps", () => {
     const main = linesOf(success(), [stepEnd("a", 120), stepEnd("b", 340)]).main;
     expect(main.step_ms).toEqual({ a: 120, b: 340 });
-  });
-  test("step_ms skips a step that has a ladder line, wherever the line sits", () => {
     const before = linesOf(success(), [ladder("b", 1), stepEnd("a", 120), stepEnd("b", 340)]).main;
     const after = linesOf(success(), [stepEnd("a", 120), stepEnd("b", 340), ladder("b", 1)]).main;
     expect(before.step_ms).toEqual({ a: 120 });
     expect(after.step_ms).toEqual({ a: 120 });
-  });
-  test("a prelude step's time is not on the task line", () => {
     expect(linesOf(success(), [stepEnd("session:x", 50), stepEnd("a", 120)]).main.step_ms).toEqual({ a: 120 });
   });
   test("a log line it cannot read is skipped, not fatal", () => {
@@ -220,24 +202,16 @@ describe("margins, differing clues, and step times", () => {
 describe("flags for the drift reader (section 8 §12.4)", () => {
   const warn = (code: string, handler?: string, step = "click_search") => ev("warning", step, { code, detail: "d", ...(handler === undefined ? {} : { handler }) });
 
-  test("a detector_missed warning with a handler gives a flag per handler; repeats give one flag", () => {
+  test("detector_missed and reconciliation_contradiction warnings give flags; other warnings give none", () => {
     const main = linesOf(success(), [warn("detector_missed", "notice"), warn("detector_missed", "notice"), warn("detector_missed", "banner")]).main;
-    expect(main.flags).toEqual(["detector_missed:banner", "detector_missed:notice"]);
-  });
-  test("a detector_missed warning with no handler gives none", () => {
-    expect(linesOf(success(), [warn("detector_missed")]).main.flags).toBeUndefined();
-  });
-  test("a reconciliation_contradiction warning gives its flag", () => {
+    expect(main.flags, "one flag per handler; repeats give one").toEqual(["detector_missed:banner", "detector_missed:notice"]);
+    expect(linesOf(success(), [warn("detector_missed")]).main.flags, "no handler").toBeUndefined();
     expect(linesOf(success(), [warn("reconciliation_contradiction")]).main.flags).toEqual(["reconciliation_contradiction"]);
+    expect(linesOf(success(), [warn("outputs_masked")]).main.flags, "not counted").toBeUndefined();
   });
-  test("a warning the design does not count gives no flag", () => {
-    expect(linesOf(success(), [warn("outputs_masked")]).main.flags).toBeUndefined();
-  });
-  test("an uncertain commit gives the commit_uncertain flag, whatever the status", () => {
+  test("an uncertain commit gives the commit_uncertain flag, whatever the status; a clean run has no flags field", () => {
     expect(linesOf(success({ effect: { commit: "uncertain" } }), [runEnd("click_confirm", "success")]).main.flags).toEqual(["commit_uncertain"]);
     expect(linesOf(failed("action_failed", "click_confirm", { effect: { commit: "uncertain" } })).main.flags).toEqual(["commit_uncertain"]);
-  });
-  test("a clean run has no flags field at all", () => {
     expect(linesOf(success()).main).not.toHaveProperty("flags");
   });
   test("a prelude failure with an uncertain commit does not flag the task line", () => {

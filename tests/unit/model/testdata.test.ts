@@ -17,31 +17,32 @@ function baseTestdata(): Record<string, unknown> {
 }
 
 describe("Testdata schema", () => {
-  test("accepts a clean test data set", () => {
+  test("the Testdata schema accepts a clean set and rejects bad literals and pools", () => {
+    // accepts a clean test data set
     expect(Testdata.safeParse(baseTestdata()).success).toBe(true);
-  });
-
-  test("rejects the wrong schema literal", () => {
-    const doc = { ...baseTestdata(), schema: "intyy.testdata/2.0" };
-    expect(Testdata.safeParse(doc).success).toBe(false);
-  });
-
-  test("rejects a pool name that is not dotted lower-case words", () => {
-    const doc = baseTestdata();
-    doc.pools = { "Members.Valid": ["100107"] };
-    expect(Testdata.safeParse(doc).success).toBe(false);
-  });
-
-  test("rejects a pool name with a trailing dot", () => {
-    const doc = baseTestdata();
-    doc.pools = { "members.": ["100107"] };
-    expect(Testdata.safeParse(doc).success).toBe(false);
-  });
-
-  test("rejects an empty pool", () => {
-    const doc = baseTestdata();
-    doc.pools = { "members.valid": [] };
-    expect(Testdata.safeParse(doc).success).toBe(false);
+    // rejects the wrong schema literal
+    {
+      const doc = { ...baseTestdata(), schema: "intyy.testdata/2.0" };
+      expect(Testdata.safeParse(doc).success).toBe(false);
+    }
+    // rejects a pool name that is not dotted lower-case words
+    {
+      const doc = baseTestdata();
+      doc.pools = { "Members.Valid": ["100107"] };
+      expect(Testdata.safeParse(doc).success).toBe(false);
+    }
+    // rejects a pool name with a trailing dot
+    {
+      const doc = baseTestdata();
+      doc.pools = { "members.": ["100107"] };
+      expect(Testdata.safeParse(doc).success).toBe(false);
+    }
+    // rejects an empty pool
+    {
+      const doc = baseTestdata();
+      doc.pools = { "members.valid": [] };
+      expect(Testdata.safeParse(doc).success).toBe(false);
+    }
   });
 });
 
@@ -49,36 +50,34 @@ describe("checkNoCanary", () => {
   // Why: a made-up canary for this unit test, never the real seed member 100240 (CLAUDE.md).
   const MADE_UP_CANARY = "999999";
 
-  test("a pool holding the configured canary is reported", () => {
-    const doc = baseTestdata();
-    doc.pools = { "members.valid": ["100107", MADE_UP_CANARY] };
-    const problems = checkNoCanary(Testdata.parse(doc), [MADE_UP_CANARY]);
-    expect(problems).toEqual([`canary_value: members.valid: ${MADE_UP_CANARY} is the canary`]);
-  });
-
-  test("a clean pool has no problems", () => {
+  test("checkNoCanary reports a configured canary and nothing else", () => {
+    // a pool holding the configured canary is reported
+    {
+      const doc = baseTestdata();
+      doc.pools = { "members.valid": ["100107", MADE_UP_CANARY] };
+      const problems = checkNoCanary(Testdata.parse(doc), [MADE_UP_CANARY]);
+      expect(problems).toEqual([`canary_value: members.valid: ${MADE_UP_CANARY} is the canary`]);
+    }
+    // a clean pool has no problems
     expect(checkNoCanary(Testdata.parse(baseTestdata()), [MADE_UP_CANARY])).toEqual([]);
-  });
-
-  test("an empty canary list never reports anything", () => {
-    const doc = baseTestdata();
-    doc.pools = { "members.valid": ["100107"] };
-    expect(checkNoCanary(Testdata.parse(doc), [])).toEqual([]);
+    // an empty canary list never reports anything
+    {
+      const doc = baseTestdata();
+      doc.pools = { "members.valid": ["100107"] };
+      expect(checkNoCanary(Testdata.parse(doc), [])).toEqual([]);
+    }
   });
 });
 
 describe("checkNotProduction", () => {
-  test("environment: production is refused", () => {
+  test("checkNotProduction refuses production only", () => {
+    // environment: production is refused
     expect(checkNotProduction("production")).toEqual([
       "production_app: test data is refused for an app whose settings say environment: production",
     ]);
-  });
-
-  test("environment: test is fine", () => {
+    // environment: test is fine
     expect(checkNotProduction("test")).toEqual([]);
-  });
-
-  test("no settings yet (undefined) is fine", () => {
+    // no settings yet (undefined) is fine
     expect(checkNotProduction(undefined)).toEqual([]);
   });
 });

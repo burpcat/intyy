@@ -39,65 +39,48 @@ const fails = (from: number, count: number, step = "click_search", code = "targe
 const fire = (l: LiveLine[], history: HistoryLine[] = APPROVED) => evaluateRules("approved", history, l);
 
 describe("window rule: at least 20 counted runs and a score below 0.90 (section 8 §12.3)", () => {
-  test("19 counted runs never degrade, however bad", () => {
-    expect(fire(spaced(19, [2, 4, 6, 8, 10, 12, 14, 16, 18]))).toBeNull();
-  });
-  test("20 runs with 2 not clean is exactly 0.90 and does not degrade", () => {
-    expect(fire(spaced(20, [5, 15]))).toBeNull();
-  });
-  test("20 runs with 3 not clean (0.85) degrade, naming the rule and the three runs", () => {
+  test("the window rule needs 20 counted runs and a score below 0.90, over the last 50", () => {
+    // 19 counted runs never degrade, however bad
+    expect(fire(spaced(19, [2, 4, 6, 8, 10, 12, 14, 16, 18])), "19 runs").toBeNull();
+    // 20 runs with 2 not clean is exactly 0.90 and does not degrade
+    expect(fire(spaced(20, [5, 15])), "20 runs, 2 bad").toBeNull();
+    // 20 runs with 3 not clean (0.85) degrade, naming the rule and the three runs
     const hit = fire(spaced(20, [3, 9, 17]));
     expect(hit).toMatchObject({ rule: "window", runs: [runId(3), runId(9), runId(17)] });
     expect(hit?.reason).toContain("0.85");
-  });
-  test("recipe failures spread apart count the same as assisted runs", () => {
+    // recipe failures spread apart count the same as assisted runs
     expect(fire(spaced(20, [3, 9, 17], "recipe_failure"))).toMatchObject({ rule: "window" });
-  });
-  test("the window is the last 50 counted runs: old trouble slides out", () => {
+    // the window is the last 50 counted runs: old trouble slides out
     const early = [1, 2, 3, 4, 5, 6];
     expect(fire(spaced(50, early))).toMatchObject({ rule: "window", runs: early.map(runId) });
     // Three more clean runs push three of the six out of the window: 47 of 50 is 0.94.
     expect(fire(spaced(53, early))).toBeNull();
-  });
-  test("50 counted runs with exactly 5 not clean is 0.90 and does not degrade", () => {
-    expect(fire(spaced(50, [1, 2, 3, 4, 5]))).toBeNull();
+    // 50 counted runs with exactly 5 not clean is 0.90 and does not degrade
+    expect(fire(spaced(50, [1, 2, 3, 4, 5])), "50 runs, 5 bad").toBeNull();
   });
 });
 
 describe("streak rule: three recipe failures in a row, one step, one code (section 8 §12.3)", () => {
-  test("two failures do not degrade", () => {
-    expect(fire([...lives(1, 5), ...fails(6, 2)])).toBeNull();
-  });
-  test("three at one step and code degrade, naming the three runs", () => {
+  test("three failures at one step and code degrade; a break in the chain does not", () => {
+    expect(fire([...lives(1, 5), ...fails(6, 2)]), "two failures").toBeNull();
     const hit = fire([...lives(1, 5), ...fails(6, 3)]);
     expect(hit).toMatchObject({ rule: "streak", runs: [runId(6), runId(7), runId(8)] });
     expect(hit?.reason).toContain("click_search");
     expect(hit?.reason).toContain("target_not_found");
-  });
-  test("a fourth failure still names the last three", () => {
-    expect(fire(fails(1, 4))).toMatchObject({ rule: "streak", runs: [runId(2), runId(3), runId(4)] });
-  });
-  test("a different step in the chain breaks it", () => {
-    expect(fire([...fails(1, 2), ...fails(3, 1, "other_step")])).toBeNull();
-  });
-  test("a different code in the chain breaks it", () => {
-    expect(fire([...fails(1, 2), ...fails(3, 1, "click_search", "action_failed")])).toBeNull();
-  });
-  test("a clean run between breaks it", () => {
-    expect(fire([...fails(1, 2), live(3, "clean"), ...fails(4, 1)])).toBeNull();
-  });
-  test("an assisted run between breaks it", () => {
-    expect(fire([...fails(1, 2), live(3, "assisted"), ...fails(4, 1)])).toBeNull();
-  });
-  test("an app failure between does not break it", () => {
-    const hit = fire([...fails(1, 2), live(3, "app_failure", { code: "app_error" }), ...fails(4, 1)]);
-    expect(hit).toMatchObject({ rule: "streak", runs: [runId(1), runId(2), runId(4)] });
-  });
-  test("a not_counted run between does not break it", () => {
+    expect(fire(fails(1, 4)), "a fourth failure names the last three").toMatchObject({
+      rule: "streak",
+      runs: [runId(2), runId(3), runId(4)],
+    });
+    expect(fire([...fails(1, 2), ...fails(3, 1, "other_step")]), "different step").toBeNull();
+    expect(fire([...fails(1, 2), ...fails(3, 1, "click_search", "action_failed")]), "different code").toBeNull();
+    expect(fire([...fails(1, 2), live(3, "clean"), ...fails(4, 1)]), "clean between").toBeNull();
+    expect(fire([...fails(1, 2), live(3, "assisted"), ...fails(4, 1)]), "assisted between").toBeNull();
+    // an app failure between does not break it
+    const app = fire([...fails(1, 2), live(3, "app_failure", { code: "app_error" }), ...fails(4, 1)]);
+    expect(app).toMatchObject({ rule: "streak", runs: [runId(1), runId(2), runId(4)] });
+    // a not_counted run between does not break it
     expect(fire([...fails(1, 2), live(3, "not_counted", { code: "internal_error" }), ...fails(4, 1)])).toMatchObject({ rule: "streak" });
-  });
-  test("a clean run after the failures ends the streak", () => {
-    expect(fire([...fails(1, 3), live(4, "clean")])).toBeNull();
+    expect(fire([...fails(1, 3), live(4, "clean")]), "clean after").toBeNull();
   });
   test("an excluded run is dropped, and the chain closes up or falls short", () => {
     const history: HistoryLine[] = [...APPROVED, { event: "excluded", at: at(0), by: "op_022", reason: "Outage.", runs: [runId(2)] }];
@@ -107,23 +90,22 @@ describe("streak rule: three recipe failures in a row, one step, one code (secti
 });
 
 describe("scope: who can degrade and which lines count", () => {
-  test.each(["draft", "degraded", "retired"] as const)("a %s key never degrades", (state) => {
-    expect(evaluateRules(state, [], fails(1, 5))).toBeNull();
-    expect(evaluateRules(state, [], spaced(20, [3, 9, 17]))).toBeNull();
-  });
-  test("lines at or before the last approval are ignored", () => {
+  test("only an approved key degrades, and only lines after the last approval or restore count", () => {
+    for (const state of ["draft", "degraded", "retired"] as const) {
+      expect(evaluateRules(state, [], fails(1, 5)), state).toBeNull();
+      expect(evaluateRules(state, [], spaced(20, [3, 9, 17])), state).toBeNull();
+    }
+    // lines at or before the last approval are ignored
     const history = [batch(1, "batch_a"), { ...approved(2), at: at(5) }];
     expect(windowStart(history)).toBe(at(5));
     // Runs 3 to 5 sit at or before the approval; only runs 6 and 7 count.
     expect(fire(fails(3, 5), history)).toBeNull();
     expect(fire(fails(3, 6), history)).toMatchObject({ rule: "streak", runs: [runId(6), runId(7), runId(8)] });
-  });
-  test("lines at or before the last restore are ignored", () => {
-    const history = [...APPROVED, degraded(3), { ...restored(4), at: at(5) }];
-    expect(windowStart(history)).toBe(at(5));
-    expect(fire(fails(1, 6), history)).toBeNull();
-  });
-  test("a key with no approval line reads every line", () => {
+    // lines at or before the last restore are ignored
+    const restoredHistory = [...APPROVED, degraded(3), { ...restored(4), at: at(5) }];
+    expect(windowStart(restoredHistory)).toBe(at(5));
+    expect(fire(fails(1, 6), restoredHistory)).toBeNull();
+    // a key with no approval line reads every line
     expect(windowStart([])).toBeNull();
     expect(fire(fails(1, 3), [])).toMatchObject({ rule: "streak" });
   });
@@ -243,10 +225,9 @@ describe("the record's live blocks come from both logs (section 8 §5.3, §15.3)
     return r.value;
   };
 
-  test("no live lines give live: null", () => {
-    expect(built(APPROVED, []).live).toBeNull();
-  });
-  test("current is the handler set of the latest line, previous the set before it", () => {
+  test("the live blocks follow the logs: none, current and previous, excluded, window, state, bytes", () => {
+    expect(built(APPROVED, []).live, "no live lines").toBeNull();
+    // current is the handler set of the latest line, previous the set before it
     const lines = [
       live(1, "clean", { under: under(A) }),
       live(2, "clean", { under: under(A) }),
@@ -260,25 +241,19 @@ describe("the record's live blocks come from both logs (section 8 §5.3, §15.3)
       current: { handler_set: B, window: 50, counted: 3, clean: 2, assisted: 0, recipe_failures: 1, app_failures: 1, score: 2 / 3, streak: 1 },
       previous: { handler_set: A, window: 50, counted: 3, clean: 2, assisted: 1, recipe_failures: 0, app_failures: 0, score: 2 / 3, streak: null },
     });
-  });
-  test("one handler set gives no previous block", () => {
+    // one handler set gives no previous block
     expect(built(APPROVED, lives(1, 3)).live).toMatchObject({ current: { counted: 3, score: 1 }, previous: null });
-  });
-  test("an excluded run is not counted", () => {
+    // an excluded run is not counted
     const history: HistoryLine[] = [...APPROVED, { event: "excluded", at: at(0), by: "op_022", reason: "Outage.", runs: [runId(2)] }];
-    const lines = [live(1), live(2, "recipe_failure"), live(3)];
-    expect(built(history, lines).live?.current).toMatchObject({ counted: 2, clean: 2, recipe_failures: 0, score: 1 });
-  });
-  test("the block holds only the last 50 counted runs", () => {
+    expect(built(history, [live(1), live(2, "recipe_failure"), live(3)]).live?.current).toMatchObject({ counted: 2, clean: 2, recipe_failures: 0, score: 1 });
+    // the block holds only the last 50 counted runs
     const rec = built(APPROVED, spaced(53, [1, 2, 3]));
     expect(rec.live?.current).toMatchObject({ counted: 50, clean: 50, assisted: 0, score: 1 });
-  });
-  test("live lines never move the state", () => {
+    // live lines never move the state
     expect(built(APPROVED, fails(1, 5)).state).toBe("approved");
-  });
-  test("rebuilding the same logs twice gives equal bytes", () => {
-    const lines = [live(1, "clean", { under: under(A) }), live(2, "recipe_failure", { under: under(B) })];
-    expect(canonicalJson(built(APPROVED, lines))).toBe(canonicalJson(built(structuredClone(APPROVED), structuredClone(lines))));
+    // rebuilding the same logs twice gives equal bytes
+    const two = [live(1, "clean", { under: under(A) }), live(2, "recipe_failure", { under: under(B) })];
+    expect(canonicalJson(built(APPROVED, two))).toBe(canonicalJson(built(structuredClone(APPROVED), structuredClone(two))));
   });
 });
 
@@ -304,25 +279,22 @@ describe("exclude and restore (section 8 §10.8, §12.5)", () => {
     return r.ok ? r.value : [];
   };
 
-  test("excludeRuns needs the approver role and writes nothing without it", async () => {
+  test("excludeRuns needs a role and known runs, then appends one excluded line; restore then needs a role", async () => {
     const w = await degradedWorld();
     const before = (await history(w)).length;
-    const r = await excludeRuns(w.deps, await record(w), decider(110, OP), { runs: [runId(1)], reason: "Outage." });
-    expect(r).toMatchObject({ ok: false, failure: "role" });
+    const noRole = await excludeRuns(w.deps, await record(w), decider(110, OP), { runs: [runId(1)], reason: "Outage." });
+    expect(noRole).toMatchObject({ ok: false, failure: "role" });
     expect(await history(w)).toHaveLength(before);
-  });
-
-  test("a run that is not a live line of the key gives unknown_run and writes nothing", async () => {
-    const w = await degradedWorld();
-    const before = (await history(w)).length;
-    const r = await excludeRuns(w.deps, await record(w), decider(110), { runs: [runId(1), runId(77)], reason: "Outage." });
-    expect(r).toMatchObject({ ok: false, failure: "unknown_run" });
-    expect(r.ok ? "" : r.detail).toContain(runId(77));
+    // a run that is not a live line of the key gives unknown_run and writes nothing
+    const unknown = await excludeRuns(w.deps, await record(w), decider(110), { runs: [runId(1), runId(77)], reason: "Outage." });
+    expect(unknown).toMatchObject({ ok: false, failure: "unknown_run" });
+    expect(unknown.ok ? "" : unknown.detail).toContain(runId(77));
     expect(await history(w)).toHaveLength(before);
-  });
-
-  test("excludeRuns appends one excluded line with the runs, the reason, and the staff ID", async () => {
-    const w = await degradedWorld();
+    // restoreAfterExclusion with nothing excluded gives no_exclusion
+    const none = await restoreAfterExclusion(w.deps, await record(w), decider(120), { note: null });
+    expect(none).toMatchObject({ ok: false, failure: "no_exclusion" });
+    expect((await record(w)).state).toBe("degraded");
+    // excludeRuns appends one excluded line with the runs, the reason, and the staff ID
     const r = await excludeRuns(w.deps, await record(w), decider(110), { runs: [runId(1), runId(1), runId(2)], reason: "Known bank outage." });
     expect(r.ok).toBe(true);
     expect((await history(w)).at(-1)).toEqual({
@@ -333,20 +305,9 @@ describe("exclude and restore (section 8 §10.8, §12.5)", () => {
       runs: [runId(1), runId(2)],
     });
     expect((await record(w)).live?.current).toMatchObject({ counted: 1, recipe_failures: 1 });
-  });
-
-  test("restoreAfterExclusion with nothing excluded gives no_exclusion", async () => {
-    const w = await degradedWorld();
-    const r = await restoreAfterExclusion(w.deps, await record(w), decider(120), { note: null });
-    expect(r).toMatchObject({ ok: false, failure: "no_exclusion" });
-    expect((await record(w)).state).toBe("degraded");
-  });
-
-  test("it needs the approver role", async () => {
-    const w = await degradedWorld();
-    await excludeRuns(w.deps, await record(w), decider(110), { runs: [runId(1), runId(2)], reason: "Outage." });
-    const r = await restoreAfterExclusion(w.deps, await record(w), decider(120, OP), { note: null });
-    expect(r).toMatchObject({ ok: false, failure: "role" });
+    // restore needs the approver role
+    const restoreNoRole = await restoreAfterExclusion(w.deps, await record(w), decider(120, OP), { note: null });
+    expect(restoreNoRole).toMatchObject({ ok: false, failure: "role" });
   });
 
   test("a rule that still fires after the exclusion gives rule_still_fires, until enough runs are excluded", async () => {

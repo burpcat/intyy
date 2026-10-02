@@ -33,19 +33,20 @@ function draft(): Record<string, unknown> {
 }
 
 describe("HandlerDraft", () => {
-  test("accepts a minimal recorder draft", () => {
+  test("HandlerDraft accepts a minimal draft and rejects bad ones", () => {
+    // accepts a minimal recorder draft
     expect(HandlerDraft.safeParse(draft()).success).toBe(true);
-  });
-
-  test("rejects a source with no run ID", () => {
-    const bad = draft();
-    (bad.source as Record<string, unknown>).run_id = "not-a-run-id";
-    expect(HandlerDraft.safeParse(bad).success).toBe(false);
-  });
-
-  test("rejects the old {id, class} placeholder for handler, now that it must be a real Handler", () => {
-    const bad = draft();
-    bad.handler = { id: "kyc_reminder", class: "needs_human" };
-    expect(HandlerDraft.safeParse(bad).success).toBe(false);
+    // rejects a source with no run ID
+    {
+      const bad = draft();
+      (bad.source as Record<string, unknown>).run_id = "not-a-run-id";
+      expect(HandlerDraft.safeParse(bad).success).toBe(false);
+    }
+    // rejects the old {id, class} placeholder for handler, now that it must be a real Handler
+    {
+      const bad = draft();
+      bad.handler = { id: "kyc_reminder", class: "needs_human" };
+      expect(HandlerDraft.safeParse(bad).success).toBe(false);
+    }
   });
 });

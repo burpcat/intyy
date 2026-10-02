@@ -28,13 +28,12 @@ function reportWith(extra: Record<string, unknown>): unknown {
 }
 
 describe("BatchReport case.waived", () => {
-  test("absent parses", () => {
+  test("case.waived parses when absent or true and rejects false", () => {
+    // absent parses
     expect(BatchReport.safeParse(reportWith({})).success).toBe(true);
-  });
-  test("true parses", () => {
+    // true parses
     expect(BatchReport.safeParse(reportWith({ waived: true })).success).toBe(true);
-  });
-  test("false is rejected", () => {
+    // false is rejected
     expect(BatchReport.safeParse(reportWith({ waived: false })).success).toBe(false);
   });
 });

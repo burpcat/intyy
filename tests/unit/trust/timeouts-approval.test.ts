@@ -31,19 +31,22 @@ function recordOf(lines: HistoryLine[]) {
 describe("rebuild of a timeouts line", () => {
   const base = [batch(1, "batch_a"), approved(2, "op_022", "batch_a")];
 
-  test("values and a non-empty candidate set approved and candidate, both from the batch", () => {
-    const t = recordOf([...base, timeoutsLine(3, "batch_a", { click_search: 9000 }, { click_search: 10000 })]);
-    expect(t).toEqual({ approved: { click_search: 9000 }, approved_from: "batch_a", candidate: { click_search: 10000 }, candidate_from: "batch_a" });
-  });
-
-  test("an empty candidate clears the candidate", () => {
-    const t = recordOf([...base, timeoutsLine(3, "batch_a", {}, { click_search: 10000 }), timeoutsLine(4, "batch_b", { click_search: 10000 }, {})]);
-    expect(t).toEqual({ approved: { click_search: 10000 }, approved_from: "batch_b", candidate: null, candidate_from: null });
-  });
-
-  test("an absent candidate leaves the candidate as it was", () => {
-    const t = recordOf([...base, timeoutsLine(3, "batch_a", {}, { click_search: 10000 }), timeoutsLine(4, "batch_b", { click_search: 7000 })]);
-    expect(t).toEqual({ approved: { click_search: 7000 }, approved_from: "batch_b", candidate: { click_search: 10000 }, candidate_from: "batch_a" });
+  test("a timeouts line sets approved and candidate values, clears or keeps the candidate", () => {
+    // values and a non-empty candidate set approved and candidate, both from the batch
+    {
+      const t = recordOf([...base, timeoutsLine(3, "batch_a", { click_search: 9000 }, { click_search: 10000 })]);
+      expect(t).toEqual({ approved: { click_search: 9000 }, approved_from: "batch_a", candidate: { click_search: 10000 }, candidate_from: "batch_a" });
+    }
+    // an empty candidate clears the candidate
+    {
+      const t = recordOf([...base, timeoutsLine(3, "batch_a", {}, { click_search: 10000 }), timeoutsLine(4, "batch_b", { click_search: 10000 }, {})]);
+      expect(t).toEqual({ approved: { click_search: 10000 }, approved_from: "batch_b", candidate: null, candidate_from: null });
+    }
+    // an absent candidate leaves the candidate as it was
+    {
+      const t = recordOf([...base, timeoutsLine(3, "batch_a", {}, { click_search: 10000 }), timeoutsLine(4, "batch_b", { click_search: 7000 })]);
+      expect(t).toEqual({ approved: { click_search: 7000 }, approved_from: "batch_b", candidate: { click_search: 10000 }, candidate_from: "batch_a" });
+    }
   });
 });
 
@@ -82,23 +85,16 @@ const t = (over: Record<string, unknown>) => ({ ran_with: {}, ran_with_from: nul
 const screen = (timeouts: unknown): string => buildReview(factsWith(timeouts)).timeouts;
 
 describe("the review screen's timeouts line", () => {
-  test("a batch with proposals reads installs defaults; candidates", () => {
+  test("the review screen timeouts line reads each kind of batch", () => {
+    // a batch with proposals reads installs defaults; candidates
     expect(screen(t({ proposed: { click_search: 10000, click_submit: 15000 } }))).toBe("installs defaults; candidates click_search 10 s, click_submit 15 s");
-  });
-
-  test("a batch that ran with tuned values says what approval installs", () => {
+    // a batch that ran with tuned values says what approval installs
     expect(screen(t({ ran_with: { click_search: 12500 }, proposed: { click_search: 12500 } }))).toBe("installs click_search 12.5 s; candidates click_search 12.5 s");
-  });
-
-  test("a batch with no proposals says no candidates", () => {
+    // a batch with no proposals says no candidates
     expect(screen(t({ not_proposed: { click_search: "3 samples" } }))).toBe("installs defaults; no candidates");
-  });
-
-  test("a scaled batch says why there are no candidates", () => {
+    // a scaled batch says why there are no candidates
     expect(screen(t({ scaled: true }))).toBe("installs defaults; no candidates, the batch ran with shortened delays");
-  });
-
-  test("a report with no timeouts field says installs defaults; no candidates", () => {
+    // a report with no timeouts field says installs defaults; no candidates
     expect(screen(undefined)).toBe("installs defaults; no candidates");
   });
 });

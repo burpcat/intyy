@@ -53,91 +53,93 @@ const FITTING = [artifactAt("1.0.0"), artifactAt("1.1.0")];
 const chose = (r: PickResult): string => (r.kind === "key" ? (r.artifact.identity.version ?? "?") : r.kind === "none" ? `none:${r.reason}` : "blocked");
 
 describe("pickKey, unattended: the one approved key", () => {
-  test("takes the approved version, not the newest sealed one", () => {
-    const records = [rec("1.0.0", [PASSED, approved(2)])];
-    const r = pickKey("unattended", scope(records), FITTING);
-    expect(chose(r)).toBe("1.0.0");
-    expect(r.kind === "key" ? r.record?.state : null).toBe("approved");
-  });
-
-  test("no record at all: none, not_approved", () => {
+  test("pickKey in unattended mode takes only the one approved key", () => {
+    // takes the approved version, not the newest sealed one
+    {
+      const records = [rec("1.0.0", [PASSED, approved(2)])];
+      const r = pickKey("unattended", scope(records), FITTING);
+      expect(chose(r)).toBe("1.0.0");
+      expect(r.kind === "key" ? r.record?.state : null).toBe("approved");
+    }
+    // no record at all: none, not_approved
     expect(chose(pickKey("unattended", scope([]), FITTING))).toBe("none:not_approved");
-  });
-
-  test("the approved key is degraded: none, degraded", () => {
-    const records = [rec("1.0.0", [PASSED, approved(2), degraded(3)])];
-    expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:degraded");
-  });
-
-  test("the key was retired with no successor: none, not_approved", () => {
-    const records = [rec("1.0.0", [PASSED, approved(2), retired(3)])];
-    expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
-  });
-
-  test("only a draft with a passing batch: none, not_approved (a batch alone is not approval)", () => {
-    const records = [rec("1.0.0", [PASSED])];
-    expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
-  });
-
-  test("the degraded key is older than a newer one that was approved and retired: not_approved", () => {
-    const records = [
-      rec("1.0.0", [PASSED, approved(2), degraded(3)]),
-      rec("1.1.0", [PASSED, approved(5), retired(6)]),
-    ];
-    expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
-  });
-
-  test("an approved key of another tenant, another app version, or a patch does not count", () => {
-    const records = [
-      rec("1.0.0", [PASSED, approved(2)], { tenant: "lakeshore" }),
-      rec("1.0.0", [PASSED, approved(2)], { app_version: "8.3" }),
-      rec("1.0.0", [PASSED, approved(2)], { patch_revision: 2 }),
-    ];
-    expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
-  });
-
-  test("another major's approved key does not count", () => {
-    const records = [rec("2.0.0", [PASSED, approved(2)])];
-    expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
+    // the approved key is degraded: none, degraded
+    {
+      const records = [rec("1.0.0", [PASSED, approved(2), degraded(3)])];
+      expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:degraded");
+    }
+    // the key was retired with no successor: none, not_approved
+    {
+      const records = [rec("1.0.0", [PASSED, approved(2), retired(3)])];
+      expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
+    }
+    // only a draft with a passing batch: none, not_approved (a batch alone is not approval)
+    {
+      const records = [rec("1.0.0", [PASSED])];
+      expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
+    }
+    // the degraded key is older than a newer one that was approved and retired: not_approved
+    {
+      const records = [
+        rec("1.0.0", [PASSED, approved(2), degraded(3)]),
+        rec("1.1.0", [PASSED, approved(5), retired(6)]),
+      ];
+      expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
+    }
+    // an approved key of another tenant, another app version, or a patch does not count
+    {
+      const records = [
+        rec("1.0.0", [PASSED, approved(2)], { tenant: "lakeshore" }),
+        rec("1.0.0", [PASSED, approved(2)], { app_version: "8.3" }),
+        rec("1.0.0", [PASSED, approved(2)], { patch_revision: 2 }),
+      ];
+      expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
+    }
+    // another major's approved key does not count
+    {
+      const records = [rec("2.0.0", [PASSED, approved(2)])];
+      expect(chose(pickKey("unattended", scope(records), FITTING))).toBe("none:not_approved");
+    }
   });
 });
 
 describe("pickKey, supervised: the first rule that finds a key", () => {
-  test("1. the approved key beats a newer certified one", () => {
-    const records = [rec("1.0.0", [PASSED, approved(2)]), rec("1.1.0", [PASSED])];
-    expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
-  });
-
-  test("2. the newest certified key beats a newer one with no batch", () => {
-    const records = [rec("1.0.0", [PASSED])];
-    expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
-    const both = [rec("1.0.0", [PASSED]), rec("1.1.0", [PASSED])];
-    expect(chose(pickKey("supervised", scope(both), FITTING))).toBe("1.1.0");
-  });
-
-  test("3. the newest sealed key without a wrong verdict", () => {
-    expect(chose(pickKey("supervised", scope([]), FITTING))).toBe("1.1.0");
-    const records = [rec("1.0.0", [FAILED]), rec("1.1.0", [LIED])];
-    expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
-  });
-
-  test("3. a degraded key is still a candidate; its failures were honest", () => {
-    const records = [rec("1.0.0", [FAILED, approved(2), degraded(3)])];
-    expect(chose(pickKey("supervised", scope(records), [artifactAt("1.0.0")]))).toBe("1.0.0");
-  });
-
-  test("every version had a wrong verdict: blocked", () => {
-    const records = [rec("1.0.0", [LIED]), rec("1.1.0", [LIED])];
-    expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("blocked");
-  });
-
-  test("a retired key is never a candidate", () => {
-    const records = [rec("1.1.0", [PASSED, approved(2), retired(3)])];
-    expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
-    expect(chose(pickKey("supervised", scope(records), [artifactAt("1.1.0")]))).toBe("blocked");
-  });
-
-  test("a supervised request never gets `none`: no record still picks the newest fitting version", () => {
+  test("pickKey in supervised mode follows its rules in order and never gives none", () => {
+    // 1. the approved key beats a newer certified one
+    {
+      const records = [rec("1.0.0", [PASSED, approved(2)]), rec("1.1.0", [PASSED])];
+      expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
+    }
+    // 2. the newest certified key beats a newer one with no batch
+    {
+      const records = [rec("1.0.0", [PASSED])];
+      expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
+      const both = [rec("1.0.0", [PASSED]), rec("1.1.0", [PASSED])];
+      expect(chose(pickKey("supervised", scope(both), FITTING))).toBe("1.1.0");
+    }
+    // 3. the newest sealed key without a wrong verdict
+    {
+      expect(chose(pickKey("supervised", scope([]), FITTING))).toBe("1.1.0");
+      const records = [rec("1.0.0", [FAILED]), rec("1.1.0", [LIED])];
+      expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
+    }
+    // 3. a degraded key is still a candidate; its failures were honest
+    {
+      const records = [rec("1.0.0", [FAILED, approved(2), degraded(3)])];
+      expect(chose(pickKey("supervised", scope(records), [artifactAt("1.0.0")]))).toBe("1.0.0");
+    }
+    // every version had a wrong verdict: blocked
+    {
+      const records = [rec("1.0.0", [LIED]), rec("1.1.0", [LIED])];
+      expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("blocked");
+    }
+    // a retired key is never a candidate
+    {
+      const records = [rec("1.1.0", [PASSED, approved(2), retired(3)])];
+      expect(chose(pickKey("supervised", scope(records), FITTING))).toBe("1.0.0");
+      expect(chose(pickKey("supervised", scope(records), [artifactAt("1.1.0")]))).toBe("blocked");
+    }
+    // a supervised request never gets `none`: no record still picks the newest fitting version
     expect(pickKey("supervised", scope([]), FITTING).kind).toBe("key");
   });
 });
@@ -145,23 +147,26 @@ describe("pickKey, supervised: the first rule that finds a key", () => {
 describe("contextState", () => {
   const state = (records: ScoreRecord[]) => contextState(records, "keystone", "8.4", NAME, 1);
 
-  test("approved outranks degraded, retired, and draft", () => {
-    const d = rec("1.0.0", [PASSED, approved(2), degraded(3)]);
-    const r = rec("1.1.0", [PASSED, approved(2), retired(3)]);
-    const a = rec("1.2.0", [PASSED, approved(2)]);
-    expect(state([r, d, a])).toBe("approved");
-    expect(state([r, d])).toBe("degraded");
-    expect(state([r])).toBe("retired");
-    expect(state([rec("1.0.0", [PASSED])])).toBe("draft");
-    expect(state([])).toBe("draft");
-  });
-
-  test("another tenant, app version, or major does not count; an unknown app version means any", () => {
-    const a = rec("1.0.0", [PASSED, approved(2)]);
-    expect(contextState([a], "lakeshore", "8.4", NAME, 1)).toBe("draft");
-    expect(contextState([a], "keystone", "9.0", NAME, 1)).toBe("draft");
-    expect(contextState([a], "keystone", "8.4", NAME, 2)).toBe("draft");
-    expect(contextState([a], "keystone", undefined, NAME, 1)).toBe("approved");
+  test("contextState ranks approved over degraded, retired, and draft, and counts only its own context", () => {
+    // approved outranks degraded, retired, and draft
+    {
+      const d = rec("1.0.0", [PASSED, approved(2), degraded(3)]);
+      const r = rec("1.1.0", [PASSED, approved(2), retired(3)]);
+      const a = rec("1.2.0", [PASSED, approved(2)]);
+      expect(state([r, d, a])).toBe("approved");
+      expect(state([r, d])).toBe("degraded");
+      expect(state([r])).toBe("retired");
+      expect(state([rec("1.0.0", [PASSED])])).toBe("draft");
+      expect(state([])).toBe("draft");
+    }
+    // another tenant, app version, or major does not count; an unknown app version means any
+    {
+      const a = rec("1.0.0", [PASSED, approved(2)]);
+      expect(contextState([a], "lakeshore", "8.4", NAME, 1)).toBe("draft");
+      expect(contextState([a], "keystone", "9.0", NAME, 1)).toBe("draft");
+      expect(contextState([a], "keystone", "8.4", NAME, 2)).toBe("draft");
+      expect(contextState([a], "keystone", undefined, NAME, 1)).toBe("approved");
+    }
   });
 });
 

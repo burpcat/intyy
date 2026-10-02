@@ -72,72 +72,78 @@ const planner = (f: typeof fetch) =>
   new ClaudePlanner({ apiKey: "test-key", fetch: f, baseURL: "http://127.0.0.1:9" });
 
 describe("model call order (section 9 §5.3)", () => {
-  test("the stored request bytes equal the sent bytes; the reply is stored as received", async () => {
-    const { f, sent } = fakeFetch();
-    const { record, stored } = recorder();
-    const r = await planner(f).next(turn(true), record);
-    expect(r).toMatchObject({
-      ok: true,
-      value: {
-        call: { name: "click" },
-        model: "claude-sonnet-5",
-        usage: { input_tokens: 120, output_tokens: 30 },
-      },
-    });
-    expect(stored.map((s) => s.part)).toEqual(["request", "reply"]);
-    expect(sent).toHaveLength(1);
-    expect(Buffer.from(stored[0]?.bytes ?? []).equals(Buffer.from(sent[0] ?? []))).toBe(true);
-    expect(JSON.parse(new TextDecoder().decode(stored[1]?.bytes))).toEqual(REPLY);
-  });
-
-  test("a failed write stops the call: nothing is sent", async () => {
-    const { f, sent } = fakeFetch();
-    const { record } = recorder(false);
-    const r = await planner(f).next(turn(false), record);
-    expect(r).toMatchObject({ ok: false, failure: "write_failed" });
-    expect(sent).toHaveLength(0);
-  });
-
-  test("the API key never lands in the stored bytes", async () => {
-    const { f } = fakeFetch();
-    const { record, stored } = recorder();
-    await planner(f).next(turn(false), record);
-    for (const s of stored) expect(new TextDecoder().decode(s.bytes)).not.toContain("test-key");
+  test("the planner stores the request before the reply, sends nothing after a failed write, and never stores the key", async () => {
+    // the stored request bytes equal the sent bytes; the reply is stored as received
+    {
+      const { f, sent } = fakeFetch();
+      const { record, stored } = recorder();
+      const r = await planner(f).next(turn(true), record);
+      expect(r).toMatchObject({
+        ok: true,
+        value: {
+          call: { name: "click" },
+          model: "claude-sonnet-5",
+          usage: { input_tokens: 120, output_tokens: 30 },
+        },
+      });
+      expect(stored.map((s) => s.part)).toEqual(["request", "reply"]);
+      expect(sent).toHaveLength(1);
+      expect(Buffer.from(stored[0]?.bytes ?? []).equals(Buffer.from(sent[0] ?? []))).toBe(true);
+      expect(JSON.parse(new TextDecoder().decode(stored[1]?.bytes))).toEqual(REPLY);
+    }
+    // a failed write stops the call: nothing is sent
+    {
+      const { f, sent } = fakeFetch();
+      const { record } = recorder(false);
+      const r = await planner(f).next(turn(false), record);
+      expect(r).toMatchObject({ ok: false, failure: "write_failed" });
+      expect(sent).toHaveLength(0);
+    }
+    // the API key never lands in the stored bytes
+    {
+      const { f } = fakeFetch();
+      const { record, stored } = recorder();
+      await planner(f).next(turn(false), record);
+      for (const s of stored) expect(new TextDecoder().decode(s.bytes)).not.toContain("test-key");
+    }
   });
 });
 
 describe("failures (section 9 §5.3)", () => {
-  test.each([429, 500, 529])("HTTP %d is unavailable, with no SDK retry", async (status) => {
-    const { f, sent } = fakeFetch(status, {
-      type: "error",
-      error: { type: "overloaded_error", message: "busy" },
-    });
-    const r = await planner(f).next(turn(false), recorder().record);
-    expect(r).toMatchObject({ ok: false, failure: "unavailable" });
-    expect(sent).toHaveLength(1);
-  });
-
-  test("a network error is unavailable", async () => {
-    const f: typeof fetch = () => Promise.reject(new TypeError("fetch failed"));
-    const r = await planner(f).next(turn(false), recorder().record);
-    expect(r).toMatchObject({ ok: false, failure: "unavailable" });
-  });
-
-  test("a refusal is refused; a reply with no tool call has call null", async () => {
-    const refusal = fakeFetch(200, { ...REPLY, content: [], stop_reason: "refusal" });
-    expect(await planner(refusal.f).next(turn(false), recorder().record)).toMatchObject({
-      ok: false,
-      failure: "refused",
-    });
-    const text = fakeFetch(200, {
-      ...REPLY,
-      content: [{ type: "text", text: "Hmm." }],
-      stop_reason: "end_turn",
-    });
-    expect(await planner(text.f).next(turn(false), recorder().record)).toMatchObject({
-      ok: true,
-      value: { call: null },
-    });
+  test("the planner maps HTTP errors, a network error, and a refusal to failures", async () => {
+    // HTTP 429, 500, and 529 are unavailable, with no SDK retry
+    for (const status of [429, 500, 529]) {
+      const { f, sent } = fakeFetch(status, {
+        type: "error",
+        error: { type: "overloaded_error", message: "busy" },
+      });
+      const r = await planner(f).next(turn(false), recorder().record);
+      expect(r, `HTTP ${String(status)}`).toMatchObject({ ok: false, failure: "unavailable" });
+      expect(sent, `HTTP ${String(status)}`).toHaveLength(1);
+    }
+    // a network error is unavailable
+    {
+      const f: typeof fetch = () => Promise.reject(new TypeError("fetch failed"));
+      const r = await planner(f).next(turn(false), recorder().record);
+      expect(r).toMatchObject({ ok: false, failure: "unavailable" });
+    }
+    // a refusal is refused; a reply with no tool call has call null
+    {
+      const refusal = fakeFetch(200, { ...REPLY, content: [], stop_reason: "refusal" });
+      expect(await planner(refusal.f).next(turn(false), recorder().record)).toMatchObject({
+        ok: false,
+        failure: "refused",
+      });
+      const text = fakeFetch(200, {
+        ...REPLY,
+        content: [{ type: "text", text: "Hmm." }],
+        stop_reason: "end_turn",
+      });
+      expect(await planner(text.f).next(turn(false), recorder().record)).toMatchObject({
+        ok: true,
+        value: { call: null },
+      });
+    }
   });
 });
 

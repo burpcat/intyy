@@ -50,25 +50,22 @@ const hashOf = (layers: PackLayer[]): string => {
 };
 
 describe("appliesTo", () => {
-  test("global reaches every tenant and app", () => {
+  test("appliesTo reaches the right tenants and apps for each pack scope", () => {
+    // global reaches every tenant and app
     expect(appliesTo(GLOBAL_SCOPE, "keystone", "kvfcu")).toBe(true);
     expect(appliesTo(GLOBAL_SCOPE, "lakeshore", "other")).toBe(true);
-  });
-
-  test("an app pack reaches every tenant on that app only", () => {
+    // an app pack reaches every tenant on that app only
     expect(appliesTo(APP_SCOPE, "keystone", "kvfcu")).toBe(true);
     expect(appliesTo(APP_SCOPE, "lakeshore", "kvfcu")).toBe(true);
     expect(appliesTo(APP_SCOPE, "keystone", "other")).toBe(false);
-  });
-
-  test("a tenant pack reaches that tenant on that app only", () => {
-    const scope: PackScope = { level: "tenant", tenant: "keystone", app: "kvfcu" };
-    expect(appliesTo(scope, "keystone", "kvfcu")).toBe(true);
-    expect(appliesTo(scope, "lakeshore", "kvfcu")).toBe(false);
-    expect(appliesTo(scope, "keystone", "other")).toBe(false);
-  });
-
-  test("an app_version pack reaches nothing: the build's frozen set has no such layer", () => {
+    // a tenant pack reaches that tenant on that app only
+    {
+      const scope: PackScope = { level: "tenant", tenant: "keystone", app: "kvfcu" };
+      expect(appliesTo(scope, "keystone", "kvfcu")).toBe(true);
+      expect(appliesTo(scope, "lakeshore", "kvfcu")).toBe(false);
+      expect(appliesTo(scope, "keystone", "other")).toBe(false);
+    }
+    // an app_version pack reaches nothing: the build's frozen set has no such layer
     expect(appliesTo({ level: "app_version", app: "kvfcu", app_versions: ["9.*"] }, "keystone", "kvfcu")).toBe(false);
   });
 });
@@ -78,29 +75,32 @@ describe("layersWith", () => {
   const app1 = layer(APP_SCOPE, 1, ["a_one"]);
   const tenant1 = layer({ level: "tenant", tenant: "keystone", app: "kvfcu" }, 1, ["t_one"]);
 
-  test("the candidate replaces the active layer of its own scope", () => {
-    const app2 = layer(APP_SCOPE, 2, ["a_one", "a_two"]);
-    const out = layersWith([global1, app1], app2);
-    expect(out.map((l) => `${l.scope.level}@${String(l.revision)}`)).toEqual(["global@1", "app@2"]);
-  });
-
-  test("a candidate for a scope with no active layer is added, and the order stays general to specific", () => {
-    const out = layersWith([tenant1, global1], app1);
-    expect(out.map((l) => l.scope.level)).toEqual(["global", "app", "tenant"]);
-  });
-
-  test("it does not change the active list", () => {
-    const active = [global1, app1];
-    layersWith(active, layer(APP_SCOPE, 2, ["a_one"]));
-    expect(active).toEqual([global1, app1]);
-  });
-
-  test("a candidate that adds a handler changes the frozen set hash; the same pack does not", () => {
-    const active = [global1, app1];
-    const before = hashOf(active);
-    expect(hashOf(layersWith(active, layer(APP_SCOPE, 2, ["a_one", "a_two"])))).not.toBe(before);
-    // Same content as the active layer, so the same hash (the revision number is not in the hash's content).
-    expect(hashOf(layersWith(active, app1))).toBe(before);
+  test("layersWith replaces or adds the candidate layer without changing the active list, and moves the frozen hash", () => {
+    // the candidate replaces the active layer of its own scope
+    {
+      const app2 = layer(APP_SCOPE, 2, ["a_one", "a_two"]);
+      const out = layersWith([global1, app1], app2);
+      expect(out.map((l) => `${l.scope.level}@${String(l.revision)}`)).toEqual(["global@1", "app@2"]);
+    }
+    // a candidate for a scope with no active layer is added, and the order stays general to specific
+    {
+      const out = layersWith([tenant1, global1], app1);
+      expect(out.map((l) => l.scope.level)).toEqual(["global", "app", "tenant"]);
+    }
+    // it does not change the active list
+    {
+      const active = [global1, app1];
+      layersWith(active, layer(APP_SCOPE, 2, ["a_one"]));
+      expect(active).toEqual([global1, app1]);
+    }
+    // a candidate that adds a handler changes the frozen set hash; the same pack does not
+    {
+      const active = [global1, app1];
+      const before = hashOf(active);
+      expect(hashOf(layersWith(active, layer(APP_SCOPE, 2, ["a_one", "a_two"])))).not.toBe(before);
+      // Same content as the active layer, so the same hash (the revision number is not in the hash's content).
+      expect(hashOf(layersWith(active, app1))).toBe(before);
+    }
   });
 });
 
@@ -110,25 +110,20 @@ describe("regressionCovers", () => {
   const reg = (over: Partial<Extract<HistoryLine, { event: "batch" }>> = {}): HistoryLine =>
     batch(3, "batch_reg", { kind: "regression", gate: "passed", under: under(NEW), ...over });
 
-  test("a passed, non-drill regression under the hash covers it", () => {
+  test("regressionCovers needs a passed, non-drill regression under the hash", () => {
+    // a passed, non-drill regression under the hash covers it
     expect(regressionCovers([reg()], NEW)).toBe(true);
-  });
-
-  test("a failed gate, a drill, another hash, or another kind does not", () => {
+    // a failed gate, a drill, another hash, or another kind does not
     expect(regressionCovers([reg({ gate: "failed" })], NEW)).toBe(false);
     expect(regressionCovers([reg({ drill: true })], NEW)).toBe(false);
     expect(regressionCovers([reg({ under: under(h("other")) })], NEW)).toBe(false);
     expect(regressionCovers([reg({ kind: "full" })], NEW)).toBe(false);
     expect(regressionCovers([reg({ kind: "quick" })], NEW)).toBe(false);
-  });
-
-  test("non-batch lines and an empty history do not cover; a null hash is never covered", () => {
+    // non-batch lines and an empty history do not cover; a null hash is never covered
     expect(regressionCovers([], NEW)).toBe(false);
     expect(regressionCovers([approved(1)], NEW)).toBe(false);
     expect(regressionCovers([reg()], null)).toBe(false);
-  });
-
-  test("one covering line among others is enough", () => {
+    // one covering line among others is enough
     expect(regressionCovers([reg({ gate: "failed" }), approved(4), reg()], NEW)).toBe(true);
   });
 });
@@ -137,7 +132,6 @@ describe("uncovered", () => {
   const NEW = h("new-handler-set");
   const under = { engine: "0.4.0", handler_set: NEW, jev: null, session: null, check: null };
   const keyB = { ...KEY, capability: "kvfcu/close_share_subaccount@1.0.0" };
-
   function factsOf(key: typeof KEY, lines: HistoryLine[]): PackImpact["facts"][number] {
     const record = rebuild(key, HASHES, lines);
     if (!record.ok) throw new Error("test setup: rebuild failed");
@@ -145,32 +139,33 @@ describe("uncovered", () => {
   }
   const impacted = (key: typeof KEY, after: string | null): PackImpact["impacted"][number] => ({ key, text: keyText(key), before: h("old"), after });
 
-  test("lists the impacted keys that have no covering regression, and only those", () => {
-    const covering = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "passed", under })];
-    const failed = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "failed", under })];
-    const impact: PackImpact = {
-      impacted: [impacted(KEY, NEW), impacted(keyB, NEW)],
-      facts: [factsOf(KEY, covering), factsOf(keyB, failed)],
-    };
-    expect(uncovered(impact).map((i) => i.text)).toEqual([keyText(keyB)]);
-  });
-
-  test("nothing impacted: nothing uncovered", () => {
+  test("uncovered lists impacted keys with no covering regression, and only those", () => {
+    // lists the impacted keys that have no covering regression, and only those
+    {
+      const covering = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "passed", under })];
+      const failed = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "failed", under })];
+      const impact: PackImpact = {
+        impacted: [impacted(KEY, NEW), impacted(keyB, NEW)],
+        facts: [factsOf(KEY, covering), factsOf(keyB, failed)],
+      };
+      expect(uncovered(impact).map((i) => i.text)).toEqual([keyText(keyB)]);
+    }
+    // nothing impacted: nothing uncovered
     expect(uncovered({ impacted: [], facts: [factsOf(KEY, [approved(1)])] })).toEqual([]);
-  });
-
-  test("a key whose candidate frozen set is invalid (after is null) is always uncovered", () => {
-    const lines = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "passed", under })];
-    expect(uncovered({ impacted: [impacted(KEY, null)], facts: [factsOf(KEY, lines)] })).toHaveLength(1);
-  });
-
-  test("facts of another tenant's key with the same text do not cover", () => {
-    const covering = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "passed", under })];
-    const other = { ...KEY, tenant: "lakeshore" };
-    const impact: PackImpact = {
-      impacted: [impacted(KEY, NEW)],
-      facts: [factsOf(other, covering), factsOf(KEY, [approved(1)])],
-    };
-    expect(uncovered(impact)).toHaveLength(1);
+    // a key whose candidate frozen set is invalid (after is null) is always uncovered
+    {
+      const lines = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "passed", under })];
+      expect(uncovered({ impacted: [impacted(KEY, null)], facts: [factsOf(KEY, lines)] })).toHaveLength(1);
+    }
+    // facts of another tenant's key with the same text do not cover
+    {
+      const covering = [approved(1), batch(2, "batch_reg", { kind: "regression", gate: "passed", under })];
+      const other = { ...KEY, tenant: "lakeshore" };
+      const impact: PackImpact = {
+        impacted: [impacted(KEY, NEW)],
+        facts: [factsOf(other, covering), factsOf(KEY, [approved(1)])],
+      };
+      expect(uncovered(impact)).toHaveLength(1);
+    }
   });
 });

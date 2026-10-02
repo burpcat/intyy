@@ -21,34 +21,31 @@ function line(): Record<string, unknown> {
 }
 
 describe("CandidateDecision", () => {
-  test("accepts a well-formed line, with or without a note", () => {
+  test("CandidateDecision accepts good lines and rejects bad ones", () => {
+    // accepts a well-formed line, with or without a note
     expect(CandidateDecision.safeParse(line()).success).toBe(true);
     expect(CandidateDecision.safeParse(baseLine()).success).toBe(true);
-  });
-
-  test("accepts every reconciled `what` value", () => {
-    const values = [
-      "tag",
-      "risk",
-      "sensitivity",
-      "outcome_name",
-      "refusal",
-      "waiver",
-      "recovery",
-      "edit",
-      "risk_second_look",
-    ];
-    for (const what of values) {
-      expect(CandidateDecision.safeParse({ ...line(), what }).success).toBe(true);
+    // accepts every reconciled `what` value
+    {
+      const values = [
+        "tag",
+        "risk",
+        "sensitivity",
+        "outcome_name",
+        "refusal",
+        "waiver",
+        "recovery",
+        "edit",
+        "risk_second_look",
+      ];
+      for (const what of values) {
+        expect(CandidateDecision.safeParse({ ...line(), what }).success).toBe(true);
+      }
     }
-  });
-
-  test("rejects a `what` not on the reconciled list, such as the patch-only value", () => {
+    // rejects a `what` not on the reconciled list, such as the patch-only value
     expect(CandidateDecision.safeParse({ ...line(), what: "patch" }).success).toBe(false);
     expect(CandidateDecision.safeParse({ ...line(), what: "bogus" }).success).toBe(false);
-  });
-
-  test("rejects a missing field and an unknown field", () => {
+    // rejects a missing field and an unknown field
     expect(CandidateDecision.safeParse({ ...line(), by: undefined }).success).toBe(false);
     expect(CandidateDecision.safeParse({ ...line(), extra: 1 }).success).toBe(false);
   });

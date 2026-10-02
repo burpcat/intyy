@@ -46,21 +46,22 @@ function factsWith(stability: StabilityLevel[] | null | undefined): ReviewFacts 
 }
 
 describe("the review screen's stability line", () => {
-  test("a curve prints each level, its unexplained count, and the worst twin mismatch with its level", () => {
-    const curve = [level(0.05), level(0.3, { pass: 0.8, unexplained: 0.2, twin_mismatch: 0.2 })];
-    expect(buildReview(factsWith(curve)).stability).toBe("0.05: 100% pass   0.30: 80% pass, 1 unexplained   twins 0.2 at 0.30");
-  });
-
-  test("assisted and wrong runs are named; a clean curve says no twin mismatch level", () => {
-    const text = buildReview(factsWith([level(0.15, { pass: 0.6, assisted: 0.2, unexplained: 0.2, wrong: 1 })])).stability;
-    expect(text).toContain("0.15: 60% pass");
-    expect(text).toContain("1 unexplained");
-    expect(text).toContain("1 assisted");
-    expect(text).toContain("1 WRONG");
-    expect(buildReview(factsWith([level(0.05)])).stability).toBe("0.05: 100% pass   twins 0");
-  });
-
-  test("a report with no curve, a null curve, or an empty one says not run", () => {
+  test("the review screen stability line prints the curve, names runs, and says not run when absent", () => {
+    // a curve prints each level, its unexplained count, and the worst twin mismatch with its level
+    {
+      const curve = [level(0.05), level(0.3, { pass: 0.8, unexplained: 0.2, twin_mismatch: 0.2 })];
+      expect(buildReview(factsWith(curve)).stability).toBe("0.05: 100% pass   0.30: 80% pass, 1 unexplained   twins 0.2 at 0.30");
+    }
+    // assisted and wrong runs are named; a clean curve says no twin mismatch level
+    {
+      const text = buildReview(factsWith([level(0.15, { pass: 0.6, assisted: 0.2, unexplained: 0.2, wrong: 1 })])).stability;
+      expect(text).toContain("0.15: 60% pass");
+      expect(text).toContain("1 unexplained");
+      expect(text).toContain("1 assisted");
+      expect(text).toContain("1 WRONG");
+      expect(buildReview(factsWith([level(0.05)])).stability).toBe("0.05: 100% pass   twins 0");
+    }
+    // a report with no curve, a null curve, or an empty one says not run
     for (const stability of [undefined, null, []]) {
       expect(buildReview(factsWith(stability)).stability).toBe("not run");
     }

@@ -63,15 +63,12 @@ const status = (d: ReturnType<typeof stores>["deps"], tenant = "keystone", appVe
   majorStatus(d, tenant, appVersion, "kvfcu", NAME, 1);
 
 describe("retireDate", () => {
-  test("retires_on wins when it is later than approval + 90 days", () => {
+  test("retireDate takes the later of retires_on and the successor approval plus 90 days", () => {
+    // retires_on wins when it is later than approval + 90 days
     expect(retireDate({ retires_on: "2026-06-01" }, FIRST)).toBe("2026-06-01");
-  });
-
-  test("the successor's first approval + 90 days wins when it is later", () => {
+    // the successor's first approval + 90 days wins when it is later
     expect(retireDate({ retires_on: "2026-02-01" }, FIRST)).toBe("2026-04-15");
-  });
-
-  test("with no approval there is no date", () => {
+    // with no approval there is no date
     expect(retireDate({ retires_on: "2026-06-01" }, null)).toBeNull();
   });
 });
@@ -79,91 +76,93 @@ describe("retireDate", () => {
 describe("majorVerdict", () => {
   const st = (retiresOn: string | null): MajorStatus => ({ name: ID, successor: 2, retiresOn });
 
-  test("none: no status, or no retire date here", () => {
+  test("majorVerdict gives none, warn, or retired with a message naming the date and successor", () => {
+    // none: no status, or no retire date here
     expect(majorVerdict(null, "2026-07-01")).toEqual({ kind: "none" });
     expect(majorVerdict(st(null), "2099-01-01")).toEqual({ kind: "none" });
-  });
-
-  test("warn before the day, and the message names the date and @2", () => {
-    const v = majorVerdict(st("2026-06-01"), "2026-05-31");
-    expect(v.kind).toBe("warn");
-    if (v.kind === "warn") {
-      expect(v.message).toContain("2026-06-01");
-      expect(v.message).toContain("@2");
+    // warn before the day, and the message names the date and @2
+    {
+      const v = majorVerdict(st("2026-06-01"), "2026-05-31");
+      expect(v.kind).toBe("warn");
+      if (v.kind === "warn") {
+        expect(v.message).toContain("2026-06-01");
+        expect(v.message).toContain("@2");
+      }
     }
-  });
-
-  test("retired after the day, and the message names the successor", () => {
-    const v = majorVerdict(st("2026-06-01"), "2026-06-02");
-    expect(v.kind).toBe("retired");
-    if (v.kind === "retired") expect(v.message).toContain("kvfcu/open_share_subaccount@2");
+    // retired after the day, and the message names the successor
+    {
+      const v = majorVerdict(st("2026-06-01"), "2026-06-02");
+      expect(v.kind).toBe("retired");
+      if (v.kind === "retired") expect(v.message).toContain("kvfcu/open_share_subaccount@2");
+    }
   });
 });
 
 describe("majorStatus", () => {
-  test("no record: null", async () => {
+  test("majorStatus reads the retire date from the records in force", async () => {
+    // no record: null
     expect(await status(stores().deps)).toBeNull();
-  });
-
-  test("a sealed or candidate record has no force", async () => {
-    const s = stores();
-    await put(s.majors, record(), "seal");
-    expect(await status(s.deps)).toBeNull();
-    const c = stores();
-    await put(c.majors, record(), "candidate");
-    expect(await status(c.deps)).toBeNull();
-  });
-
-  test("an approved record with no successor approval here: no retire date", async () => {
-    const s = stores();
-    await put(s.majors, record());
-    expect(await status(s.deps)).toEqual({ name: ID, successor: 2, retiresOn: null });
-    // A draft successor (a batch, no approval) is not "approved here".
-    await history(s.scores, successorKey(), [batch(1, "batch_a")]);
-    expect((await status(s.deps))?.retiresOn).toBeNull();
-  });
-
-  test("sealed, approved, and the successor approved: the retire day follows the rule", async () => {
-    const s = stores();
-    await put(s.majors, record({ retires_on: "2026-02-01" }));
-    await history(s.scores, successorKey(), [batch(1, "batch_a"), approved(2)]);
-    expect(await status(s.deps)).toEqual({ name: ID, successor: 2, retiresOn: "2026-04-15" });
-  });
-
-  test("the earliest approval among the tenant's successor keys counts", async () => {
-    const s = stores();
-    await put(s.majors, record({ retires_on: "2026-02-01" }));
-    const later = { ...approved(2), at: "2026-02-10T09:00:00.000Z" };
-    await history(s.scores, successorKey({ capability: `kvfcu/${NAME}@2.1.0` }), [batch(1, "batch_b"), later]);
-    await history(s.scores, successorKey(), [batch(1, "batch_a"), approved(2)]);
-    expect((await status(s.deps))?.retiresOn).toBe("2026-04-15");
-  });
-
-  test("another tenant's approval and another app version's approval do not count", async () => {
-    const s = stores();
-    await put(s.majors, record());
-    await history(s.scores, successorKey({ tenant: "lakeshore" }), [batch(1, "batch_a"), approved(2)]);
-    await history(s.scores, successorKey({ app_version: "9.9" }), [batch(1, "batch_a"), approved(2)]);
-    expect((await status(s.deps))?.retiresOn).toBeNull();
-    expect((await status(s.deps, "lakeshore"))?.retiresOn).not.toBeNull();
-    expect((await status(s.deps, "keystone", "9.9"))?.retiresOn).not.toBeNull();
-  });
-
-  test("an approval on the old major's own keys is not the successor's", async () => {
-    const s = stores();
-    await put(s.majors, record());
-    await history(s.scores, successorKey({ capability: `kvfcu/${NAME}@1.0.0` }), [batch(1, "batch_a"), approved(2)]);
-    expect((await status(s.deps))?.retiresOn).toBeNull();
-  });
-
-  test("the newest approved revision is in force; a newer sealed one is not", async () => {
-    const s = stores();
-    await put(s.majors, record({ retires_on: "2026-02-01" }));
-    await history(s.scores, successorKey(), [batch(1, "batch_a"), approved(2)]);
-    await put(s.majors, record({ revision: 2, retires_on: "2026-08-01" }), "seal");
-    expect((await status(s.deps))?.retiresOn).toBe("2026-04-15");
-    expect((await s.majors.approve(ID, "2", "op_031")).ok).toBe(true);
-    expect((await status(s.deps))?.retiresOn).toBe("2026-08-01");
+    // a sealed or candidate record has no force
+    {
+      const s = stores();
+      await put(s.majors, record(), "seal");
+      expect(await status(s.deps)).toBeNull();
+      const c = stores();
+      await put(c.majors, record(), "candidate");
+      expect(await status(c.deps)).toBeNull();
+    }
+    // an approved record with no successor approval here: no retire date
+    {
+      const s = stores();
+      await put(s.majors, record());
+      expect(await status(s.deps)).toEqual({ name: ID, successor: 2, retiresOn: null });
+      // A draft successor (a batch, no approval) is not "approved here".
+      await history(s.scores, successorKey(), [batch(1, "batch_a")]);
+      expect((await status(s.deps))?.retiresOn).toBeNull();
+    }
+    // sealed, approved, and the successor approved: the retire day follows the rule
+    {
+      const s = stores();
+      await put(s.majors, record({ retires_on: "2026-02-01" }));
+      await history(s.scores, successorKey(), [batch(1, "batch_a"), approved(2)]);
+      expect(await status(s.deps)).toEqual({ name: ID, successor: 2, retiresOn: "2026-04-15" });
+    }
+    // the earliest approval among the tenant's successor keys counts
+    {
+      const s = stores();
+      await put(s.majors, record({ retires_on: "2026-02-01" }));
+      const later = { ...approved(2), at: "2026-02-10T09:00:00.000Z" };
+      await history(s.scores, successorKey({ capability: `kvfcu/${NAME}@2.1.0` }), [batch(1, "batch_b"), later]);
+      await history(s.scores, successorKey(), [batch(1, "batch_a"), approved(2)]);
+      expect((await status(s.deps))?.retiresOn).toBe("2026-04-15");
+    }
+    // another tenant's approval and another app version's approval do not count
+    {
+      const s = stores();
+      await put(s.majors, record());
+      await history(s.scores, successorKey({ tenant: "lakeshore" }), [batch(1, "batch_a"), approved(2)]);
+      await history(s.scores, successorKey({ app_version: "9.9" }), [batch(1, "batch_a"), approved(2)]);
+      expect((await status(s.deps))?.retiresOn).toBeNull();
+      expect((await status(s.deps, "lakeshore"))?.retiresOn).not.toBeNull();
+      expect((await status(s.deps, "keystone", "9.9"))?.retiresOn).not.toBeNull();
+    }
+    // an approval on the old major's own keys is not the successor's
+    {
+      const s = stores();
+      await put(s.majors, record());
+      await history(s.scores, successorKey({ capability: `kvfcu/${NAME}@1.0.0` }), [batch(1, "batch_a"), approved(2)]);
+      expect((await status(s.deps))?.retiresOn).toBeNull();
+    }
+    // the newest approved revision is in force; a newer sealed one is not
+    {
+      const s = stores();
+      await put(s.majors, record({ retires_on: "2026-02-01" }));
+      await history(s.scores, successorKey(), [batch(1, "batch_a"), approved(2)]);
+      await put(s.majors, record({ revision: 2, retires_on: "2026-08-01" }), "seal");
+      expect((await status(s.deps))?.retiresOn).toBe("2026-04-15");
+      expect((await s.majors.approve(ID, "2", "op_031")).ok).toBe(true);
+      expect((await status(s.deps))?.retiresOn).toBe("2026-08-01");
+    }
   });
 });
 

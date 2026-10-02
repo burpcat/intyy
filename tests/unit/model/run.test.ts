@@ -59,36 +59,31 @@ function replayFixture(): Record<string, unknown> {
 }
 
 describe("intyy.run/1.0", () => {
-  test("the discovery fixture M03/M04 already write still parses (byte-compatible)", () => {
-    const parsed = RunJson.safeParse(discoveryFixture());
-    expect(parsed.success).toBe(true);
-    if (parsed.success && parsed.data.kind === "discovery") {
-      expect(parsed.data.capability).toBe("kvfcu/sign_in");
+  test("the run schema parses the fixtures and rejects each bad shape", () => {
+    // the discovery fixture M03/M04 already write still parses (byte-compatible)
+    {
+      const parsed = RunJson.safeParse(discoveryFixture());
+      expect(parsed.success).toBe(true);
+      if (parsed.success && parsed.data.kind === "discovery") {
+        expect(parsed.data.capability).toBe("kvfcu/sign_in");
+      }
     }
-  });
-
-  test("a section 3 §7.3 replay run.json parses, ended_at nullable in its result", () => {
+    // a section 3 §7.3 replay run.json parses, ended_at nullable in its result
     expect(RunJson.safeParse(replayFixture()).success).toBe(true);
-  });
-
-  test("a replay run.json's top-level status accepts running and escalated; discovery does not", () => {
+    // a replay run.json's top-level status accepts running and escalated; discovery does not
     for (const status of ReplayRunStatus.options) {
       expect(RunJson.safeParse({ ...replayFixture(), status }).success).toBe(true);
     }
     expect(RunStatus.options).toEqual(["success", "business_outcome", "rejected", "failed"]);
     expect(RunJson.safeParse({ ...discoveryFixture(), status: "running" }).success).toBe(false);
-  });
-
-  test("retention defaults land as dates (section 3 §7.9)", () => {
-    const bad = { ...replayFixture(), retention: { debug_until: "not-a-date", audit_until: "2027-09-24" } };
-    expect(RunJson.safeParse(bad).success).toBe(false);
-  });
-
-  test("an unknown kind is rejected", () => {
+    // retention defaults land as dates (section 3 §7.9)
+    {
+      const bad = { ...replayFixture(), retention: { debug_until: "not-a-date", audit_until: "2027-09-24" } };
+      expect(RunJson.safeParse(bad).success).toBe(false);
+    }
+    // an unknown kind is rejected
     expect(RunJson.safeParse({ ...discoveryFixture(), kind: "certify" }).success).toBe(false);
-  });
-
-  test("a discovery run.json with an unknown field is rejected", () => {
+    // a discovery run.json with an unknown field is rejected
     expect(RunJson.safeParse({ ...discoveryFixture(), extra: true }).success).toBe(false);
   });
 });

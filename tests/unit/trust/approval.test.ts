@@ -79,30 +79,25 @@ function facts(o: Over = {}): ReviewFacts {
 const codesOf = (f: ReviewFacts, move?: "approve" | "restore"): string[] => approvalBlocks(f, move).map((b) => b.code);
 
 describe("approvalBlocks: four eyes", () => {
-  test("an approver who sealed the artifact is blocked, and only by four_eyes", () => {
-    const f = facts({ staff: { staff: "op_017", roles: ["approver"] } });
-    expect(codesOf(f)).toEqual(["four_eyes"]);
-  });
-
-  test("another approver passes", () => {
+  test("approvalBlocks applies four eyes, the approver role, and the restore rule", () => {
+    // an approver who sealed the artifact is blocked, and only by four_eyes
+    {
+      const f = facts({ staff: { staff: "op_017", roles: ["approver"] } });
+      expect(codesOf(f)).toEqual(["four_eyes"]);
+    }
+    // another approver passes
     expect(codesOf(facts())).toEqual([]);
-  });
-
-  test("an artifact with no sealer fails safe", () => {
+    // an artifact with no sealer fails safe
     expect(codesOf(facts({ sealer: null }))).toEqual(["four_eyes"]);
-  });
-
-  test("with no staff ID, role and sealer rules are not checked", () => {
+    // with no staff ID, role and sealer rules are not checked
     expect(codesOf(facts({ staff: null, sealer: null }))).toEqual([]);
-  });
-
-  test("a restore has no sealer rule", () => {
-    const f = facts({ lines: [approved(2, "op_022"), degraded(3)], staff: { staff: "op_017", roles: ["approver"] } });
-    // The batch (minute 1) is older than the demotion (minute 3): the only block is the batch rule.
-    expect(codesOf(f, "restore")).toEqual(["not_new_batch"]);
-  });
-
-  test("a staff ID without the approver role gets role", () => {
+    // a restore has no sealer rule
+    {
+      const f = facts({ lines: [approved(2, "op_022"), degraded(3)], staff: { staff: "op_017", roles: ["approver"] } });
+      // The batch (minute 1) is older than the demotion (minute 3): the only block is the batch rule.
+      expect(codesOf(f, "restore")).toEqual(["not_new_batch"]);
+    }
+    // a staff ID without the approver role gets role
     expect(codesOf(facts({ staff: { staff: "op_031", roles: ["operator"] } }))).toEqual(["role"]);
   });
 });
@@ -121,58 +116,59 @@ function screens(): string {
 }
 
 describe("the approval screen", () => {
-  test.each(SITUATIONS)("%s: the same facts give the same text, ending with the record hash", (_name, f) => {
-    for (const full of [false, true]) {
-      const text = renderReview(buildReview(f), full);
-      expect(renderReview(buildReview(f), full)).toBe(text);
-      expect(text.split("\n").at(-1)).toBe(`RECORD ${recordHash(f.record)}`);
+  test("the approval screen is stable, lists blocks and runs, shows stale and jev lines, and matches the golden file", () => {
+    // each situation gives the same text for the same facts, ending with the record hash
+    for (const [name, f] of SITUATIONS) {
+      for (const full of [false, true]) {
+        const text = renderReview(buildReview(f), full);
+        expect(renderReview(buildReview(f), full), name).toBe(text);
+        expect(text.split("\n").at(-1), name).toBe(`RECORD ${recordHash(f.record)}`);
+      }
     }
-  });
-
-  test("a blocked key lists its blocks, a fragile key names its step and its --ack", () => {
-    const blocked = renderReview(buildReview(facts({ bad: true })));
-    expect(blocked).toContain("gate_failed");
-    expect(blocked).toContain("link_not_approved");
-    const fragile = renderReview(buildReview(facts()));
-    expect(fragile).toContain("--ack open_member");
-    expect(renderReview(buildReview(facts({ fragile: false })))).toContain("BLOCKS APPROVAL\n  none");
-  });
-
-  test("the short screen lists five runs that were not pass and says how many more; --full lists all", () => {
-    const f = { ...facts({ bad: true }), report: report(true, 6) };
-    const short = renderReview(buildReview(f));
-    expect(short.match(/^ {2}matrix_\d+ /gm)).toHaveLength(5);
-    expect(short).toContain("and 2 more; see report.json, or --full");
-    const full = renderReview(buildReview(f), true);
-    expect(full.match(/^ {2}matrix_\d+ /gm)).toHaveLength(7);
-    expect(full).not.toContain("more; see report.json");
-  });
-
-  test("a changed engine shows as STALE on the screen and as a stale block", () => {
-    const f = { ...facts(), now: { engine: "0.5.0", handlerSet: h("handlers") } };
-    expect(renderReview(buildReview(f))).toContain("engine STALE 0.4.0 then, 0.5.0 now");
-    expect(codesOf(f)).toEqual(["stale"]);
-  });
-
-  test("the jev and autonomy lines show the batch's labelled calls and the record's autonomy (section 8 §14.2)", () => {
-    const calls = [
-      { case_id: "drill_1", run_id: "run_1", answer: "found", truth: "found", label: "right" },
-      { case_id: "drill_2", run_id: "run_2", answer: "not_found", truth: "not_found", label: "right" },
-      { case_id: "drill_3", run_id: "run_3", answer: "unclear", truth: "found", label: "below_threshold" },
-    ];
-    const scope = { check: "kvfcu/find_account_by_reference@1.0.0", check_patch: null, jev: "jev@fake" };
-    const earned: HistoryLine = {
-      event: "autonomy", at: "2026-01-15T09:10:00.000Z", by: "certify", reason: "batch_a", action: "earned", evidence: ["batch_a"], scope,
-      counts: { correct: 10, found: 5, not_found: 5, wrong: 0, unclear: 1 },
-    };
-    const f = facts({ lines: [earned] });
-    const text = renderReview(buildReview({ ...f, report: BatchReport.parse({ ...report(), jev: { version: "jev@fake", calls } }) }));
-    expect(text).toContain("jev@fake: 3 labelled calls, 2 right, 0 wrong, 1 unclear");
-    expect(text).toContain("autonomy: earning (10/20 correct, 5/5 found, 5/5 not_found, 0 wrong)");
-    expect(renderReview(buildReview(f))).toContain("no labelled calls yet   autonomy: earning");
-  });
-
-  test("the screens match the golden file", () => {
+    // a blocked key lists its blocks, a fragile key names its step and its --ack
+    {
+      const blocked = renderReview(buildReview(facts({ bad: true })));
+      expect(blocked).toContain("gate_failed");
+      expect(blocked).toContain("link_not_approved");
+      const fragile = renderReview(buildReview(facts()));
+      expect(fragile).toContain("--ack open_member");
+      expect(renderReview(buildReview(facts({ fragile: false })))).toContain("BLOCKS APPROVAL\n  none");
+    }
+    // the short screen lists five runs that were not pass and says how many more; --full lists all
+    {
+      const f = { ...facts({ bad: true }), report: report(true, 6) };
+      const short = renderReview(buildReview(f));
+      expect(short.match(/^ {2}matrix_\d+ /gm)).toHaveLength(5);
+      expect(short).toContain("and 2 more; see report.json, or --full");
+      const full = renderReview(buildReview(f), true);
+      expect(full.match(/^ {2}matrix_\d+ /gm)).toHaveLength(7);
+      expect(full).not.toContain("more; see report.json");
+    }
+    // a changed engine shows as STALE on the screen and as a stale block
+    {
+      const f = { ...facts(), now: { engine: "0.5.0", handlerSet: h("handlers") } };
+      expect(renderReview(buildReview(f))).toContain("engine STALE 0.4.0 then, 0.5.0 now");
+      expect(codesOf(f)).toEqual(["stale"]);
+    }
+    // the jev and autonomy lines show the batch's labelled calls and the record's autonomy (section 8 §14.2)
+    {
+      const calls = [
+        { case_id: "drill_1", run_id: "run_1", answer: "found", truth: "found", label: "right" },
+        { case_id: "drill_2", run_id: "run_2", answer: "not_found", truth: "not_found", label: "right" },
+        { case_id: "drill_3", run_id: "run_3", answer: "unclear", truth: "found", label: "below_threshold" },
+      ];
+      const scope = { check: "kvfcu/find_account_by_reference@1.0.0", check_patch: null, jev: "jev@fake" };
+      const earned: HistoryLine = {
+        event: "autonomy", at: "2026-01-15T09:10:00.000Z", by: "certify", reason: "batch_a", action: "earned", evidence: ["batch_a"], scope,
+        counts: { correct: 10, found: 5, not_found: 5, wrong: 0, unclear: 1 },
+      };
+      const f = facts({ lines: [earned] });
+      const text = renderReview(buildReview({ ...f, report: BatchReport.parse({ ...report(), jev: { version: "jev@fake", calls } }) }));
+      expect(text).toContain("jev@fake: 3 labelled calls, 2 right, 0 wrong, 1 unclear");
+      expect(text).toContain("autonomy: earning (10/20 correct, 5/5 found, 5/5 not_found, 0 wrong)");
+      expect(renderReview(buildReview(f))).toContain("no labelled calls yet   autonomy: earning");
+    }
+    // the screens match the golden file
     if (process.env.UPDATE_GOLDEN === "1") writeFileSync(GOLDEN, screens());
     expect(screens()).toBe(readFileSync(GOLDEN, "utf8"));
   });

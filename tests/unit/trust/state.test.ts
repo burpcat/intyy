@@ -27,17 +27,16 @@ const LEGAL: Record<string, TrustState> = {
 const PAIRS = STATES.flatMap((s) => MOVES.map((m) => [s, m] as const));
 
 describe("transition by a staff ID", () => {
-  test.each(PAIRS)("%s then %s", (from, move) => {
-    const expected = LEGAL[`${from} ${move}`];
-    const r = transition(from, move, STAFF);
-    if (expected === undefined) {
-      expect(r).toMatchObject({ ok: false, failure: "illegal_move" });
-    } else {
-      expect(r).toEqual({ ok: true, value: expected });
+  test("every (state, move) pair reaches its state or is illegal_move; exactly the eight legal pairs pass", () => {
+    for (const [from, move] of PAIRS) {
+      const expected = LEGAL[`${from} ${move}`];
+      const r = transition(from, move, STAFF);
+      if (expected === undefined) {
+        expect(r, `${from} then ${move}`).toMatchObject({ ok: false, failure: "illegal_move" });
+      } else {
+        expect(r, `${from} then ${move}`).toEqual({ ok: true, value: expected });
+      }
     }
-  });
-
-  test("the table lists exactly the eight legal pairs", () => {
     const legal = PAIRS.filter(([s, m]) => transition(s, m, STAFF).ok);
     expect(legal).toHaveLength(Object.keys(LEGAL).length);
   });
@@ -46,50 +45,40 @@ describe("transition by a staff ID", () => {
 describe("nothing moves a key up without a staff ID", () => {
   const nonStaff = ["certify", "system", "live_score", ""];
 
-  test("isStaffActor", () => {
+  test("isStaffActor, and approve, restore, and reinstate by a non-staff actor need a staff ID", () => {
     for (const by of nonStaff) expect(isStaffActor(by)).toBe(false);
     expect(isStaffActor("op_017")).toBe(true);
-  });
-
-  test.each(nonStaff)("approve, restore, and reinstate by %j need a staff ID", (by) => {
-    for (const [from, move] of [
-      ["draft", "approve"],
-      ["approved", "approve"],
-      ["degraded", "restore"],
-      ["retired", "reinstate"],
-    ] as const) {
-      expect(transition(from, move, by)).toMatchObject({ ok: false, failure: "needs_staff" });
+    for (const by of nonStaff) {
+      for (const [from, move] of [
+        ["draft", "approve"],
+        ["approved", "approve"],
+        ["degraded", "restore"],
+        ["retired", "reinstate"],
+      ] as const) {
+        expect(transition(from, move, by), `${by} ${from} ${move}`).toMatchObject({ ok: false, failure: "needs_staff" });
+      }
     }
-  });
-
-  test("a missing staff ID is reported before a bad state", () => {
+    // a missing staff ID is reported before a bad state
     expect(transition("retired", "approve", "certify")).toMatchObject({ failure: "needs_staff" });
     expect(transition("draft", "restore", "system")).toMatchObject({ failure: "needs_staff" });
   });
 
-  test("degrade: live_score, certify, or staff only", () => {
+  test("degrade and retire accept only the right system actors; a person can retire a draft", () => {
+    // degrade: live_score, certify, or staff only
     expect(transition("approved", "degrade", "live_score")).toEqual({ ok: true, value: "degraded" });
     expect(transition("approved", "degrade", "certify")).toEqual({ ok: true, value: "degraded" });
     expect(transition("approved", "degrade", "op_017")).toEqual({ ok: true, value: "degraded" });
     expect(transition("approved", "degrade", "system")).toMatchObject({ failure: "needs_staff" });
     expect(transition("approved", "degrade", "")).toMatchObject({ failure: "needs_staff" });
-  });
-
-  test("retire: system or staff only", () => {
+    // retire: system or staff only
     expect(transition("approved", "retire", "system")).toEqual({ ok: true, value: "retired" });
     expect(transition("degraded", "retire", "system")).toEqual({ ok: true, value: "retired" });
     expect(transition("approved", "retire", "op_017")).toEqual({ ok: true, value: "retired" });
     expect(transition("approved", "retire", "live_score")).toMatchObject({ failure: "needs_staff" });
     expect(transition("approved", "retire", "certify")).toMatchObject({ failure: "needs_staff" });
     expect(transition("approved", "retire", "")).toMatchObject({ failure: "needs_staff" });
-  });
-
-  test("a system actor cannot retire a draft", () => {
     // Why: section 8 §4.2 gives the system "approved, degraded -> retired" only; "any" is a person.
     expect(transition("draft", "retire", "system")).toMatchObject({ failure: "illegal_move" });
-  });
-
-  test("a person can retire a draft", () => {
     expect(transition("draft", "retire", "op_017")).toEqual({ ok: true, value: "retired" });
   });
 });
@@ -99,23 +88,26 @@ describe("decide: roles on top of the moves", () => {
   const approver: Role[] = ["approver"];
   const reviewer: Role[] = ["reviewer"];
 
-  test.each([
-    ["draft", "approve"],
-    ["degraded", "restore"],
-    ["retired", "reinstate"],
-  ] as const)("an operator cannot %s then %s; an approver can", (from, move) => {
-    expect(decide(from, move, STAFF, operator)).toMatchObject({ ok: false, failure: "role" });
-    expect(decide(from, move, STAFF, approver)).toMatchObject({ ok: true });
-    expect(decide(from, move, STAFF, [...operator, ...approver])).toMatchObject({ ok: true });
-  });
-
-  test.each([
-    ["approved", "degrade"],
-    ["approved", "retire"],
-    ["draft", "retire"],
-  ] as const)("an operator or an approver may %s then %s", (from, move) => {
-    expect(decide(from, move, STAFF, operator)).toMatchObject({ ok: true });
-    expect(decide(from, move, STAFF, approver)).toMatchObject({ ok: true });
+  test("an operator cannot approve, restore, or reinstate; an approver can; both may degrade or retire", () => {
+    for (const [from, move] of [
+      ["draft", "approve"],
+      ["degraded", "restore"],
+      ["retired", "reinstate"],
+    ] as const) {
+      const label = `${from} then ${move}`;
+      expect(decide(from, move, STAFF, operator), label).toMatchObject({ ok: false, failure: "role" });
+      expect(decide(from, move, STAFF, approver), label).toMatchObject({ ok: true });
+      expect(decide(from, move, STAFF, [...operator, ...approver]), label).toMatchObject({ ok: true });
+    }
+    for (const [from, move] of [
+      ["approved", "degrade"],
+      ["approved", "retire"],
+      ["draft", "retire"],
+    ] as const) {
+      const label = `${from} then ${move}`;
+      expect(decide(from, move, STAFF, operator), label).toMatchObject({ ok: true });
+      expect(decide(from, move, STAFF, approver), label).toMatchObject({ ok: true });
+    }
   });
 
   test("a reviewer, or a person with no role, may make no move", () => {
