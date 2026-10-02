@@ -42,12 +42,12 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 ## Tasks, in order
 
 - [x] 1. List what was built, per milestone, from the specs' ticked boxes. List every cut item from build plan §12 that was not built.
-- [ ] 2. Update `REPORT.md` from the outline. Keep the brief's seven headings, exactly, in order.
-- [ ] 3. Check each REPORT claim links to code, a design section, or an evidence item. Remove any claim without one.
-- [ ] 4. Check the stretch goals claimed match what was built. Claim at most two. Name the rung 3 overlap.
+- [x] 2. Update `REPORT.md` from the outline. Keep the brief's seven headings, exactly, in order.
+- [x] 3. Check each REPORT claim links to code, a design section, or an evidence item. Remove any claim without one.
+- [x] 4. Check the stretch goals claimed match what was built. Claim at most two. Name the rung 3 overlap.
 - [x] 5. Update `README.md`: exact commands, the short and full demo paths, the handoff demo, running without live services.
-- [ ] 6. Update `evidence/README.md`. Stop. Ask the owner to publish set B items that exist.
-- [ ] 7. Run `intyy evidence verify`. Fix any problem it reports by republishing, never by editing evidence.
+- [x] 6. Update `evidence/README.md`. Stop. Ask the owner to publish set B items that exist.
+- [x] 7. Run `intyy evidence verify`. Fix any problem it reports by republishing, never by editing evidence.
 - [x] 8. Write the repo audit as a script in `scripts/`. Run it.
 - [ ] 9. Stop. Ask the owner to run the fresh-clone test and read the final REPORT aloud once.
 
@@ -56,7 +56,7 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 ### Automated (CI `check` job)
 
 - [ ] `npm run check` is green on `main`.
-- [ ] `intyy evidence verify` is clean.
+- [x] `intyy evidence verify` is clean.
 - [x] The repo audit script passes.
 
 ### Live (`npm run test:live`)
@@ -65,7 +65,7 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 
 ### Owner checks
 
-- [ ] `REPORT.md` is under 3 pages, with the seven headings in order.
+- [x] `REPORT.md` is under 3 pages, with the seven headings in order.
 - [ ] The fresh-clone test worked from the README alone, including the short demo path with no model key.
 - [ ] You can explain and defend every section of the REPORT (brief §9).
 - [ ] The repo is public. Tag `v1.0`.
