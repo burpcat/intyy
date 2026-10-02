@@ -55,7 +55,7 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 
 ### Automated (CI `check` job)
 
-- [ ] `npm run check` is green on `main`.
+- [x] `npm run check` is green on `main`. (2026-10-02: 1457 tests, 1 expected fail, audit clean)
 - [x] `intyy evidence verify` is clean.
 - [x] The repo audit script passes.
 
