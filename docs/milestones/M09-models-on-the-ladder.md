@@ -62,7 +62,7 @@ Trouble that plain code cannot sort goes to jev, then to a one-step reviewer, be
 - [x] 6. Wire jev and the second opinion into reconciliation. Test disagreement goes to a human.
 - [x] 7. Extend the LLM view test to jev and reviewer inputs.
 - [x] 8. Write `jev report` and `thresholds show`. Draft the threshold record. Stop. Ask the owner to seal and approve it.
-- [ ] 9. Stop. Ask the owner to run the unknown pop-up case below.
+- [x] 9. Stop. Ask the owner to run the unknown pop-up case below. (2026-10-02: batch_2026-10-02_gf018jxvqw, success, published)
 
 **The unknown pop-up case (B2), for the owner:**
 
@@ -88,7 +88,7 @@ Trouble that plain code cannot sort goes to jev, then to a one-step reviewer, be
 ### Owner checks
 
 - [x] The threshold record is sealed and approved. (2026-10-02: kvfcu/jev-1.13.0 rev 1, sealed op_017, approved op_031)
-- [ ] B2 ran with real models. You read the `llm/` files for both rungs.
+- [x] B2 ran with real models. You read the `llm/` files for both rungs. (jev: needs_review 0.81; reviewer: click Close, recovered)
 
 ## Evidence produced
 
