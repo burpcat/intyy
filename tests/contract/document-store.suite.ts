@@ -18,7 +18,7 @@ export type DocStoreSubject = {
 /** Runs the document store contract against one implementation. */
 export function documentStoreContract(label: string, make: () => Promise<DocStoreSubject>): void {
   describe(`DocumentStore contract: ${label}`, () => {
-    test("a candidate reads back and lists as a candidate", async () => {
+    test("a candidate reads back and lists; a new candidate replaces the open one", async () => {
       const { store } = await make();
       expect(await store.putCandidate("global", doc(1), "op_017")).toEqual({
         ok: true,
@@ -29,11 +29,7 @@ export function documentStoreContract(label: string, make: () => Promise<DocStor
         value: { id: "global", rev: "1", doc: doc(1) },
       });
       expect(await store.list({})).toEqual([{ id: "global", rev: "1", state: "candidate" }]);
-    });
 
-    test("a new candidate replaces the open one", async () => {
-      const { store } = await make();
-      await store.putCandidate("global", doc(1, "first"), "op_017");
       await store.putCandidate("global", doc(2, "second"), "op_017");
       const got = await store.getCandidate("global");
       expect(got.ok && got.value.doc.body).toBe("second");
@@ -42,23 +38,25 @@ export function documentStoreContract(label: string, make: () => Promise<DocStor
       ]);
     });
 
-    test("an absent candidate is not_found", async () => {
+    test("a missing candidate or revision is not_found; seal with no candidate is invalid", async () => {
       const { store } = await make();
       expect((await store.getCandidate("global")).ok).toBe(false);
       expect(await store.getCandidate("global")).toMatchObject({ failure: "not_found" });
+      expect(await store.approve("global", "9", "op_031")).toMatchObject({
+        ok: false,
+        failure: "not_found",
+      });
+      expect(await store.get("global", "1")).toMatchObject({ ok: false, failure: "not_found" });
+      expect(await store.seal("global", "op_017")).toMatchObject({ ok: false, failure: "invalid" });
     });
 
-    test("putCandidate refuses a document that fails its schema", async () => {
+    test("putCandidate refuses a bad schema and an approved block", async () => {
       const { store } = await make();
       const bad = { ...doc(1), extra: true } as unknown as TestDoc;
       expect(await store.putCandidate("global", bad, "op_017")).toMatchObject({
         ok: false,
         failure: "invalid",
       });
-    });
-
-    test("putCandidate refuses a candidate with an approved block", async () => {
-      const { store } = await make();
       const pre = { ...doc(1), approved: { by: "op_031", at: "2026-01-15T09:00:00.000Z" } };
       expect(await store.putCandidate("global", pre, "op_017")).toMatchObject({
         ok: false,
@@ -80,8 +78,8 @@ export function documentStoreContract(label: string, make: () => Promise<DocStor
       });
     });
 
-    test("seal freezes the candidate and get returns it with its hash and sealer", async () => {
-      const { store } = await make();
+    test("seal, conflict, four eyes, and approve take one revision through its states", async () => {
+      const { store, clock } = await make();
       await store.putCandidate("tenant/keystone", doc(1), "op_017");
       const sealed = await store.seal("tenant/keystone", "op_017");
       expect(sealed.ok).toBe(true);
@@ -89,6 +87,7 @@ export function documentStoreContract(label: string, make: () => Promise<DocStor
       expect(sealed.value.rev).toBe("1");
       expect(sealed.value.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
 
+      // seal freezes the candidate and get returns it with its hash and sealer
       const got = await store.get("tenant/keystone", "1");
       expect(got).toEqual({
         ok: true,
@@ -103,62 +102,41 @@ export function documentStoreContract(label: string, make: () => Promise<DocStor
       });
       expect(await store.getCandidate("tenant/keystone")).toMatchObject({ failure: "not_found" });
       expect(await store.list({})).toEqual([{ id: "tenant/keystone", rev: "1", state: "sealed" }]);
-    });
 
-    test("seal with no candidate is invalid", async () => {
-      const { store } = await make();
-      expect(await store.seal("global", "op_017")).toMatchObject({ ok: false, failure: "invalid" });
-    });
-
-    test("putCandidate on a sealed revision is a conflict", async () => {
-      const { store } = await make();
-      await store.putCandidate("global", doc(1), "op_017");
-      await store.seal("global", "op_017");
-      expect(await store.putCandidate("global", doc(1, "again"), "op_017")).toMatchObject({
+      // putCandidate on a sealed revision is a conflict
+      expect(await store.putCandidate("tenant/keystone", doc(1, "again"), "op_017")).toMatchObject({
         ok: false,
         failure: "conflict",
       });
-    });
 
-    test("four eyes: the sealer cannot approve", async () => {
-      const { store } = await make();
-      await store.putCandidate("global", doc(1), "op_017");
-      await store.seal("global", "op_017");
-      expect(await store.approve("global", "1", "op_017")).toEqual({
+      // four eyes: the sealer cannot approve
+      expect(await store.approve("tenant/keystone", "1", "op_017")).toEqual({
         ok: false,
         failure: "rule",
         detail: "four_eyes",
       });
-      const got = await store.get("global", "1");
-      expect(got.ok && got.value.approved).toBeNull();
-    });
+      const unapproved = await store.get("tenant/keystone", "1");
+      expect(unapproved.ok && unapproved.value.approved).toBeNull();
 
-    test("approve stamps once, with the approver and the clock's time", async () => {
-      const { store, clock } = await make();
-      await store.putCandidate("global", doc(1), "op_017");
-      await store.seal("global", "op_017");
+      // approve stamps once, with the approver and the clock's time
       clock.advance(60_000);
-      expect(await store.approve("global", "1", "op_031")).toEqual({ ok: true, value: undefined });
-
-      const got = await store.get("global", "1");
+      expect(await store.approve("tenant/keystone", "1", "op_031")).toEqual({
+        ok: true,
+        value: undefined,
+      });
+      const approved = await store.get("tenant/keystone", "1");
       const at = clock.now().toISOString();
-      expect(got.ok && got.value.approved).toEqual({ by: "op_031", at });
-      expect(got.ok && got.value.doc.approved).toEqual({ by: "op_031", at });
-      expect(await store.approve("global", "1", "op_022")).toEqual({
+      expect(approved.ok && approved.value.approved).toEqual({ by: "op_031", at });
+      expect(approved.ok && approved.value.doc.approved).toEqual({ by: "op_031", at });
+      expect(await store.approve("tenant/keystone", "1", "op_022")).toEqual({
         ok: false,
         failure: "rule",
         detail: "already_approved",
       });
-      expect(await store.list({})).toEqual([{ id: "global", rev: "1", state: "approved" }]);
-    });
+      expect(await store.list({})).toEqual([{ id: "tenant/keystone", rev: "1", state: "approved" }]);
 
-    test("the hash excludes approved: it is the same before and after approval", async () => {
-      const { store } = await make();
-      await store.putCandidate("global", doc(1), "op_017");
-      const sealed = await store.seal("global", "op_017");
-      await store.approve("global", "1", "op_031");
-      const got = await store.get("global", "1");
-      expect(sealed.ok && got.ok && got.value.hash === sealed.value.hash).toBe(true);
+      // the hash excludes approved: it is the same before and after approval
+      expect(approved.ok && approved.value.hash === sealed.value.hash).toBe(true);
     });
 
     test("the hash does not depend on key order", async () => {
@@ -170,58 +148,40 @@ export function documentStoreContract(label: string, make: () => Promise<DocStor
       expect(a.ok && b.ok && a.value.hash === b.value.hash).toBe(true);
     });
 
-    test("approve of an unknown revision is not_found", async () => {
-      const { store } = await make();
-      expect(await store.approve("global", "9", "op_031")).toMatchObject({
-        ok: false,
-        failure: "not_found",
-      });
-    });
-
-    test("get of an unknown revision is not_found", async () => {
-      const { store } = await make();
-      expect(await store.get("global", "1")).toMatchObject({ ok: false, failure: "not_found" });
-    });
-
-    test("a changed sealed file fails to load and cannot be approved", async () => {
+    test("a hand edit of a sealed file fails to load", async () => {
       const subject = await make();
-      await subject.store.putCandidate("global", doc(1), "op_017");
-      await subject.store.seal("global", "op_017");
-      await subject.tamper("global", "1", (d) => {
+      for (const id of ["t1", "t2", "t3"]) {
+        await subject.store.putCandidate(id, doc(1), "op_017");
+        await subject.store.seal(id, "op_017");
+      }
+      // a changed sealed file fails to load and cannot be approved
+      await subject.tamper("t1", "1", (d) => {
         d.body = "changed";
       });
-      expect(await subject.store.get("global", "1")).toMatchObject({
+      expect(await subject.store.get("t1", "1")).toMatchObject({
         ok: false,
         failure: "hash_mismatch",
       });
-      expect(await subject.store.approve("global", "1", "op_031")).toMatchObject({
+      expect(await subject.store.approve("t1", "1", "op_031")).toMatchObject({
         ok: false,
         failure: "hash_mismatch",
       });
-    });
 
-    test("an approved block added by hand fails to load", async () => {
-      const subject = await make();
-      await subject.store.putCandidate("global", doc(1), "op_017");
-      await subject.store.seal("global", "op_017");
-      await subject.tamper("global", "1", (d) => {
+      // an approved block added by hand fails to load
+      await subject.tamper("t2", "1", (d) => {
         d.approved = { by: "op_031", at: "2026-01-15T09:00:00.000Z" };
       });
-      expect(await subject.store.get("global", "1")).toMatchObject({
+      expect(await subject.store.get("t2", "1")).toMatchObject({
         ok: false,
         failure: "hash_mismatch",
       });
-    });
 
-    test("a changed approved block fails to load", async () => {
-      const subject = await make();
-      await subject.store.putCandidate("global", doc(1), "op_017");
-      await subject.store.seal("global", "op_017");
-      await subject.store.approve("global", "1", "op_031");
-      await subject.tamper("global", "1", (d) => {
+      // a changed approved block fails to load
+      await subject.store.approve("t3", "1", "op_031");
+      await subject.tamper("t3", "1", (d) => {
         d.approved = { by: "op_022", at: "2026-01-15T09:00:00.000Z" };
       });
-      expect(await subject.store.get("global", "1")).toMatchObject({
+      expect(await subject.store.get("t3", "1")).toMatchObject({
         ok: false,
         failure: "hash_mismatch",
       });

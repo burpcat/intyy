@@ -27,7 +27,7 @@ export function candidateStoreContract(
   make: () => Promise<CandidateStoreFixture>,
 ): void {
   describe(`CandidateStore contract: ${label}`, () => {
-    test("files read back; a missing file is not_found", async () => {
+    test("files read back; a missing file is not_found; a file write replaces the old content", async () => {
       const { store } = await make();
       expect(await store.putFile("kvfcu/sign_in/c1", "runs.json", { runs: ["r1"] })).toEqual({
         ok: true,
@@ -41,10 +41,7 @@ export function candidateStoreContract(
         ok: false,
         failure: "not_found",
       });
-    });
 
-    test("a file write replaces the old content", async () => {
-      const { store } = await make();
       await store.putFile("kvfcu/sign_in/c1", "candidate.json", { steps: 1 });
       await store.putFile("kvfcu/sign_in/c1", "candidate.json", { steps: 2 });
       expect(await store.getFile("kvfcu/sign_in/c1", "candidate.json")).toEqual({
@@ -113,11 +110,14 @@ export function candidateStoreContract(
       },
     );
 
-    test("listSealedVersions and getSealedArtifact read back what seal wrote", async () => {
+    test("the sealed readers read back what seal wrote", async () => {
       const { store } = await make();
       const artifact = { identity: { app: "kvfcu", capability: "sign_in", version: "1.0.0" } };
-      await store.seal("kvfcu/sign_in/c1", "1.0.0", "op_017", artifact, {});
+      const crop = Uint8Array.from([137, 80, 78, 71]);
+      await store.seal("kvfcu/sign_in/c1", "1.0.0", "op_017", artifact, { search_button: crop });
+      await store.seal("kvfcu/find/c1", "1.0.0", "op_017", { a: 2 }, {});
 
+      // listSealedVersions and getSealedArtifact
       expect(await store.listSealedVersions("kvfcu/sign_in")).toEqual(["1.0.0"]);
       expect(await store.listSealedVersions("kvfcu/other")).toEqual([]);
       expect(await store.getSealedArtifact("kvfcu/sign_in", "1.0.0")).toEqual({
@@ -128,18 +128,12 @@ export function candidateStoreContract(
         ok: false,
         failure: "not_found",
       });
-    });
 
-    test("listSealedArtifacts and getSealedCrop read back what seal wrote", async () => {
-      const { store } = await make();
-      const crop = Uint8Array.from([137, 80, 78, 71]);
-      await store.seal("kvfcu/sign_in/c1", "1.0.0", "op_017", { a: 1 }, { search_button: crop });
-      await store.seal("kvfcu/other/c1", "1.0.0", "op_017", { a: 2 }, {});
-
+      // listSealedArtifacts and getSealedCrop
       expect(await store.listSealedArtifacts()).toEqual(
         expect.arrayContaining([
           { id: "kvfcu/sign_in", version: "1.0.0" },
-          { id: "kvfcu/other", version: "1.0.0" },
+          { id: "kvfcu/find", version: "1.0.0" },
         ]),
       );
       expect(await store.getSealedCrop("kvfcu/sign_in", "1.0.0", "search_button")).toEqual({
@@ -160,7 +154,7 @@ export function logStoreContract(
   make: () => Promise<LogStore<LogLine, LogRecord>>,
 ): void {
   describe(`LogStore contract: ${label}`, () => {
-    test("lines append in order; an absent log is empty", async () => {
+    test("lines append in order; a record is replaced whole", async () => {
       const store = await make();
       expect(await store.lines("keystone/history")).toEqual({ ok: true, value: [] });
       await store.append("keystone/history", { n: 1 });
@@ -170,10 +164,8 @@ export function logStoreContract(
         value: [{ n: 1 }, { n: 2 }],
       });
       expect(await store.lines("keystone/live")).toEqual({ ok: true, value: [] });
-    });
 
-    test("a record is replaced whole; a missing record is not_found", async () => {
-      const store = await make();
+      // a missing record is not_found
       expect(await store.getRecord("keystone/record")).toMatchObject({
         ok: false,
         failure: "not_found",
@@ -190,20 +182,6 @@ export function evidenceStoreContract(label: string, make: () => Promise<Evidenc
   const RUN = "run_2026-01-15_7kq2m9x4tb";
 
   describe(`EvidenceStore contract: ${label}`, () => {
-    test("a run folder is created once", async () => {
-      const store = await make();
-      expect((await store.createRun("keystone", RUN)).ok).toBe(true);
-      expect(await store.createRun("keystone", RUN)).toMatchObject({
-        ok: false,
-        failure: "conflict",
-      });
-      expect((await store.openRun("keystone", RUN)).ok).toBe(true);
-      expect(await store.openRun("keystone", "run_2026-01-15_0000000000")).toMatchObject({
-        ok: false,
-        failure: "not_found",
-      });
-    });
-
     test("events append in order, durable or not", async () => {
       const store = await make();
       const run = await store.createRun("keystone", RUN);
@@ -228,10 +206,22 @@ export function evidenceStoreContract(label: string, make: () => Promise<Evidenc
       });
     });
 
-    test("writeFile returns the file's hash and size", async () => {
+    test("a run folder is created once; files and run.json read back", async () => {
       const store = await make();
-      const run = await store.createRun("keystone", RUN);
+      expect((await store.createRun("keystone", RUN)).ok).toBe(true);
+      expect(await store.createRun("keystone", RUN)).toMatchObject({
+        ok: false,
+        failure: "conflict",
+      });
+      expect((await store.openRun("keystone", RUN)).ok).toBe(true);
+      expect(await store.openRun("keystone", "run_2026-01-15_0000000000")).toMatchObject({
+        ok: false,
+        failure: "not_found",
+      });
+      const run = await store.createRun("keystone", "run_2026-01-15_1111111111");
       if (!run.ok) throw new Error("createRun failed");
+
+      // writeFile returns the file's hash and size
       const text = '{"masked":true}';
       expect(await run.value.writeFile("llm/jev_00017.json", masked(text))).toEqual({
         ok: true,
@@ -244,19 +234,13 @@ export function evidenceStoreContract(label: string, make: () => Promise<Evidenc
         ok: true,
         value: { sha256: sha256Hex(png), bytes: 4 },
       });
-    });
 
-    test("readFile reads back written bytes; a missing file is not_found; reading never writes", async () => {
-      const store = await make();
-      const run = await store.createRun("keystone", RUN);
-      if (!run.ok) throw new Error("createRun failed");
-      const text = '{"masked":true}';
+      // readFile reads back written bytes; a missing file is not_found; reading never writes
       await run.value.writeFile("a11y/00013_observation.a11y.yaml", masked(text));
-
       // Why: task 10's candidate new opens a finished run to read it. Read-only means no
       // index line and no event get added just by reading (docs/decisions.md, M04).
       const before = await store.index("keystone");
-      const opened = await store.openRun("keystone", RUN);
+      const opened = await store.openRun("keystone", "run_2026-01-15_1111111111");
       if (!opened.ok) throw new Error("openRun failed");
       expect(await opened.value.readFile("a11y/00013_observation.a11y.yaml")).toEqual({
         ok: true,
@@ -267,20 +251,19 @@ export function evidenceStoreContract(label: string, make: () => Promise<Evidenc
         failure: "not_found",
       });
       expect(await store.index("keystone")).toEqual(before);
-      expect(await store.events("keystone", RUN)).toEqual({ ok: true, value: [] });
-    });
+      expect(await store.events("keystone", "run_2026-01-15_1111111111")).toEqual({
+        ok: true,
+        value: [],
+      });
 
-    test("run.json is replaced whole", async () => {
-      const store = await make();
-      const run = await store.createRun("keystone", RUN);
-      if (!run.ok) throw new Error("createRun failed");
-      expect(await store.readRunJson("keystone", RUN)).toMatchObject({
+      // run.json is replaced whole
+      expect(await store.readRunJson("keystone", "run_2026-01-15_1111111111")).toMatchObject({
         ok: false,
         failure: "not_found",
       });
       await run.value.writeRunJson(masked({ status: "running" }));
       await run.value.writeRunJson(masked({ status: "success" }));
-      expect(await store.readRunJson("keystone", RUN)).toEqual({
+      expect(await store.readRunJson("keystone", "run_2026-01-15_1111111111")).toEqual({
         ok: true,
         value: { status: "success" },
       });

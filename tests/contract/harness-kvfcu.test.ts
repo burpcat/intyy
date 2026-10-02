@@ -212,7 +212,7 @@ describe("KvfcuHarness: a redirect is never followed", () => {
 // Why: case 3, build brief M06 task 6. Off test mode, or off loopback, every op fails
 // rejected with zero network calls, and features() answers an empty set.
 describe("KvfcuHarness: refuses with no network call", () => {
-  test("environment not \"test\" refuses every op, and the mock sees no request", async () => {
+  test("a non-test environment or a non-loopback origin refuses every op, with no request", async () => {
     const harness = new KvfcuHarness({ origin: server.origin, environment: "production" });
     expect(await harness.features()).toEqual({ ok: true, value: new Set() });
     expect(await harness.reset()).toMatchObject({ ok: false, failure: "rejected" });
@@ -228,17 +228,16 @@ describe("KvfcuHarness: refuses with no network call", () => {
     });
     expect(await harness.setClock("2026-01-15")).toMatchObject({ ok: false, failure: "rejected" });
     expect(server.requests).toEqual([]);
-  });
 
-  test("a non-loopback origin refuses every op, and the mock sees no request", async () => {
+    // a non-loopback origin refuses every op, and the mock sees no request
     // Why: the origin is never dialed when refused, so any non-loopback host is safe to name.
-    const harness = new KvfcuHarness({
+    const remote = new KvfcuHarness({
       origin: "http://bank-app.example:8080",
       environment: "test",
     });
-    expect(await harness.features()).toEqual({ ok: true, value: new Set() });
-    expect(await harness.reset()).toMatchObject({ ok: false, failure: "rejected" });
-    expect(await harness.oracle(new Secret("some notes"))).toMatchObject({
+    expect(await remote.features()).toEqual({ ok: true, value: new Set() });
+    expect(await remote.reset()).toMatchObject({ ok: false, failure: "rejected" });
+    expect(await remote.oracle(new Secret("some notes"))).toMatchObject({
       ok: false,
       failure: "rejected",
     });

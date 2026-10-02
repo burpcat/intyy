@@ -46,8 +46,18 @@ function world(slots: LockSlots) {
 /** Runs the lock contract against one slot store. */
 export function locksContract(label: string, makeSlots: () => Promise<LockSlots>): void {
   describe(`Locks contract: ${label}`, () => {
-    test("busy: a held lock refuses another taker and names the holder", async () => {
+    test("busy: a held lock refuses another taker and names the holder; waitMs 0 does not wait", async () => {
       const w = world(await makeSlots());
+      // fail fast: waitMs 0 answers busy without waiting (instance first: the lock order)
+      await w.a.acquire(
+        "instance",
+        ORIGIN,
+        req("batch_2026-01-15_aaaaaaaaaa", { command: "certify" }),
+      );
+      const fast = await w.b.acquire("instance", ORIGIN, req(RUN, { command: "discover" }));
+      expect(fast).toMatchObject({ ok: false, failure: "busy" });
+      expect(w.clock.waiting).toBe(0);
+
       const held = await w.a.acquire("run", RUN, req(RUN, { command: "replay", staff: "op_017" }));
       expect(held.ok).toBe(true);
       const second = await w.b.acquire("run", RUN, req("run_2026-01-15_bbbbbbbbbb"));
@@ -55,18 +65,6 @@ export function locksContract(label: string, makeSlots: () => Promise<LockSlots>
       expect(second.ok ? "" : second.detail).toContain(
         "held by replay, staff op_017, since 2026-01-15T09:00:00.000Z",
       );
-    });
-
-    test("fail fast: waitMs 0 answers busy without waiting", async () => {
-      const w = world(await makeSlots());
-      await w.a.acquire(
-        "instance",
-        ORIGIN,
-        req("batch_2026-01-15_aaaaaaaaaa", { command: "certify" }),
-      );
-      const second = await w.b.acquire("instance", ORIGIN, req(RUN, { command: "discover" }));
-      expect(second).toMatchObject({ ok: false, failure: "busy" });
-      expect(w.clock.waiting).toBe(0);
     });
 
     test("bounded wait: a waiter gets the lock once the holder releases", async () => {
@@ -109,26 +107,22 @@ export function locksContract(label: string, makeSlots: () => Promise<LockSlots>
       expect(w.clock.waiting).toBe(0);
     });
 
-    test("a child run shares its parent's hold; releasing the child keeps the lock", async () => {
+    test("a child run shares its parent's hold and keeps the lock on release; a wrong parent is busy", async () => {
       const w = world(await makeSlots());
       const batch = "batch_2026-01-15_aaaaaaaaaa";
       const parent = await w.a.acquire("instance", ORIGIN, req(batch, { command: "certify" }));
       expect(parent.ok).toBe(true);
-      const child = await w.b.acquire("instance", ORIGIN, req(RUN, { parent: batch }));
-      expect(child).toMatchObject({ ok: true, value: { shared: true, owner: RUN } });
-      if (child.ok) await w.b.release(child.value);
-      expect(await w.a.inspect("instance", ORIGIN)).toMatchObject({ owner: batch });
-    });
-
-    test("a child naming the wrong parent is busy", async () => {
-      const w = world(await makeSlots());
-      await w.a.acquire("instance", ORIGIN, req("batch_2026-01-15_aaaaaaaaaa"));
-      const child = await w.b.acquire(
+      // a child naming the wrong parent is busy
+      const wrong = await w.b.acquire(
         "instance",
         ORIGIN,
         req(RUN, { parent: "batch_2026-01-15_zzzzzzzzzz" }),
       );
-      expect(child).toMatchObject({ ok: false, failure: "busy" });
+      expect(wrong).toMatchObject({ ok: false, failure: "busy" });
+      const child = await w.b.acquire("instance", ORIGIN, req(RUN, { parent: batch }));
+      expect(child).toMatchObject({ ok: true, value: { shared: true, owner: RUN } });
+      if (child.ok) await w.b.release(child.value);
+      expect(await w.a.inspect("instance", ORIGIN)).toMatchObject({ owner: batch });
     });
 
     test("stale on this host: a dead holder's lock is cleared and reported", async () => {

@@ -11,15 +11,14 @@ const KEY = "INTYY_KEYSTONE_KVFCU_OPERATOR_PASSWORD";
 /** Runs the secret contract against one implementation, given its variables. */
 function secretsContract(label: string, make: (values: Record<string, string>) => Secrets): void {
   describe(`Secrets contract: ${label}`, () => {
-    test("a bound variable resolves to an opaque Secret", async () => {
+    test("a bound variable resolves to an opaque Secret; an unset or empty one is missing", async () => {
       const r = await make({ [KEY]: "teller-pass" }).resolve({ source: "env", key: KEY });
       expect(r.ok).toBe(true);
       if (!r.ok) return;
       expect(Secret.open(r.value)).toBe("teller-pass");
       expect(JSON.stringify(r)).not.toContain("teller-pass");
-    });
 
-    test("an unset or empty variable is missing, and names only the key", async () => {
+      // an unset or empty variable is missing, and names only the key
       expect(await make({}).resolve({ source: "env", key: KEY })).toEqual({
         ok: false,
         failure: "missing",

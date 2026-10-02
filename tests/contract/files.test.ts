@@ -120,7 +120,7 @@ evidenceStoreContract("files", async () => {
 });
 
 describe("file document store layout", () => {
-  test("seal renames the candidate and writes one index line", async () => {
+  test("seal renames the candidate and writes one index line; writes leave no temp file; a broken index is invalid", async () => {
     const { root, tmpDir } = await tempRoot();
     const dir = join(root, "library", "policy");
     const store: DocumentStore<TestDoc> = new FileDocumentStore(
@@ -149,31 +149,12 @@ describe("file document store layout", () => {
         at: "2026-09-26T08:00:00.000Z",
       },
     ]);
-  });
 
-  test("atomic writes leave no temp files behind", async () => {
-    const { root, tmpDir } = await tempRoot();
-    const store: DocumentStore<TestDoc> = new FileDocumentStore(
-      testKind,
-      { dir: join(root, "library", "policy"), tmpDir },
-      new ManualClock(),
-    );
-    await store.putCandidate("global", doc(1), "op_017");
-    await store.seal("global", "op_017");
+    // atomic writes leave no temp files behind
     await store.approve("global", "1", "op_031");
     expect(await readdir(tmpDir)).toEqual([]);
-  });
 
-  test("a broken index line fails the read as invalid", async () => {
-    const { root, tmpDir } = await tempRoot();
-    const dir = join(root, "library", "policy");
-    const store: DocumentStore<TestDoc> = new FileDocumentStore(
-      testKind,
-      { dir, tmpDir },
-      new ManualClock(),
-    );
-    await store.putCandidate("global", doc(1), "op_017");
-    await store.seal("global", "op_017");
+    // a broken index line fails the read as invalid
     await writeFile(join(dir, "index.jsonl"), '{"event":"sealed"}\n');
     expect(await store.get("global", "1")).toMatchObject({ ok: false, failure: "invalid" });
   });

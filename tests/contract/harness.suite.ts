@@ -17,31 +17,16 @@ export type HarnessFixture = {
 /** Runs the harness contract against one implementation, allowed and fully featured. */
 export function harnessContract(label: string, make: () => Promise<HarnessFixture>): void {
   describe(`Harness contract: ${label}`, () => {
-    test("features reports every control a fully-featured app offers", async () => {
+    test("the controls answer ok; addFaults rejects the whole batch when an id repeats", async () => {
       const { harness } = await make();
+      // features reports every control a fully-featured app offers
       expect(await harness.features()).toEqual({
         ok: true,
         value: new Set(["reset", "chaos", "named_faults", "fault_log", "oracle", "clock"]),
       });
-    });
-
-    test("reset answers ok", async () => {
-      const { harness } = await make();
       expect(await harness.reset()).toEqual({ ok: true, value: undefined });
-    });
 
-    test("setChaos and setClock answer ok", async () => {
-      const { harness } = await make();
-      expect(await harness.setChaos({ entropy: 0.25, seed: "run-42" })).toEqual({
-        ok: true,
-        value: undefined,
-      });
-      expect(await harness.setClock("2026-01-15")).toEqual({ ok: true, value: undefined });
-      expect(await harness.setClock(null)).toEqual({ ok: true, value: undefined });
-    });
-
-    test("addFaults rejects the whole batch when an id repeats", async () => {
-      const { harness } = await make();
+      // addFaults rejects the whole batch when an id repeats
       const first = await harness.addFaults([
         { id: "drop1", kind: "drop_after_confirm", route: "POST /example/path", nth: 1 },
       ]);
@@ -51,11 +36,15 @@ export function harnessContract(label: string, make: () => Promise<HarnessFixtur
         { id: "drop1", kind: "known_popup", route: "GET /example/dup" },
       ]);
       expect(second).toMatchObject({ ok: false, failure: "rejected" });
-    });
-
-    test("clearFaults answers ok", async () => {
-      const { harness } = await make();
       expect(await harness.clearFaults()).toEqual({ ok: true, value: undefined });
+
+      // setChaos and setClock answer ok
+      expect(await harness.setChaos({ entropy: 0.25, seed: "run-42" })).toEqual({
+        ok: true,
+        value: undefined,
+      });
+      expect(await harness.setClock("2026-01-15")).toEqual({ ok: true, value: undefined });
+      expect(await harness.setClock(null)).toEqual({ ok: true, value: undefined });
     });
 
     test("faultLog parses the app's fault log entries (CONTRACT §6.3)", async () => {
@@ -77,7 +66,7 @@ export function harnessContract(label: string, make: () => Promise<HarnessFixtur
       expect(await harness.faultLog()).toEqual({ ok: true, value: [entry] });
     });
 
-    test("oracle answers with the seeded truth, and never logs or prints the notes value", async () => {
+    test("oracle answers with the seeded truth, never prints the notes value, and answers none when unseeded", async () => {
       const { harness, seedOracle } = await make();
       // Why: the notes value is sensitive free-form text (CONTRACT §8); never a canary member.
       const notesValue = "opened for a grandchild's savings, ref 9f31";
@@ -102,10 +91,8 @@ export function harnessContract(label: string, make: () => Promise<HarnessFixtur
         .map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
         .join("\n");
       expect(printed).not.toContain(notesValue);
-    });
 
-    test("an unseeded oracle answer is 'no account found'", async () => {
-      const { harness } = await make();
+      // an unseeded oracle answer is 'no account found'
       expect(await harness.oracle(new Secret("no such application was ever opened"))).toEqual({
         ok: true,
         value: { exists: false, count: 0, accounts: [] },

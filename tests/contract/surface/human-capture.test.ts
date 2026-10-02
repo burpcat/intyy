@@ -85,28 +85,27 @@ const pathOf = (i: HumanInput): string | null =>
 describe("toHumanInput: the page is untrusted", () => {
   const print = { role: "textbox", roleGroup: "text_entry", clues: { label: "Note", path: "form > input" }, box: null };
 
-  test("a well-formed report becomes an input, with the frame prefix on its path", () => {
+  test("toHumanInput accepts well-formed reports, refuses bad ones, and the init script installs the capture", () => {
+    // a well-formed report becomes an input, with the frame prefix on its path
     const got = toHumanInput({ kind: "type", at: 5, url: "http://127.0.0.1/", target: print, value: "hello" }, "frame[0] > ");
     expect(got).toMatchObject({ at: 5, action: { type: "type", value: "hello", target: { clues: { path: "frame[0] > form > input" } } } });
-  });
 
-  test("a password report carries a null value through", () => {
-    const got = toHumanInput({ kind: "type", at: 5, url: "u", target: { ...print, fieldKind: "password" }, value: null }, "");
-    expect(got).toMatchObject({ action: { type: "type", value: null, target: { fieldKind: "password" } } });
-  });
+    // a password report carries a null value through
+    const pw = toHumanInput({ kind: "type", at: 5, url: "u", target: { ...print, fieldKind: "password" }, value: null }, "");
+    expect(pw).toMatchObject({ action: { type: "type", value: null, target: { fieldKind: "password" } } });
 
-  test.each([
-    ["not an object", 7],
-    ["an unknown kind", { kind: "drag", at: 1, url: "u", target: print }],
-    ["a missing time", { kind: "click", url: "u", target: print }],
-    ["a missing target", { kind: "click", at: 1, url: "u" }],
-    ["an unknown role group", { kind: "click", at: 1, url: "u", target: { ...print, roleGroup: "weird" } }],
-    ["a number for a typed value", { kind: "type", at: 1, url: "u", target: print, value: 7 }],
-  ])("%s is refused (null), so the engine counts a bare touch", (_name, raw) => {
-    expect(toHumanInput(raw, "")).toBeNull();
-  });
+    // each bad report is refused (null), so the engine counts a bare touch
+    const refused: [string, unknown][] = [
+      ["not an object", 7],
+      ["an unknown kind", { kind: "drag", at: 1, url: "u", target: print }],
+      ["a missing time", { kind: "click", url: "u", target: print }],
+      ["a missing target", { kind: "click", at: 1, url: "u" }],
+      ["an unknown role group", { kind: "click", at: 1, url: "u", target: { ...print, roleGroup: "weird" } }],
+      ["a number for a typed value", { kind: "type", at: 1, url: "u", target: print, value: 7 }],
+    ];
+    for (const [name, raw] of refused) expect(toHumanInput(raw, ""), name).toBeNull();
 
-  test("the init script names the binding and installs the capture", () => {
+    // the init script names the binding and installs the capture
     const script = captureInitScript("__secretKey");
     expect(script).toContain(CAPTURE_BINDING);
     expect(script).toContain("__secretKey");

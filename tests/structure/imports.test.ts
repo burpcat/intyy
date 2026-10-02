@@ -67,9 +67,13 @@ const lintProbes: LintProbe[] = [
 ];
 
 // Why: section 10 §5.3, the two ESLint no-restricted-syntax rows. The probes never touch disk.
-test.each(lintProbes)("no-restricted-syntax on $file fires=$fires: $code", async (probe) => {
+test("no-restricted-syntax fires on each probe that must fire and on no other", async () => {
   const eslint = new ESLint({ cwd: repoRoot, overrideConfig: tseslint.configs.disableTypeChecked });
-  const results = await eslint.lintText(probe.code, { filePath: `${repoRoot}${probe.file}` });
-  const ruleIds = results.flatMap((r) => r.messages.map((m) => m.ruleId));
-  expect(ruleIds).toEqual(probe.fires ? ["no-restricted-syntax"] : []);
+  for (const probe of lintProbes) {
+    const results = await eslint.lintText(probe.code, { filePath: `${repoRoot}${probe.file}` });
+    const ruleIds = results.flatMap((r) => r.messages.map((m) => m.ruleId));
+    expect(ruleIds, `${probe.file} fires=${String(probe.fires)}: ${probe.code}`).toEqual(
+      probe.fires ? ["no-restricted-syntax"] : [],
+    );
+  }
 });

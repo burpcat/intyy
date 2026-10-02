@@ -125,41 +125,32 @@ type Body = {
 const bodyOf = (b: Uint8Array | undefined) => JSON.parse(text(b)) as Body;
 
 describe("trouble: labels become buckets, confidence is jev's (section 5 §10.3)", () => {
-  test("a handler label", async () => {
-    const { f } = fakeFetch(reply("handler:kyc", 0.9));
-    expect(await jev(f).trouble(troubleInput(), recorder().record)).toEqual({
-      ok: true,
-      value: { bucket: "handler", handler: "kyc", outcome: null, confidence: 0.9 },
-    });
-  });
-
-  test("an outcome label", async () => {
-    const { f } = fakeFetch(reply("outcome:limit_exceeded", 0.97));
-    expect(await jev(f).trouble(troubleInput(), recorder().record)).toEqual({
-      ok: true,
-      value: { bucket: "outcome", handler: null, outcome: "limit_exceeded", confidence: 0.97 },
-    });
-  });
-
-  test.each(["needs_review", "unsafe"] as const)("the fixed label %s", async (label) => {
-    const { f } = fakeFetch(reply(label, 0.5));
-    expect(await jev(f).trouble(troubleInput(), recorder().record)).toEqual({
-      ok: true,
-      value: { bucket: label, handler: null, outcome: null, confidence: 0.5 },
-    });
+  test("each label becomes its bucket with jev's confidence", async () => {
+    const cases = [
+      ["handler:kyc", 0.9, { bucket: "handler", handler: "kyc", outcome: null }],
+      ["outcome:limit_exceeded", 0.97, { bucket: "outcome", handler: null, outcome: "limit_exceeded" }],
+      ["needs_review", 0.5, { bucket: "needs_review", handler: null, outcome: null }],
+      ["unsafe", 0.5, { bucket: "unsafe", handler: null, outcome: null }],
+    ] as const;
+    for (const [label, confidence, rest] of cases) {
+      const { f } = fakeFetch(reply(label, confidence));
+      expect(await jev(f).trouble(troubleInput(), recorder().record), label).toEqual({
+        ok: true,
+        value: { ...rest, confidence },
+      });
+    }
   });
 });
 
 describe("reconcile: found, not_found, unclear", () => {
-  test.each(["found", "not_found", "unclear"] as const)("%s", async (verdict) => {
-    const { f } = fakeFetch(reply(verdict, 0.8));
-    expect(await jev(f).reconcile(reconcileInput(), recorder().record)).toEqual({
-      ok: true,
-      value: { verdict, confidence: 0.8 },
-    });
-  });
-
-  test("the request offers exactly the three reconcile labels and the pinned model", async () => {
+  test("each verdict comes back; the request offers the three labels and the pinned model", async () => {
+    for (const verdict of ["found", "not_found", "unclear"] as const) {
+      const { f } = fakeFetch(reply(verdict, 0.8));
+      expect(await jev(f).reconcile(reconcileInput(), recorder().record), verdict).toEqual({
+        ok: true,
+        value: { verdict, confidence: 0.8 },
+      });
+    }
     const { f, sent } = fakeFetch(reply("found"));
     await jev(f).reconcile(reconcileInput(), recorder().record);
     const b = bodyOf(sent[0]);
@@ -171,9 +162,10 @@ describe("reconcile: found, not_found, unclear", () => {
 });
 
 describe("the trouble request (section 5 §10.2, §10.8)", () => {
-  test("pins the model, asks one choice question, and offers every label", async () => {
+  test("pins the model, offers every label, keeps labels out of the state, and hides the API key", async () => {
     const { f, sent } = fakeFetch(reply("needs_review"));
-    await jev(f).trouble(troubleInput(), recorder().record);
+    const { record, stored } = recorder();
+    await jev(f).trouble(troubleInput(), record);
     const b = bodyOf(sent[0]);
     expect(JEV_MODEL).toBe("jev-1.13.0");
     expect(b.model).toBe("jev-1.13.0");
@@ -189,22 +181,11 @@ describe("the trouble request (section 5 §10.2, §10.8)", () => {
         "unsafe",
       ].sort(),
     );
-  });
-
-  test("the handlers and outcomes are labels only: not repeated in the state", async () => {
-    const { f, sent } = fakeFetch(reply("needs_review"));
-    await jev(f).trouble(troubleInput(), recorder().record);
-    const state = bodyOf(sent[0]).state;
+    const state = b.state;
     expect("handlers" in state).toBe(false);
     expect("outcomes" in state).toBe(false);
     expect(state["screen"]).toBeDefined();
     expect(state["step"]).toBeDefined();
-  });
-
-  test("the API key never lands in the stored bytes", async () => {
-    const { f } = fakeFetch(reply("needs_review"));
-    const { record, stored } = recorder();
-    await jev(f).trouble(troubleInput(), record);
     for (const s of stored) expect(text(s.bytes)).not.toContain("test-key");
   });
 });
@@ -221,24 +202,19 @@ describe("call order (section 9 §5.3)", () => {
     expect(JSON.parse(text(stored[1]?.bytes))).toEqual(reply("handler:kyc"));
   });
 
-  test("a failed write is write_failed and nothing is sent", async () => {
-    const { f, sent } = fakeFetch(reply("handler:kyc"));
-    expect(await jev(f).trouble(troubleInput(), recorder(false).record)).toMatchObject({
+  test("a failed write is write_failed; a failed request write sends nothing", async () => {
+    const t = fakeFetch(reply("handler:kyc"));
+    expect(await jev(t.f).trouble(troubleInput(), recorder(false).record)).toMatchObject({
       ok: false,
       failure: "write_failed",
     });
-    expect(sent).toHaveLength(0);
-  });
-
-  test("the same holds for reconcile", async () => {
-    const { f, sent } = fakeFetch(reply("found"));
-    expect(await jev(f).reconcile(reconcileInput(), recorder(false).record)).toMatchObject({
+    expect(t.sent).toHaveLength(0);
+    const r = fakeFetch(reply("found"));
+    expect(await jev(r.f).reconcile(reconcileInput(), recorder(false).record)).toMatchObject({
       failure: "write_failed",
     });
-    expect(sent).toHaveLength(0);
-  });
-
-  test("a failed reply write is write_failed", async () => {
+    expect(r.sent).toHaveLength(0);
+    // A failed reply write: only the first write succeeds.
     const { f } = fakeFetch(reply("found"));
     let n = 0;
     const record = () => Promise.resolve(++n === 1);
@@ -250,13 +226,15 @@ describe("call order (section 9 §5.3)", () => {
 });
 
 describe("failures (section 5 §10.7; section 9 §5.3)", () => {
-  test.each([401, 429, 503])("HTTP %d is unavailable, with no retry", async (status) => {
-    const { f, sent } = fakeFetch({ error: { message: "no" } }, status);
-    expect(await jev(f).trouble(troubleInput(), recorder().record)).toMatchObject({
-      ok: false,
-      failure: "unavailable",
-    });
-    expect(sent).toHaveLength(1);
+  test("HTTP 401, 429, and 503 are unavailable, with no retry", async () => {
+    for (const status of [401, 429, 503]) {
+      const { f, sent } = fakeFetch({ error: { message: "no" } }, status);
+      expect(await jev(f).trouble(troubleInput(), recorder().record), `HTTP ${String(status)}`).toMatchObject({
+        ok: false,
+        failure: "unavailable",
+      });
+      expect(sent, `HTTP ${String(status)}`).toHaveLength(1);
+    }
   });
 
   test("a rejected fetch is unavailable", async () => {
@@ -306,35 +284,41 @@ describe("failures (section 5 §10.7; section 9 §5.3)", () => {
 });
 
 describe("bad output is invalid_output (section 5 §10.7)", () => {
-  test.each([
-    ["an empty body", {}],
-    ["no pick answer", { model: JEV_MODEL, answers: {}, usage: {} }],
-    ["a label that was not offered", reply("zzz")],
-    ["an inherited property name as the label", reply("constructor")],
-    ["a handler that was not offered", reply("handler:ghost")],
-    ["confidence above 1", reply("handler:kyc", 1.5)],
-    ["confidence below 0", reply("handler:kyc", -0.1)],
-    ["confidence that is a string", reply("handler:kyc", "0.9")],
-    ["a score answer", { model: JEV_MODEL, answers: { pick: { type: "score", score: 3, confidence: 0.9 } } }],
-  ])("trouble: %s", async (_name, body) => {
-    const { f } = fakeFetch(body);
-    expect(await jev(f).trouble(troubleInput(), recorder().record)).toEqual({
-      ok: false,
-      failure: "invalid_output",
-    });
+  test("trouble: each bad body is invalid_output", async () => {
+    const bodies: [string, unknown][] = [
+      ["an empty body", {}],
+      ["no pick answer", { model: JEV_MODEL, answers: {}, usage: {} }],
+      ["a label that was not offered", reply("zzz")],
+      ["an inherited property name as the label", reply("constructor")],
+      ["a handler that was not offered", reply("handler:ghost")],
+      ["confidence above 1", reply("handler:kyc", 1.5)],
+      ["confidence below 0", reply("handler:kyc", -0.1)],
+      ["confidence that is a string", reply("handler:kyc", "0.9")],
+      ["a score answer", { model: JEV_MODEL, answers: { pick: { type: "score", score: 3, confidence: 0.9 } } }],
+    ];
+    for (const [name, body] of bodies) {
+      const { f } = fakeFetch(body);
+      expect(await jev(f).trouble(troubleInput(), recorder().record), name).toEqual({
+        ok: false,
+        failure: "invalid_output",
+      });
+    }
   });
 
-  test.each([
-    ["a trouble label sent to reconcile", reply("handler:kyc")],
-    ["an unoffered label", reply("zzz")],
-    ["confidence above 1", reply("found", 1.5)],
-    ["an empty body", {}],
-  ])("reconcile: %s", async (_name, body) => {
-    const { f } = fakeFetch(body);
-    expect(await jev(f).reconcile(reconcileInput(), recorder().record)).toEqual({
-      ok: false,
-      failure: "invalid_output",
-    });
+  test("reconcile: each bad body is invalid_output", async () => {
+    const bodies: [string, unknown][] = [
+      ["a trouble label sent to reconcile", reply("handler:kyc")],
+      ["an unoffered label", reply("zzz")],
+      ["confidence above 1", reply("found", 1.5)],
+      ["an empty body", {}],
+    ];
+    for (const [name, body] of bodies) {
+      const { f } = fakeFetch(body);
+      expect(await jev(f).reconcile(reconcileInput(), recorder().record), name).toEqual({
+        ok: false,
+        failure: "invalid_output",
+      });
+    }
   });
 });
 

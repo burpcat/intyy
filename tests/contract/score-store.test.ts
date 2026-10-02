@@ -42,36 +42,30 @@ function recordOf(lines: HistoryLine[]): ScoreRecord {
 /** Runs the score store contract on one implementation. */
 function contract(label: string, make: () => Promise<Store>): void {
   describe(`ScoreStore contract: ${label}`, () => {
-    test("history lines append in order; an absent log is empty", async () => {
+    test("history, record, paths, and unsafe paths", async () => {
       const store = await make();
       expect(await store.history(PATH)).toEqual({ ok: true, value: [] });
       expect(await store.append(PATH, batch(1, "batch_a"))).toEqual({ ok: true, value: undefined });
       await store.append(PATH, approved(2));
       expect(await store.history(PATH)).toEqual({ ok: true, value: [batch(1, "batch_a"), approved(2)] });
-    });
 
-    test("a record is replaced whole; a missing record is not_found", async () => {
-      const store = await make();
+      // a record is replaced whole; a missing record is not_found
       expect(await store.getRecord(PATH)).toMatchObject({ ok: false, failure: "not_found" });
       const first = recordOf([approved(1)]);
       const second = recordOf([approved(1), retired(2)]);
       await store.putRecord(PATH, first);
       await store.putRecord(PATH, second);
       expect(await store.getRecord(PATH)).toEqual({ ok: true, value: second });
-    });
 
-    test("paths lists a tenant's key folders, sorted, whichever file made them", async () => {
-      const store = await make();
+      // paths lists a tenant's key folders, sorted, whichever file made them
       const patched = keyPath({ ...KEY, patch_revision: 3 });
       await store.putRecord(patched, recordOf([approved(1)]));
       await store.append(PATH, approved(1));
       await store.append(keyPath({ ...KEY, tenant: "lakeshore" }), approved(1));
       expect(await store.paths("keystone")).toEqual([PATH, patched]);
       expect(await store.paths("nobody")).toEqual([]);
-    });
 
-    test("an unsafe path is refused, not written", async () => {
-      const store = await make();
+      // an unsafe path is refused, not written
       await expect(async () => store.append("../outside", approved(1))).rejects.toThrow();
       await expect(async () => store.putRecord("keystone/../../x", recordOf([]))).rejects.toThrow();
     });
