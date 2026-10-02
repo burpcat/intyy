@@ -82,8 +82,8 @@ Trouble that plain code cannot sort goes to jev, then to a one-step reviewer, be
 
 ### Live (`npm run test:live`)
 
-- [ ] The fault table still passes, with jev and the reviewer faked.
-- [ ] `unknown_popup` now ends `recovers_or_escalates` through rungs 2 and 3, faked.
+- [x] The fault table still passes, with jev and the reviewer faked. (2026-10-02, fault-table-models.test.ts, 12/12)
+- [x] `unknown_popup` now ends `recovers_or_escalates` through rungs 2 and 3, faked. (2026-10-02, same file)
 
 ### Owner checks
 
