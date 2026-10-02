@@ -67,6 +67,26 @@ describe("the winner rule (section 7 §6.6, §6.9)", () => {
     if (v.kind === "winner") expect(v.elementId).toBe("0");
   });
 
+  test("a button stripped to a bare image (role img, not clickable in the DOM) stays a candidate and wins on region and image", () => {
+    const t = target("search_button", {
+      role: "button",
+      name: "Search",
+      region: { x: 0.72, y: 0.31, w: 0.05, h: 0.03 },
+      image: "crops/search_button.png",
+      path: "body > div > input[0]",
+    });
+    const today = screen([
+      el("bullet", { role: "img", roleGroup: "container", clues: { path: "body > img[0]" }, box: { x: 10, y: 10, width: 7, height: 7 } }),
+      el("btn", { role: "img", roleGroup: "container", clues: { path: "body > div > img[0]" }, box: { x: 921.6, y: 248, width: 64, height: 24 } }),
+    ]);
+    const likenesses = new Map([["search_button", new Map([["0", 0.1], ["1", 0.95]])]]);
+    const v = vote(t, fromObservation(today), byId(t), undefined, likenesses);
+    expect(v.kind).toBe("winner");
+    if (v.kind === "winner") expect(v.elementId).toBe("1");
+    expect(v.facts.missing).toContain("name");
+    expect(v.facts.agreeing).toEqual(expect.arrayContaining(["region", "image"]));
+  });
+
   test("a renamed button fails: name and text differ, so target_not_found", () => {
     const t = target("search_button", {
       role: "button",

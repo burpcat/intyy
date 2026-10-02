@@ -72,7 +72,10 @@ export function filterByRole<T extends { role: string; roleGroup: RoleGroup }>(
   const group = roleGroupOf(role);
   // Why: an unmapped role has no group to compare; fall back to an exact role match rather
   // than a guessed group, so it still filters without excluding the element it was for.
-  return group === undefined ? items.filter((e) => e.role === role) : items.filter((e) => e.roleGroup === group);
+  if (group === undefined) return items.filter((e) => e.role === role);
+  // Why images too: a button can render as a bare image whose click a script attaches, so no
+  // DOM fact marks it clickable (a stripped-semantics page). Its image and region clues decide.
+  return items.filter((e) => e.roleGroup === group || (group === "button_like" && e.role === "img"));
 }
 
 /** Euclidean distance between two centers, in fractions of the viewport. */
