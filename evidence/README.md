@@ -3,7 +3,7 @@
 This folder holds published copies of real intyy runs and records. It follows build plan §11.
 The owner checks each row against the files. `intyy evidence verify` checks hashes, links, forbidden files, and canaries.
 
-**Status values.** `pending` means the file does not exist yet. `published` means it exists and `evidence verify` is clean. Every row is `pending` at the time of this draft.
+**Status values.** `pending` means the file does not exist yet. `published` means it exists and `evidence verify` is clean. A row stays `pending` until the owner publishes it.
 
 ## Honesty notes
 
@@ -20,17 +20,17 @@ The owner checks each row against the files. `intyy evidence verify` checks hash
 
 | ID | What it shows | Brief | Made by | Expected path | Status |
 |---|---|---|---|---|---|
-| A1 | `sign_in` discovery, a real LLM run | 3.1 | `intyy discover kvfcu/sign_in` | `keystone/runs/<run>/` | pending |
-| A2 | `count_member_subaccounts` discovery, a read-only check capability that reads one count | 3.1 | `intyy discover kvfcu/count_member_subaccounts` | `keystone/runs/<run>/` | pending |
-| A3 | `open_share_subaccount` discovery: positive with the irreversible approval in its mailbox; `member_not_found`; the at-limit outcome | 3.1, 3.2, 3.4 | `intyy discover kvfcu/open_share_subaccount`, then `.missing` and `.at_limit` with `--candidate` | `keystone/runs/<run>/` (three runs) | pending |
-| A4 | The three sealed artifacts, copied with their hashes | 3.2 | `intyy evidence publish <run> ...` | `artifacts/kvfcu/<capability>/<version>/` | pending |
-| A5 | Replay success, supervised | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json` | `keystone/runs/<run>/` | pending |
-| A6 | Replay `member_not_found`, exit 2 | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/missing.json` | `keystone/runs/<run>/` | pending |
-| A7 | Replay at the limit: `business_outcome`, commit `refused` | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/at_limit.json` | `keystone/runs/<run>/` | pending |
-| A8 | Reply lost: commit `found_by_check` through a count check child run; `failed`, `outputs_unavailable`, because a count returns no outputs | 3.3 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile reply_lost` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
-| A9 | Session expiry recovered by the `sign_in` handler | 3.3 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile session_expire --at @step:<id>` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
-| A10 | Restricted user: `failed`, `permission_denied` | 3.3 | `(set -a; . ./.env.restricted; set +a; intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json)` | `keystone/runs/<run>/` | pending |
-| A11 | Live handoff: supervisor approval in the same browser | 3.6 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile supervisor_needed --operator mailbox` | `keystone/batches/<batch>/`, `keystone/runs/<run>/mailbox/` | pending |
+| A1 | `sign_in` discovery, a real LLM run | 3.1 | `intyy discover kvfcu/sign_in` | `keystone/runs/run_2026-09-29_qhkn64cebx/` | pending |
+| A2 | `count_member_subaccounts` discovery attempt: the member page lists rows with no count, so no read-only check could be found. `open_share_subaccount`'s waiver cites this run | 3.1 | `intyy discover kvfcu/count_member_subaccounts` | `keystone/runs/run_2026-10-01_f5twjghrdf/` | pending |
+| A3 | `open_share_subaccount` discovery: positive with the irreversible approval in its mailbox; `member_not_found`; the at-limit outcome | 3.1, 3.2, 3.4 | `intyy discover kvfcu/open_share_subaccount`, then `.missing` and `.at_limit` with `--candidate` | `keystone/runs/run_2026-10-01_x5zb8h8hme/`, `run_2026-10-01_qe3nzbscj1/`, `run_2026-10-01_we3bdycmve/` | pending |
+| A4 | The two sealed artifacts the runs used, `sign_in@1.0.0` and `open_share_subaccount@1.0.3`, copied with their hashes | 3.2 | `intyy evidence publish <run> ...` | `artifacts/kvfcu/<capability>/<version>/` | pending |
+| A5 | Replay success, supervised | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json` | `keystone/runs/run_2026-10-01_wg4rb47ksk/` | pending |
+| A6 | Replay `member_not_found`, exit 2 | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/missing.json` | `keystone/runs/run_2026-10-01_5650nh2gzc/` | pending |
+| A7 | Replay at the limit: `business_outcome`, commit `refused` | 3.3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/at_limit.json` | `keystone/runs/run_2026-10-01_ehj9k7ng7j/` | pending |
+| A8 | Reply lost on a cited-waiver artifact: `escalated`, `reconciliation_waived` at `click_ok`, commit `uncertain`; intyy never guesses, a person decides. Verdict `pass` | 3.3 | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile reply_lost` | `keystone/batches/batch_2026-10-02_ez872twjty/`, `keystone/runs/run_2026-10-02_psb98k0ynt/` | pending |
+| A9 | Session expiry recovered by the `sign_in` handler: `success` | 3.3 | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile session_expire --at @step:<id>` | `keystone/batches/batch_2026-10-02_jk66pk4qsg/`, `keystone/runs/run_2026-10-02_htxx6z5q9d/` | pending |
+| A10 | Restricted user: `failed`, `permission_denied` | 3.3 | `(set -a; . ./.env.restricted; set +a; intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json)` | `keystone/runs/run_2026-10-02_qp8z5r8x4x/` | pending |
+| A11 | Live handoff: supervisor approval in the same browser; `success`, commit `confirmed` by the bot, one intervention | 3.6 | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile supervisor_needed --operator mailbox` | `keystone/batches/batch_2026-10-02_mr0a5z9d55/`, `keystone/runs/run_2026-10-02_fmd346vwqj/mailbox/` | pending |
 | A12 | Safety and canary test report, as JSON | 3.4 | `npm run test:safety` | `tests/safety.json` | pending |
 | Set A | The set as a whole: manifest and a clean verify | all | `intyy evidence publish ...`, then `intyy evidence verify` | `manifest.json` | pending |
 
@@ -42,11 +42,11 @@ Published only if built and run. Remove a row for any item that was cut. Every r
 
 | ID | What it shows | Made by | Expected path | Status |
 |---|---|---|---|---|
-| B1 | Stripped-button `quick` batch, a drill: voting with no accessible name | `intyy certify kvfcu/open_share_subaccount@1.0.0 --kind quick --instance strip_semantics=1`, with the bank app restarted with `KVFCU_STRIP_SEMANTICS=1` | `keystone/batches/<batch>/` (publish with `--with-runs all`) | pending |
-| B2 | Unknown pop-up handled by rungs 2 and 3, with their `llm/` records | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile unknown_popup --at @step:<id>` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
+| B1 | Stripped-button `quick` batch, a drill: voting with no accessible name | `intyy certify kvfcu/open_share_subaccount@1.0.3 --kind quick --instance strip_semantics=1`, with the bank app restarted with `KVFCU_STRIP_SEMANTICS=1` | `keystone/batches/<batch>/` (publish with `--with-runs all`) | pending |
+| B2 | Unknown pop-up handled by rungs 2 and 3, with their `llm/` records | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile unknown_popup --at @step:<id>` | `keystone/batches/<batch>/`, `keystone/runs/<run>/` | pending |
 | B3 | Full batch reports and trust snapshots for the three keys | `intyy certify <key>`, then `intyy evidence publish <batch> <key>` | `keystone/batches/<batch>/`, `trust/scores/keystone/<key>/` | pending |
 | B4 | Unattended replay: rejected before approval, `success` after | `intyy replay kvfcu/open_share_subaccount@1 --mode unattended --inputs demo/valid.json --authorization demo/auth.json`, before and after `trust approve` | `keystone/runs/<run>/` (two runs) | pending |
-| B5 | Lakeshore probe, a drill: the cross-tenant gap, measured | `intyy certify kvfcu/open_share_subaccount@1.0.0 --tenant lakeshore --kind quick --instance variant=lakeshore` | `lakeshore/batches/<batch>/` | pending |
+| B5 | Lakeshore probe, a drill: the cross-tenant gap, measured | `intyy certify kvfcu/open_share_subaccount@1.0.3 --tenant lakeshore --kind quick --instance variant=lakeshore` | `lakeshore/batches/<batch>/` | pending |
 
 B1 and B5 are never approval-grade. B2 needs real models; jev has no adapter, so only rung 3 can answer.
 
