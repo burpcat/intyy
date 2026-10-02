@@ -1,0 +1,12 @@
+{"seq":1,"time":"2026-10-01T23:14:29.294+00:00","method":"GET","path":"/","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2259}
+{"seq":2,"time":"2026-10-01T23:14:31.564+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1048}
+{"seq":3,"time":"2026-10-01T23:14:35.337+00:00","method":"GET","path":"/","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":451}
+{"seq":4,"time":"2026-10-01T23:14:35.797+00:00","method":"GET","path":"/login.do","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":537}
+{"seq":5,"time":"2026-10-01T23:14:41.553+00:00","method":"POST","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2086}
+{"seq":6,"time":"2026-10-01T23:14:43.649+00:00","method":"GET","path":"/lastLogin.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2714}
+{"seq":7,"time":"2026-10-01T23:14:48.600+00:00","method":"GET","path":"/main.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1878}
+{"seq":8,"time":"2026-10-01T23:14:50.497+00:00","method":"GET","path":"/banner.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1944}
+{"seq":9,"time":"2026-10-01T23:14:50.497+00:00","method":"GET","path":"/menu.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2955}
+{"seq":10,"time":"2026-10-01T23:14:50.498+00:00","method":"GET","path":"/memberSearch.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1963}
+{"seq":11,"time":"2026-10-01T23:14:54.963+00:00","method":"POST","path":"/memberSearchResult.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":645}
+{"seq":12,"time":"2026-10-01T23:14:56.248+00:00","method":"GET","path":"/memberDetail.do","route_count":1,"decision":"named","fault_kind":"server_error","block_point":"before","style":"error_page","named_id":"batch_2026-10-01_wgfj1fjtdy_server_error_0","delay_ms":2866}

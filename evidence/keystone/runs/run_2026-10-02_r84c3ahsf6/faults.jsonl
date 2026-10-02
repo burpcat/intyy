@@ -1,0 +1,10 @@
+{"seq":1,"time":"2026-10-02T20:20:14.699+00:00","method":"GET","path":"/","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2478}
+{"seq":2,"time":"2026-10-02T20:20:17.192+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"entropy","fault_kind":"random","block_point":"before","style":"blank","named_id":null,"delay_ms":414}
+{"seq":3,"time":"2026-10-02T20:20:17.620+00:00","method":"GET","path":"/","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2815}
+{"seq":4,"time":"2026-10-02T20:20:20.448+00:00","method":"GET","path":"/login.do","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1268}
+{"seq":5,"time":"2026-10-02T20:20:25.500+00:00","method":"POST","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1957}
+{"seq":6,"time":"2026-10-02T20:20:27.473+00:00","method":"GET","path":"/lastLogin.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2933}
+{"seq":7,"time":"2026-10-02T20:20:32.033+00:00","method":"GET","path":"/main.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1925}
+{"seq":8,"time":"2026-10-02T20:20:33.985+00:00","method":"GET","path":"/banner.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2243}
+{"seq":9,"time":"2026-10-02T20:20:33.987+00:00","method":"GET","path":"/menu.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":897}
+{"seq":10,"time":"2026-10-02T20:20:33.988+00:00","method":"GET","path":"/memberSearch.do","route_count":1,"decision":"entropy","fault_kind":"random","block_point":"before","style":"blank","named_id":null,"delay_ms":650}

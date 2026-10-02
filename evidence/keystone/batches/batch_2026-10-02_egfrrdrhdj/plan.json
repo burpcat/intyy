@@ -1,0 +1,197 @@
+{
+  "schema": "intyy.batch_plan/1.0",
+  "batch_id": "batch_2026-10-02_egfrrdrhdj",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "kind": "quick",
+  "pin": "kvfcu/open_share_subaccount@1.0.3",
+  "started_by": "op_017",
+  "operator": "scripted",
+  "started_at": "2026-10-02T17:07:32.129Z",
+  "instance": {
+    "variant": "keystone",
+    "strip_semantics": true,
+    "drop_labels": 0,
+    "label_seed": "0"
+  },
+  "route_map": {
+    "session:entry": {
+      "route": "GET /",
+      "nth": 2
+    },
+    "session:click_login": {
+      "route": "POST /login.do",
+      "nth": 1
+    },
+    "session:click_continue": {
+      "route": "GET /main.do",
+      "nth": 1
+    },
+    "click_search": {
+      "route": "POST /memberSearchResult.do",
+      "nth": 1
+    },
+    "click_member": {
+      "route": "GET /memberDetail.do",
+      "nth": 1
+    },
+    "click_open_sub_account": {
+      "route": "GET /openAccount.do",
+      "nth": 1
+    },
+    "click_submit": {
+      "route": "POST /openAccountReview.do",
+      "nth": 1
+    },
+    "click_ok": {
+      "route": "POST /openAccountConfirm.do",
+      "nth": 1
+    }
+  },
+  "cases": [
+    {
+      "case_id": "baseline",
+      "run_id": "run_2026-10-02_wprgh8j3bz",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_egfrrdrhdj:baseline",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "server_error",
+      "run_id": "run_2026-10-02_zhnqt3jpbj",
+      "class": "valid",
+      "profile": "server_error",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_egfrrdrhdj:server_error",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance",
+      "run_id": "run_2026-10-02_6n05s76wa1",
+      "class": "valid",
+      "profile": "maintenance",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_egfrrdrhdj:maintenance",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup",
+      "run_id": "run_2026-10-02_hga2pn9d51",
+      "class": "valid",
+      "profile": "known_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_egfrrdrhdj:known_popup",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup",
+      "run_id": "run_2026-10-02_jywqtz19vy",
+      "class": "valid",
+      "profile": "unknown_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_egfrrdrhdj:unknown_popup",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire",
+      "run_id": "run_2026-10-02_z0whchn5g4",
+      "class": "valid",
+      "profile": "session_expire",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_egfrrdrhdj:session_expire",
+      "expect": null
+    },
+    {
+      "case_id": "reply_lost",
+      "run_id": "run_2026-10-02_y3z8pea27r",
+      "class": "valid",
+      "profile": "reply_lost",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "drop_after_confirm",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_egfrrdrhdj:reply_lost",
+      "expect": null
+    }
+  ],
+  "drill": true,
+  "declaration": {
+    "by": "op_017",
+    "differs": [
+      "strip_semantics"
+    ]
+  }
+}

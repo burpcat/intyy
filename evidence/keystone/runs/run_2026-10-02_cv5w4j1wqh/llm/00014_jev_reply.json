@@ -1,0 +1,1 @@
+{"model":"jev-1.13.0","answers":{"pick":{"type":"choice","choice":"needs_review","confidence":0.89,"probabilities":{"handler:kyc_reminder":0.0,"needs_review":0.91,"handler:supervisor_approval":0.0,"unsafe":0.0,"handler:maintenance":0.0,"handler:session_expired":0.09,"handler:app_error_page":0.0,"handler:permission_denied":0.0}}},"usage":{"input_tokens":768,"output_tokens":105}}

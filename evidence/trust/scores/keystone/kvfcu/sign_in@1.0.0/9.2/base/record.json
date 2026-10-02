@@ -1,0 +1,87 @@
+{
+  "schema": "intyy.score/1.0",
+  "key": {
+    "capability": "kvfcu/sign_in@1.0.0",
+    "tenant": "keystone",
+    "app_version": "9.2",
+    "patch_revision": null
+  },
+  "hashes": {
+    "artifact": "sha256:9167617fe86d03b40e5a51b179ad8eac1c4bfa00deede8b310216dc1ad77690e",
+    "patch": null
+  },
+  "state": "approved",
+  "state_since": "2026-10-02T22:02:38.362Z",
+  "state_by": "op_022",
+  "state_reason": "Approved on batch batch_2026-10-02_pd3rggj8en.",
+  "certify": {
+    "batch": "batch_2026-10-02_pd3rggj8en",
+    "at": "2026-10-02T19:04:18.161Z",
+    "gate": "passed",
+    "report_hash": "sha256:bd26934d7d2863cd8cb968faea4ee41d53f15ee951fe4c7da27acb0c30ee31bb",
+    "under": {
+      "engine": "0.2.0",
+      "handler_set": "sha256:b0211edd75d932e8a9d32bab2ae66cf064d4ab56facb68c41ad5ef4b93b6a061",
+      "jev": "jev",
+      "session": null,
+      "check": null
+    },
+    "scores": {
+      "outcome_score": 1,
+      "verdicts": {
+        "pass": 37,
+        "explained": 0,
+        "assisted": 0,
+        "unexplained": 12,
+        "wrong": 0,
+        "void": 0
+      },
+      "margin": {
+        "lowest": 0.657227751395675,
+        "step": "click_login"
+      },
+      "fragile": []
+    }
+  },
+  "regression": null,
+  "approval": {
+    "batch": "batch_2026-10-02_pd3rggj8en",
+    "by": "op_022",
+    "at": "2026-10-02T22:02:38.362Z",
+    "acknowledged": [],
+    "note": null
+  },
+  "timeouts": {
+    "approved": {},
+    "approved_from": "batch_2026-10-02_pd3rggj8en",
+    "candidate": null,
+    "candidate_from": null
+  },
+  "thresholds": null,
+  "autonomy": null,
+  "live": {
+    "current": {
+      "handler_set": "sha256:b0211edd75d932e8a9d32bab2ae66cf064d4ab56facb68c41ad5ef4b93b6a061",
+      "window": 50,
+      "counted": 4,
+      "clean": 4,
+      "assisted": 0,
+      "recipe_failures": 0,
+      "app_failures": 0,
+      "score": 1,
+      "streak": null
+    },
+    "previous": {
+      "handler_set": "sha256:e22e6b56e513de5517cb08a273ce6e746095285845844d9bb68b6f6648a4edb4",
+      "window": 50,
+      "counted": 2,
+      "clean": 2,
+      "assisted": 0,
+      "recipe_failures": 0,
+      "app_failures": 0,
+      "score": 1,
+      "streak": null
+    }
+  },
+  "alerts": []
+}

@@ -1,0 +1,127 @@
+{
+  "schema": "intyy.batch_report/1.0",
+  "batch_id": "batch_2026-10-02_egfrrdrhdj",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "ended_at": "2026-10-02T17:07:32.129Z",
+  "cases": [
+    {
+      "case_id": "baseline",
+      "run_id": "run_2026-10-02_wprgh8j3bz",
+      "class": "valid",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {},
+      "verdict": "pass"
+    },
+    {
+      "case_id": "server_error",
+      "run_id": "run_2026-10-02_zhnqt3jpbj",
+      "class": "valid",
+      "result": {
+        "status": "escalated",
+        "detail": "reconciliation_decision/reconciliation_waived/click_ok"
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        }
+      },
+      "verdict": "pass",
+      "waived": true
+    },
+    {
+      "case_id": "maintenance",
+      "run_id": "run_2026-10-02_6n05s76wa1",
+      "class": "valid",
+      "result": {
+        "status": "escalated",
+        "detail": "reconciliation_decision/reconciliation_waived/click_ok"
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        }
+      },
+      "verdict": "pass",
+      "waived": true
+    },
+    {
+      "case_id": "known_popup",
+      "run_id": "run_2026-10-02_hga2pn9d51",
+      "class": "valid",
+      "result": {
+        "status": "escalated",
+        "detail": "reconciliation_decision/reconciliation_waived/click_ok"
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        }
+      },
+      "verdict": "pass",
+      "waived": true
+    },
+    {
+      "case_id": "unknown_popup",
+      "run_id": "run_2026-10-02_jywqtz19vy",
+      "class": "valid",
+      "result": {
+        "status": "escalated",
+        "detail": "reconciliation_decision/reconciliation_waived/click_ok"
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        }
+      },
+      "verdict": "pass",
+      "waived": true
+    },
+    {
+      "case_id": "session_expire",
+      "run_id": "run_2026-10-02_z0whchn5g4",
+      "class": "valid",
+      "result": {
+        "status": "escalated",
+        "detail": "reconciliation_decision/reconciliation_waived/click_ok"
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        }
+      },
+      "verdict": "pass",
+      "waived": true
+    },
+    {
+      "case_id": "reply_lost",
+      "run_id": "run_2026-10-02_y3z8pea27r",
+      "class": "valid",
+      "result": {
+        "status": "escalated",
+        "detail": "reconciliation_decision/reconciliation_waived/click_ok"
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        }
+      },
+      "verdict": "pass",
+      "waived": true
+    }
+  ],
+  "gate": {
+    "passed": true
+  },
+  "drill": true
+}

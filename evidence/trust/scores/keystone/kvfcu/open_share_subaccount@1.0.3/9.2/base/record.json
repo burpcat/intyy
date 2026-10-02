@@ -1,0 +1,90 @@
+{
+  "schema": "intyy.score/1.0",
+  "key": {
+    "capability": "kvfcu/open_share_subaccount@1.0.3",
+    "tenant": "keystone",
+    "app_version": "9.2",
+    "patch_revision": null
+  },
+  "hashes": {
+    "artifact": "sha256:be0e14467a5033b2065044d304845f929ad2812eac9a358eb642c4bc0174de11",
+    "patch": null
+  },
+  "state": "approved",
+  "state_since": "2026-10-02T22:03:27.933Z",
+  "state_by": "op_022",
+  "state_reason": "Approved on batch batch_2026-10-02_kndb373d57.",
+  "certify": {
+    "batch": "batch_2026-10-02_kndb373d57",
+    "at": "2026-10-02T20:26:29.969Z",
+    "gate": "passed",
+    "report_hash": "sha256:13f27830ba7607cf420b659a1f23833925bbb0ba7eb7a86c78f26e81e0470143",
+    "under": {
+      "engine": "0.2.0",
+      "handler_set": "sha256:b0211edd75d932e8a9d32bab2ae66cf064d4ab56facb68c41ad5ef4b93b6a061",
+      "jev": "jev",
+      "session": "kvfcu/sign_in@1.0.0",
+      "check": null
+    },
+    "scores": {
+      "outcome_score": 1,
+      "verdicts": {
+        "pass": 38,
+        "explained": 2,
+        "assisted": 0,
+        "unexplained": 22,
+        "wrong": 0,
+        "void": 0
+      },
+      "margin": {
+        "lowest": 0.6606928793167595,
+        "step": "click_submit"
+      },
+      "fragile": []
+    }
+  },
+  "regression": null,
+  "approval": {
+    "batch": "batch_2026-10-02_kndb373d57",
+    "by": "op_022",
+    "at": "2026-10-02T22:03:27.933Z",
+    "acknowledged": [],
+    "note": null
+  },
+  "timeouts": {
+    "approved": {},
+    "approved_from": "batch_2026-10-02_kndb373d57",
+    "candidate": null,
+    "candidate_from": null
+  },
+  "thresholds": null,
+  "autonomy": null,
+  "live": {
+    "current": {
+      "handler_set": "sha256:b0211edd75d932e8a9d32bab2ae66cf064d4ab56facb68c41ad5ef4b93b6a061",
+      "window": 50,
+      "counted": 3,
+      "clean": 3,
+      "assisted": 0,
+      "recipe_failures": 0,
+      "app_failures": 0,
+      "score": 1,
+      "streak": null
+    },
+    "previous": {
+      "handler_set": "sha256:e22e6b56e513de5517cb08a273ce6e746095285845844d9bb68b6f6648a4edb4",
+      "window": 50,
+      "counted": 0,
+      "clean": 0,
+      "assisted": 0,
+      "recipe_failures": 0,
+      "app_failures": 1,
+      "score": null,
+      "streak": null
+    }
+  },
+  "alerts": [
+    "alert_2026-10-01_whdztjt6tm",
+    "alert_2026-10-02_0vh4jt70yz"
+  ]
+}

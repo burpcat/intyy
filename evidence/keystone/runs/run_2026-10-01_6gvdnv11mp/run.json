@@ -1,0 +1,211 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-01_6gvdnv11mp",
+  "tenant": "keystone",
+  "kind": "replay",
+  "capability": "kvfcu/open_share_subaccount",
+  "parent_run_id": null,
+  "batch_id": "batch_2026-10-01_wgfj1fjtdy",
+  "case_id": "case",
+  "request_id": "run_2026-10-01_6gvdnv11mp",
+  "status": "failed",
+  "result": {
+    "schema": "intyy.result/1.0",
+    "run_id": "run_2026-10-01_6gvdnv11mp",
+    "request_id": null,
+    "capability": {
+      "name": "kvfcu/open_share_subaccount",
+      "version": "1.0.3",
+      "patch_revision": null
+    },
+    "effect": {
+      "commit": "not_sent",
+      "performed_by": null,
+      "sent_at": null,
+      "attempts": []
+    },
+    "warnings": [],
+    "recoveries": [],
+    "interventions": [
+      {
+        "kind": "takeover",
+        "reason": "stuck",
+        "step": "click_member",
+        "staff_id": "certify",
+        "decision": "ended_run",
+        "requested_at": "2026-10-01T23:15:12.668Z",
+        "resolved_at": "2026-10-01T23:15:12.674Z",
+        "human_actions": 0,
+        "resumed_at_step": null
+      }
+    ],
+    "timing": {
+      "started_at": "2026-10-01T23:14:29.202Z",
+      "ended_at": "2026-10-01T23:15:12.770Z",
+      "duration_ms": 0,
+      "human_ms": 0
+    },
+    "evidence": "runs/run_2026-10-01_6gvdnv11mp",
+    "status": "failed",
+    "failure": {
+      "code": "ended_by_operator",
+      "message": "the operator ended the run",
+      "step": "click_member",
+      "phase": "escalation",
+      "expected": {
+        "condition": "escalation",
+        "description": "the operator ended the run"
+      },
+      "observed": {
+        "location": "http://127.0.0.1:8080/main.do",
+        "checks": []
+      },
+      "attempts": 0,
+      "ladder": {
+        "rung": 4,
+        "verdict": "needs_human",
+        "ref": "takeover"
+      },
+      "transient": false,
+      "safe_to_retry": true,
+      "files": [
+        "screens/[digits#1]_click_member_ladder.png",
+        "a11y/[digits#1]_click_member_ladder.yaml",
+        "llm/[digits#2]_jev_request.json",
+        "llm/[digits#2]_jev_reply.json",
+        "llm/[digits#3]_reviewer_request.json",
+        "llm/[digits#3]_reviewer_reply.json",
+        "screens/[digits#4]_click_member_takeover_ended.png",
+        "dom/[digits#4]_click_member_takeover_ended.html",
+        "a11y/[digits#4]_click_member_takeover_ended.yaml"
+      ]
+    }
+  },
+  "frozen": {
+    "schema": "intyy.log/1.0",
+    "kind": "replay",
+    "parent_run_id": null,
+    "purpose": null,
+    "batch_id": "batch_2026-10-01_wgfj1fjtdy",
+    "case_id": "case",
+    "pin": "kvfcu/open_share_subaccount@1.0.3",
+    "request_id": "run_2026-10-01_6gvdnv11mp",
+    "tenant": "keystone",
+    "agent_id": "certify",
+    "mode": "supervised",
+    "inputs": {
+      "member_id": "[pii]",
+      "deposit": "[financial]"
+    },
+    "authorization": {
+      "consent_ref": "certify:batch_2026-10-01_wgfj1fjtdy",
+      "granted_by": "staff",
+      "staff_id": "op_017",
+      "granted_at": "2026-10-01T23:14:29.198Z",
+      "expires_at": "2026-10-01T23:44:29.198Z",
+      "capability": "kvfcu/open_share_subaccount@1"
+    },
+    "frozen": {
+      "artifact": {
+        "id": "kvfcu/open_share_subaccount@1.0.3",
+        "hash": "sha256:11778d7dedde65f8186a4b1ef94a75bd8727d1b73d6ec3daf16393d99bc55d86"
+      },
+      "patch": null,
+      "session": {
+        "id": "kvfcu/sign_in@1.0.0",
+        "hash": "sha256:83db39113e1f1e23c1225e5d8b4bb70513523d1dc8fff9d4ef4e4fffaed26dc3",
+        "patch": null
+      },
+      "app_version": "9.2",
+      "engine_version": "0.2.0",
+      "handler_set": "sha256:7ca347d8c4b03b67ec00ed6d62467fc74f499271133f508feeb778dde24f8695",
+      "handler_packs": {},
+      "policy": {
+        "layers": {
+          "global": 1,
+          "app:kvfcu": 4,
+          "tenant:keystone": 2
+        },
+        "hash": "sha256:c36a9e041c0012b39daaed1d35eb853d32db183802deccc97c41e793b4c9b431"
+      },
+      "settings": {
+        "revision": 1,
+        "hash": "sha256:3a7aa65741da5c87404035afc9f9c4ccb82df8c99746da40f8be5a98f5f2d7de"
+      },
+      "evidence_level": "standard",
+      "timeouts": {},
+      "timeouts_from": null,
+      "approval": {
+        "state": "draft",
+        "batch": null,
+        "record": null
+      },
+      "ladder": {
+        "jev": true,
+        "reviewer": true,
+        "handler_min": 0.8,
+        "outcome_min": 0.95,
+        "reconciliation_min": 0.9,
+        "reconciliation_autonomy": false
+      }
+    },
+    "fault_profile": null,
+    "outputs_revealed": true
+  },
+  "files": [
+    {
+      "path": "screens/00017_click_member_ladder.png",
+      "sha256": "sha256:05b175bc037d135aaef73f86a4fc77216e1bbebc180ccd802aaa06f03b228485",
+      "bytes": 44574
+    },
+    {
+      "path": "a11y/00017_click_member_ladder.yaml",
+      "sha256": "sha256:1b88f9803cf5d6efa96a7a06fa0d79b3d4ce82e6eeafb981a863111e9a9a0334",
+      "bytes": 4748
+    },
+    {
+      "path": "llm/00018_jev_request.json",
+      "sha256": "sha256:e4d5d4e555d7f6e15e358a73f3f31231d49b7e50957e377b604a629330abe1fa",
+      "bytes": 4661
+    },
+    {
+      "path": "llm/00018_jev_reply.json",
+      "sha256": "sha256:8f9183b69127246dd4a960c7614d7190421bafd3619b702f7bd7de20c57b3d95",
+      "bytes": 202
+    },
+    {
+      "path": "llm/00019_reviewer_request.json",
+      "sha256": "sha256:f428b5a437d06b090f96d20b44df0c2d4091c89c5865af26ada5dcdc08ec6018",
+      "bytes": 65901
+    },
+    {
+      "path": "llm/00019_reviewer_reply.json",
+      "sha256": "sha256:9f8ea1f2578f68cf4707fc766d7d0b22caac8ee4999c3596709053f1cc862104",
+      "bytes": 926
+    },
+    {
+      "path": "screens/00023_click_member_takeover_ended.png",
+      "sha256": "sha256:05b175bc037d135aaef73f86a4fc77216e1bbebc180ccd802aaa06f03b228485",
+      "bytes": 44574
+    },
+    {
+      "path": "dom/00023_click_member_takeover_ended.html",
+      "sha256": "sha256:3dd7c571e576c863f5927ded8b7ec795f3021c7799b64954c9d46de8a879994b",
+      "bytes": 4035
+    },
+    {
+      "path": "a11y/00023_click_member_takeover_ended.yaml",
+      "sha256": "sha256:1b88f9803cf5d6efa96a7a06fa0d79b3d4ce82e6eeafb981a863111e9a9a0334",
+      "bytes": 4748
+    },
+    {
+      "path": "events.jsonl",
+      "sha256": "sha256:3bcac69be1eda276be7f9031da0b569d802eab598e711a870191a8952c1ab0e3",
+      "bytes": 8667
+    }
+  ],
+  "retention": {
+    "debug_until": "2026-10-31",
+    "audit_until": "2027-10-01"
+  }
+}

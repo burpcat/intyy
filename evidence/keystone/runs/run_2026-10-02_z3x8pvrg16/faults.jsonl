@@ -1,0 +1,2 @@
+{"seq":1,"time":"2026-10-02T20:26:14.916+00:00","method":"GET","path":"/","route_count":1,"decision":"entropy","fault_kind":"random","block_point":"after","style":"logout","named_id":null,"delay_ms":201}
+{"seq":2,"time":"2026-10-02T20:26:15.130+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"entropy","fault_kind":"random","block_point":"before","style":"hang","named_id":null,"delay_ms":2969}

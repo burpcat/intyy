@@ -1,0 +1,166 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-02_kkghf00vgq",
+  "tenant": "keystone",
+  "kind": "replay",
+  "capability": "kvfcu/open_share_subaccount",
+  "parent_run_id": null,
+  "batch_id": "batch_2026-10-02_kndb373d57",
+  "case_id": "stab_0.3_2",
+  "request_id": "run_2026-10-02_kkghf00vgq",
+  "status": "failed",
+  "result": {
+    "schema": "intyy.result/1.0",
+    "run_id": "run_2026-10-02_kkghf00vgq",
+    "request_id": null,
+    "capability": {
+      "name": "kvfcu/open_share_subaccount",
+      "version": "1.0.3",
+      "patch_revision": null
+    },
+    "effect": {
+      "commit": "not_sent",
+      "performed_by": null,
+      "sent_at": null,
+      "attempts": []
+    },
+    "warnings": [],
+    "recoveries": [],
+    "interventions": [],
+    "timing": {
+      "started_at": "2026-10-02T20:23:06.753Z",
+      "ended_at": "2026-10-02T20:23:36.233Z",
+      "duration_ms": 0,
+      "human_ms": 0
+    },
+    "evidence": "runs/run_2026-10-02_kkghf00vgq",
+    "status": "failed",
+    "failure": {
+      "code": "checkpoint_timeout",
+      "message": "step click_login's checkpoint never passed",
+      "step": null,
+      "phase": "checkpoint",
+      "expected": {
+        "condition": "checkpoint",
+        "description": "step click_login's checkpoint never passed"
+      },
+      "observed": {
+        "location": "http://127.0.0.1:8080/login.do",
+        "checks": []
+      },
+      "attempts": 0,
+      "ladder": {
+        "rung": 0,
+        "verdict": "hard_failure",
+        "ref": "checkpoint"
+      },
+      "transient": false,
+      "safe_to_retry": true,
+      "files": [
+        "screens/[digits#1]_session_sign_in_failed.png",
+        "dom/[digits#1]_session_sign_in_failed.html",
+        "a11y/[digits#1]_session_sign_in_failed.yaml"
+      ]
+    }
+  },
+  "frozen": {
+    "schema": "intyy.log/1.0",
+    "kind": "replay",
+    "parent_run_id": null,
+    "purpose": null,
+    "batch_id": "batch_2026-10-02_kndb373d57",
+    "case_id": "stab_0.3_2",
+    "pin": "kvfcu/open_share_subaccount@1.0.3",
+    "request_id": "run_2026-10-02_kkghf00vgq",
+    "tenant": "keystone",
+    "agent_id": "certify",
+    "mode": "supervised",
+    "inputs": {
+      "member_id": "[pii]",
+      "deposit": "[financial]"
+    },
+    "authorization": {
+      "consent_ref": "certify:batch_2026-10-02_kndb373d57",
+      "granted_by": "staff",
+      "staff_id": "op_017",
+      "granted_at": "2026-10-02T20:23:06.749Z",
+      "expires_at": "2026-10-02T20:53:06.749Z",
+      "capability": "kvfcu/open_share_subaccount@1"
+    },
+    "frozen": {
+      "artifact": {
+        "id": "kvfcu/open_share_subaccount@1.0.3",
+        "hash": "sha256:11778d7dedde65f8186a4b1ef94a75bd8727d1b73d6ec3daf16393d99bc55d86"
+      },
+      "patch": null,
+      "session": {
+        "id": "kvfcu/sign_in@1.0.0",
+        "hash": "sha256:83db39113e1f1e23c1225e5d8b4bb70513523d1dc8fff9d4ef4e4fffaed26dc3",
+        "patch": null
+      },
+      "app_version": "9.2",
+      "engine_version": "0.2.0",
+      "handler_set": "sha256:b0211edd75d932e8a9d32bab2ae66cf064d4ab56facb68c41ad5ef4b93b6a061",
+      "handler_packs": {
+        "global": 1,
+        "app:kvfcu": 2
+      },
+      "policy": {
+        "layers": {
+          "global": 1,
+          "app:kvfcu": 5,
+          "tenant:keystone": 2
+        },
+        "hash": "sha256:bd92d97225b2997bc5c7a5b916e31f88a5426ceca42b831a6055b6ec4988a358"
+      },
+      "settings": {
+        "revision": 1,
+        "hash": "sha256:3a7aa65741da5c87404035afc9f9c4ccb82df8c99746da40f8be5a98f5f2d7de"
+      },
+      "evidence_level": "standard",
+      "timeouts": {},
+      "timeouts_from": null,
+      "approval": {
+        "state": "draft",
+        "batch": null,
+        "record": null
+      },
+      "ladder": {
+        "jev": true,
+        "reviewer": true,
+        "handler_min": 0.8,
+        "outcome_min": 0.95,
+        "reconciliation_min": 0.9,
+        "reconciliation_autonomy": false
+      }
+    },
+    "fault_profile": null,
+    "outputs_revealed": true
+  },
+  "files": [
+    {
+      "path": "screens/00008_session_sign_in_failed.png",
+      "sha256": "sha256:83f408f614654251324500894908a138e01e196d9e844b60c77a50f9b96d1160",
+      "bytes": 21680
+    },
+    {
+      "path": "dom/00008_session_sign_in_failed.html",
+      "sha256": "sha256:a951b96a5f08e749d3e6499646cd447dfec8e3e8b1e93391448aed991a1f0317",
+      "bytes": 917
+    },
+    {
+      "path": "a11y/00008_session_sign_in_failed.yaml",
+      "sha256": "sha256:8f6b3f1796d40f9e45961ad1d8f9c52a98c206f66b832fe4fb9240398655154c",
+      "bytes": 1000
+    },
+    {
+      "path": "events.jsonl",
+      "sha256": "sha256:c3b9efb8fa6d2680bb603a603f18949221217c028e5fa5a21b06966a6e98f7e5",
+      "bytes": 4173
+    }
+  ],
+  "retention": {
+    "debug_until": "2026-11-01",
+    "audit_until": "2027-10-02"
+  }
+}

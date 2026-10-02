@@ -1,0 +1,10 @@
+{"seq":1,"time":"2026-10-01T23:18:01.387+00:00","method":"GET","path":"/","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2901}
+{"seq":2,"time":"2026-10-01T23:18:04.300+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1976}
+{"seq":3,"time":"2026-10-01T23:18:07.593+00:00","method":"GET","path":"/","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1765}
+{"seq":4,"time":"2026-10-01T23:18:09.367+00:00","method":"GET","path":"/login.do","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1485}
+{"seq":5,"time":"2026-10-01T23:18:14.220+00:00","method":"POST","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1055}
+{"seq":6,"time":"2026-10-01T23:18:15.285+00:00","method":"GET","path":"/lastLogin.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":567}
+{"seq":7,"time":"2026-10-01T23:18:16.639+00:00","method":"GET","path":"/main.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1170}
+{"seq":8,"time":"2026-10-01T23:18:17.833+00:00","method":"GET","path":"/banner.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2971}
+{"seq":9,"time":"2026-10-01T23:18:17.834+00:00","method":"GET","path":"/menu.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1635}
+{"seq":10,"time":"2026-10-01T23:18:17.835+00:00","method":"GET","path":"/memberSearch.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1236}

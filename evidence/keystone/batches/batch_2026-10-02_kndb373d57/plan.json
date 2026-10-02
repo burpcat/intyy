@@ -1,0 +1,1207 @@
+{
+  "schema": "intyy.batch_plan/1.0",
+  "batch_id": "batch_2026-10-02_kndb373d57",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "kind": "full",
+  "pin": "kvfcu/open_share_subaccount@1.0.3",
+  "started_by": "op_017",
+  "operator": "scripted",
+  "started_at": "2026-10-02T20:26:29.967Z",
+  "instance": {
+    "variant": "keystone",
+    "strip_semantics": false,
+    "drop_labels": 0,
+    "label_seed": "0"
+  },
+  "route_map": {
+    "session:entry": {
+      "route": "GET /",
+      "nth": 2
+    },
+    "session:click_login": {
+      "route": "POST /login.do",
+      "nth": 1
+    },
+    "session:click_continue": {
+      "route": "GET /main.do",
+      "nth": 1
+    },
+    "click_search": {
+      "route": "POST /memberSearchResult.do",
+      "nth": 1
+    },
+    "click_member": {
+      "route": "GET /memberDetail.do",
+      "nth": 1
+    },
+    "click_open_sub_account": {
+      "route": "GET /openAccount.do",
+      "nth": 1
+    },
+    "click_submit": {
+      "route": "POST /openAccountReview.do",
+      "nth": 1
+    },
+    "click_ok": {
+      "route": "POST /openAccountConfirm.do",
+      "nth": 1
+    }
+  },
+  "cases": [
+    {
+      "case_id": "baseline",
+      "run_id": "run_2026-10-02_x5t6kz9pk8",
+      "group": "baseline",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "baseline_valid_2",
+      "run_id": "run_2026-10-02_d4jf3efb92",
+      "group": "baseline",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100114",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_valid_2",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "baseline_valid_3",
+      "run_id": "run_2026-10-02_vge7f53d6t",
+      "group": "baseline",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100121",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_valid_3",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "baseline_missing_1",
+      "run_id": "run_2026-10-02_q0ppjbnn6q",
+      "group": "baseline",
+      "class": "missing",
+      "profile": null,
+      "inputs": {
+        "member_id": "999001",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_missing_1",
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "member_not_found",
+        "commit": "not_sent"
+      }
+    },
+    {
+      "case_id": "baseline_missing_2",
+      "run_id": "run_2026-10-02_tm6zd9c21n",
+      "group": "baseline",
+      "class": "missing",
+      "profile": null,
+      "inputs": {
+        "member_id": "100101",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_missing_2",
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "member_not_found",
+        "commit": "not_sent"
+      }
+    },
+    {
+      "case_id": "baseline_missing_3",
+      "run_id": "run_2026-10-02_yk03x9x1xg",
+      "group": "baseline",
+      "class": "missing",
+      "profile": null,
+      "inputs": {
+        "member_id": "100199",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_missing_3",
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "member_not_found",
+        "commit": "not_sent"
+      }
+    },
+    {
+      "case_id": "baseline_at_limit_1",
+      "run_id": "run_2026-10-02_y6jcdqn87d",
+      "group": "baseline",
+      "class": "at_limit",
+      "profile": null,
+      "inputs": {
+        "member_id": "100247",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_at_limit_1",
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "limit_exceeded",
+        "commit": "not_sent"
+      }
+    },
+    {
+      "case_id": "baseline_at_limit_2",
+      "run_id": "run_2026-10-02_w52r7b52vs",
+      "group": "baseline",
+      "class": "at_limit",
+      "profile": null,
+      "inputs": {
+        "member_id": "100254",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_at_limit_2",
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "limit_exceeded",
+        "commit": "not_sent"
+      }
+    },
+    {
+      "case_id": "baseline_at_limit_3",
+      "run_id": "run_2026-10-02_vr2hnj6s97",
+      "group": "baseline",
+      "class": "at_limit",
+      "profile": null,
+      "inputs": {
+        "member_id": "100261",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline_at_limit_3",
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "limit_exceeded",
+        "commit": "not_sent"
+      }
+    },
+    {
+      "case_id": "twin",
+      "run_id": "run_2026-10-02_sbfe6wn9ct",
+      "group": "twin",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:baseline",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "server_error.click_search",
+      "run_id": "run_2026-10-02_tdvf4nefmz",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "server_error",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "POST /memberSearchResult.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:server_error.click_search",
+      "expect": null
+    },
+    {
+      "case_id": "server_error.click_member",
+      "run_id": "run_2026-10-02_sqadzm0t3g",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "server_error",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "GET /memberDetail.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:server_error.click_member",
+      "expect": null
+    },
+    {
+      "case_id": "server_error.click_open_sub_account",
+      "run_id": "run_2026-10-02_17q7r49e9s",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "server_error",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "GET /openAccount.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:server_error.click_open_sub_account",
+      "expect": null
+    },
+    {
+      "case_id": "server_error.click_ok",
+      "run_id": "run_2026-10-02_g7ke28yh3a",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "server_error",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:server_error.click_ok",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance.click_search",
+      "run_id": "run_2026-10-02_hwc4qh8trp",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "maintenance",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "POST /memberSearchResult.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:maintenance.click_search",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance.click_member",
+      "run_id": "run_2026-10-02_ahvxat4x06",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "maintenance",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "GET /memberDetail.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:maintenance.click_member",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance.click_open_sub_account",
+      "run_id": "run_2026-10-02_57833kfmrt",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "maintenance",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "GET /openAccount.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:maintenance.click_open_sub_account",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance.click_ok",
+      "run_id": "run_2026-10-02_sratys08fh",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "maintenance",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:maintenance.click_ok",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup.click_search",
+      "run_id": "run_2026-10-02_ymwmhc55tc",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "known_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "POST /memberSearchResult.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:known_popup.click_search",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup.click_member",
+      "run_id": "run_2026-10-02_3n9xq6fcc4",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "known_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "GET /memberDetail.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:known_popup.click_member",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup.click_open_sub_account",
+      "run_id": "run_2026-10-02_ekw2h54vwc",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "known_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "GET /openAccount.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:known_popup.click_open_sub_account",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup.click_ok",
+      "run_id": "run_2026-10-02_nankd0xkz9",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "known_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:known_popup.click_ok",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup.click_search",
+      "run_id": "run_2026-10-02_68vv93e6z3",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "unknown_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "POST /memberSearchResult.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:unknown_popup.click_search",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup.click_member",
+      "run_id": "run_2026-10-02_meg4wkathh",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "unknown_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "GET /memberDetail.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:unknown_popup.click_member",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup.click_open_sub_account",
+      "run_id": "run_2026-10-02_0ccjj7c0ac",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "unknown_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "GET /openAccount.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:unknown_popup.click_open_sub_account",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup.click_ok",
+      "run_id": "run_2026-10-02_ez5y8x1nv8",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "unknown_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:unknown_popup.click_ok",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire.click_search",
+      "run_id": "run_2026-10-02_rn9kh54j86",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "session_expire",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "POST /memberSearchResult.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:session_expire.click_search",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire.click_member",
+      "run_id": "run_2026-10-02_rm0be7hbys",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "session_expire",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "GET /memberDetail.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:session_expire.click_member",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire.click_open_sub_account",
+      "run_id": "run_2026-10-02_0y5rkvq7gb",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "session_expire",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "GET /openAccount.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:session_expire.click_open_sub_account",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire.click_ok",
+      "run_id": "run_2026-10-02_2k6e5xgvb9",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "session_expire",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:session_expire.click_ok",
+      "expect": null
+    },
+    {
+      "case_id": "reply_lost.click_ok",
+      "run_id": "run_2026-10-02_5zz3rrvxcy",
+      "group": "matrix",
+      "class": "valid",
+      "profile": "reply_lost",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "drop_after_confirm",
+          "route": "POST /openAccountConfirm.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:reply_lost.click_ok",
+      "expect": null
+    },
+    {
+      "case_id": "supervisor_needed",
+      "run_id": "run_2026-10-02_nkmc5r046y",
+      "group": "extra",
+      "class": "valid",
+      "profile": "supervisor_needed",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "supervisor_required",
+          "route": "POST /openAccountReview.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_kndb373d57:supervisor_needed",
+      "expect": {
+        "status": "escalated",
+        "kind": "takeover",
+        "reason": "needs_human_handler",
+        "step": "click_confirm"
+      }
+    },
+    {
+      "case_id": "stab_0.05_1",
+      "run_id": "run_2026-10-02_fv3z0dnmv5",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:1",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_1_twin",
+      "run_id": "run_2026-10-02_9ve4fn37f6",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:1",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_2",
+      "run_id": "run_2026-10-02_q94ty37rrp",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100114",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:2",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_2_twin",
+      "run_id": "run_2026-10-02_tcmx7x1mee",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100114",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:2",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_3",
+      "run_id": "run_2026-10-02_dnzdzts34s",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100121",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:3",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_3_twin",
+      "run_id": "run_2026-10-02_wrf79cj804",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100121",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:3",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_4",
+      "run_id": "run_2026-10-02_drpb9vnsyx",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100128",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:4",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_4_twin",
+      "run_id": "run_2026-10-02_y5e317zzj4",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100128",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:4",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_5",
+      "run_id": "run_2026-10-02_6nzhwdpfzs",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100135",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:5",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.05_5_twin",
+      "run_id": "run_2026-10-02_kgx31495cn",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100135",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.05:5",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_1",
+      "run_id": "run_2026-10-02_7b6ewwxvqy",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:1",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_1_twin",
+      "run_id": "run_2026-10-02_ga4y765fxn",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:1",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_2",
+      "run_id": "run_2026-10-02_hepdzgv46p",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100114",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:2",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_2_twin",
+      "run_id": "run_2026-10-02_vyp4sn8fv1",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100114",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:2",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_3",
+      "run_id": "run_2026-10-02_j0tmzbzyw7",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100121",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:3",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_3_twin",
+      "run_id": "run_2026-10-02_ys0wmp04p3",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100121",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:3",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_4",
+      "run_id": "run_2026-10-02_7wwstn80ca",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100128",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:4",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_4_twin",
+      "run_id": "run_2026-10-02_r84c3ahsf6",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100128",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:4",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_5",
+      "run_id": "run_2026-10-02_w3z1he42qp",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100135",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:5",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.15_5_twin",
+      "run_id": "run_2026-10-02_stccwa69cd",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100135",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.15:5",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_1",
+      "run_id": "run_2026-10-02_gewgwqaer0",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:1",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_1_twin",
+      "run_id": "run_2026-10-02_r614xmpsar",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:1",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_2",
+      "run_id": "run_2026-10-02_kkghf00vgq",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100114",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:2",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_2_twin",
+      "run_id": "run_2026-10-02_3ag689y1nz",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100114",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:2",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_3",
+      "run_id": "run_2026-10-02_sgq74qsjyp",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100121",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:3",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_3_twin",
+      "run_id": "run_2026-10-02_jtrf7a3xdc",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100121",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:3",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_4",
+      "run_id": "run_2026-10-02_xr3mfhkcxt",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100128",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:4",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_4_twin",
+      "run_id": "run_2026-10-02_j8881v904c",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100128",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:4",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_5",
+      "run_id": "run_2026-10-02_vj2r69yk39",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100135",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:5",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "stab_0.3_5_twin",
+      "run_id": "run_2026-10-02_z3x8pvrg16",
+      "group": "stability",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100135",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_kndb373d57:s0.3:5",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    }
+  ]
+}

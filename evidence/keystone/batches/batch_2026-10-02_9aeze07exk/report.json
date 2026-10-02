@@ -1,0 +1,33 @@
+{
+  "schema": "intyy.batch_report/1.0",
+  "batch_id": "batch_2026-10-02_9aeze07exk",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "ended_at": "2026-10-02T04:10:06.728Z",
+  "cases": [
+    {
+      "case_id": "case",
+      "run_id": "run_2026-10-02_hb1cjrccah",
+      "class": "valid",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        },
+        "output": {
+          "match": null,
+          "note": "the oracle found no account to compare"
+        }
+      },
+      "verdict": "pass"
+    }
+  ],
+  "gate": {
+    "passed": true
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "intyy.batch_plan/1.0",
+  "batch_id": "batch_2026-10-02_w6sz2n97rp",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "kind": "quick",
+  "pin": "kvfcu/open_share_subaccount@1.0.3",
+  "started_by": "op_017",
+  "operator": "scripted",
+  "started_at": "2026-10-02T17:34:18.851Z",
+  "instance": {
+    "variant": "keystone",
+    "strip_semantics": true,
+    "drop_labels": 0,
+    "label_seed": "0"
+  },
+  "route_map": {
+    "session:entry": {
+      "route": "GET /",
+      "nth": 2
+    },
+    "session:click_login": {
+      "route": "POST /login.do",
+      "nth": 1
+    },
+    "session:click_continue": {
+      "route": "GET /main.do",
+      "nth": 1
+    }
+  },
+  "cases": [
+    {
+      "case_id": "baseline",
+      "run_id": "run_2026-10-02_8j55xxy1kw",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_w6sz2n97rp:baseline",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    }
+  ],
+  "drill": true,
+  "declaration": {
+    "by": "op_017",
+    "differs": [
+      "strip_semantics"
+    ]
+  }
+}

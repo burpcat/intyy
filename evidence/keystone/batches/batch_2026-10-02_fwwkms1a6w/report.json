@@ -1,0 +1,29 @@
+{
+  "schema": "intyy.batch_report/1.0",
+  "batch_id": "batch_2026-10-02_fwwkms1a6w",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "ended_at": "2026-10-02T04:01:15.915Z",
+  "cases": [
+    {
+      "case_id": "case",
+      "run_id": "run_2026-10-02_j7gc38vdt7",
+      "class": "valid",
+      "result": {
+        "status": "failed",
+        "detail": "permission_denied"
+      },
+      "truth": {
+        "commit": {
+          "match": null,
+          "note": "commit truth unavailable: the case names no notes input"
+        }
+      },
+      "verdict": "unexplained"
+    }
+  ],
+  "gate": {
+    "passed": false
+  }
+}

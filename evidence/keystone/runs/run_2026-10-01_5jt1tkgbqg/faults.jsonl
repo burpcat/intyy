@@ -1,0 +1,12 @@
+{"seq":1,"time":"2026-10-01T23:36:55.057+00:00","method":"GET","path":"/","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":566}
+{"seq":2,"time":"2026-10-01T23:36:55.635+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1839}
+{"seq":3,"time":"2026-10-01T23:36:59.666+00:00","method":"GET","path":"/","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":550}
+{"seq":4,"time":"2026-10-01T23:37:00.227+00:00","method":"GET","path":"/login.do","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2513}
+{"seq":5,"time":"2026-10-01T23:37:07.358+00:00","method":"POST","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":954}
+{"seq":6,"time":"2026-10-01T23:37:08.324+00:00","method":"GET","path":"/lastLogin.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2478}
+{"seq":7,"time":"2026-10-01T23:37:12.203+00:00","method":"GET","path":"/main.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1039}
+{"seq":8,"time":"2026-10-01T23:37:13.262+00:00","method":"GET","path":"/banner.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":348}
+{"seq":9,"time":"2026-10-01T23:37:13.263+00:00","method":"GET","path":"/menu.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2978}
+{"seq":10,"time":"2026-10-01T23:37:13.263+00:00","method":"GET","path":"/memberSearch.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1269}
+{"seq":11,"time":"2026-10-01T23:37:18.728+00:00","method":"POST","path":"/memberSearchResult.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1232}
+{"seq":12,"time":"2026-10-01T23:37:21.746+00:00","method":"GET","path":"/memberDetail.do","route_count":1,"decision":"named","fault_kind":"maintenance","block_point":"before","style":"maintenance","named_id":"batch_2026-10-01_pnxxcx4csx_maintenance_0","delay_ms":413}

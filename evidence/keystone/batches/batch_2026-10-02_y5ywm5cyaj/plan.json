@@ -1,0 +1,90 @@
+{
+  "schema": "intyy.batch_plan/1.0",
+  "batch_id": "batch_2026-10-02_y5ywm5cyaj",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "kind": "quick",
+  "pin": "kvfcu/open_share_subaccount@1.0.3",
+  "started_by": "op_017",
+  "operator": "scripted",
+  "started_at": "2026-10-02T02:16:33.805Z",
+  "instance": {
+    "variant": "keystone",
+    "strip_semantics": false,
+    "drop_labels": 0,
+    "label_seed": "0"
+  },
+  "route_map": {
+    "session:entry": {
+      "route": "GET /",
+      "nth": 2
+    },
+    "session:click_login": {
+      "route": "POST /login.do",
+      "nth": 1
+    },
+    "session:click_continue": {
+      "route": "GET /main.do",
+      "nth": 1
+    },
+    "click_search": {
+      "route": "POST /memberSearchResult.do",
+      "nth": 1
+    },
+    "click_member": {
+      "route": "GET /memberDetail.do",
+      "nth": 1
+    },
+    "click_open_sub_account": {
+      "route": "GET /openAccount.do",
+      "nth": 1
+    },
+    "click_submit": {
+      "route": "POST /openAccountReview.do",
+      "nth": 1
+    },
+    "click_ok": {
+      "route": "POST /openAccountConfirm.do",
+      "nth": 1
+    }
+  },
+  "cases": [
+    {
+      "case_id": "baseline",
+      "run_id": "run_2026-10-02_bfmpgrhpgn",
+      "class": "valid",
+      "profile": null,
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [],
+      "seed": "batch_2026-10-02_y5ywm5cyaj:baseline",
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "case_id": "case",
+      "run_id": "run_2026-10-02_j0m0yr66w7",
+      "class": "valid",
+      "profile": "unknown_popup",
+      "inputs": {
+        "member_id": "100107",
+        "deposit": "137.00"
+      },
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "POST /memberSearchResult.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_y5ywm5cyaj:case",
+      "expect": null
+    }
+  ]
+}

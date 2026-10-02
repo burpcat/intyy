@@ -1,0 +1,5 @@
+{"seq":1,"time":"2026-10-02T20:23:06.853+00:00","method":"GET","path":"/","route_count":1,"decision":"entropy","fault_kind":"random","block_point":"before","style":"error_page","named_id":null,"delay_ms":774}
+{"seq":2,"time":"2026-10-02T20:23:09.742+00:00","method":"GET","path":"/","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2916}
+{"seq":3,"time":"2026-10-02T20:23:12.674+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":6815}
+{"seq":4,"time":"2026-10-02T20:23:23.694+00:00","method":"POST","path":"/login.do","route_count":1,"decision":"entropy","fault_kind":"random","block_point":"before","style":"logout","named_id":null,"delay_ms":663}
+{"seq":5,"time":"2026-10-02T20:23:24.365+00:00","method":"GET","path":"/login.do","route_count":2,"decision":"entropy","fault_kind":"random","block_point":"before","style":"error_page","named_id":null,"delay_ms":1213}

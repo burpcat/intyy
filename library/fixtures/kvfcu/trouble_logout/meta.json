@@ -1,0 +1,21 @@
+{
+  "schema": "intyy.fixture/1.0",
+  "id": "trouble_logout",
+  "app": "kvfcu",
+  "tenant": "keystone",
+  "app_version": "9.2",
+  "variant": "keystone",
+  "location": "/login.do",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "source": {
+    "run_id": "run_2026-09-29_qhkn64cebx",
+    "seq": 4
+  },
+  "kind": "trouble",
+  "missing": [
+    "dom.html"
+  ]
+}

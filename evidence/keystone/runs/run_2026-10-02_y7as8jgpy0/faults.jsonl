@@ -1,0 +1,12 @@
+{"seq":1,"time":"2026-10-02T01:46:06.787+00:00","method":"GET","path":"/","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":317}
+{"seq":2,"time":"2026-10-02T01:46:07.118+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":966}
+{"seq":3,"time":"2026-10-02T01:46:10.974+00:00","method":"GET","path":"/","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1351}
+{"seq":4,"time":"2026-10-02T01:46:12.333+00:00","method":"GET","path":"/login.do","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2912}
+{"seq":5,"time":"2026-10-02T01:46:20.884+00:00","method":"POST","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1234}
+{"seq":6,"time":"2026-10-02T01:46:22.135+00:00","method":"GET","path":"/lastLogin.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1917}
+{"seq":7,"time":"2026-10-02T01:46:25.652+00:00","method":"GET","path":"/main.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":969}
+{"seq":8,"time":"2026-10-02T01:46:26.647+00:00","method":"GET","path":"/banner.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1720}
+{"seq":9,"time":"2026-10-02T01:46:26.648+00:00","method":"GET","path":"/menu.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":445}
+{"seq":10,"time":"2026-10-02T01:46:26.649+00:00","method":"GET","path":"/memberSearch.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2685}
+{"seq":11,"time":"2026-10-02T01:46:32.977+00:00","method":"POST","path":"/memberSearchResult.do","route_count":1,"decision":"named","fault_kind":"session_expire","block_point":"none","style":null,"named_id":"batch_2026-10-02_penpqm1hyp_session_expire_0","delay_ms":1294}
+{"seq":12,"time":"2026-10-02T01:46:45.057+00:00","method":"GET","path":"/","route_count":3,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1633}

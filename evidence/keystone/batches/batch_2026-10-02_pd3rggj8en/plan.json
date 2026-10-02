@@ -1,0 +1,746 @@
+{
+  "schema": "intyy.batch_plan/1.0",
+  "batch_id": "batch_2026-10-02_pd3rggj8en",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/sign_in@1",
+  "kind": "full",
+  "pin": "kvfcu/sign_in@1.0.0",
+  "started_by": "op_017",
+  "operator": "scripted",
+  "started_at": "2026-10-02T19:04:18.160Z",
+  "instance": {
+    "variant": "keystone",
+    "strip_semantics": false,
+    "drop_labels": 0,
+    "label_seed": "0"
+  },
+  "route_map": {
+    "entry": {
+      "route": "GET /",
+      "nth": 2
+    },
+    "click_login": {
+      "route": "POST /login.do",
+      "nth": 1
+    },
+    "click_continue": {
+      "route": "GET /main.do",
+      "nth": 1
+    }
+  },
+  "cases": [
+    {
+      "case_id": "baseline",
+      "run_id": "run_2026-10-02_v4dcfv6mc2",
+      "group": "baseline",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:baseline",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "baseline_signed_in_2",
+      "run_id": "run_2026-10-02_x0r4ntgg0k",
+      "group": "baseline",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:baseline_signed_in_2",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "baseline_signed_in_3",
+      "run_id": "run_2026-10-02_r17vnkm8za",
+      "group": "baseline",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:baseline_signed_in_3",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "twin",
+      "run_id": "run_2026-10-02_d3h1nqxzdx",
+      "group": "twin",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:baseline",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "server_error.entry",
+      "run_id": "run_2026-10-02_jeyeqpsyed",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "server_error",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "GET /",
+          "nth": 2,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:server_error.entry",
+      "expect": null
+    },
+    {
+      "case_id": "server_error.click_login",
+      "run_id": "run_2026-10-02_1q90zmb12h",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "server_error",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "POST /login.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:server_error.click_login",
+      "expect": null
+    },
+    {
+      "case_id": "server_error.click_continue",
+      "run_id": "run_2026-10-02_tay2yemkfx",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "server_error",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "server_error",
+          "route": "GET /main.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:server_error.click_continue",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance.entry",
+      "run_id": "run_2026-10-02_hgwv6b7g0j",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "maintenance",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "GET /",
+          "nth": 2,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:maintenance.entry",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance.click_login",
+      "run_id": "run_2026-10-02_txv67ptsz1",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "maintenance",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "POST /login.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:maintenance.click_login",
+      "expect": null
+    },
+    {
+      "case_id": "maintenance.click_continue",
+      "run_id": "run_2026-10-02_47zf87ve6q",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "maintenance",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "maintenance",
+          "route": "GET /main.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:maintenance.click_continue",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup.entry",
+      "run_id": "run_2026-10-02_cpsn2enddy",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "known_popup",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "GET /",
+          "nth": 2,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:known_popup.entry",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup.click_login",
+      "run_id": "run_2026-10-02_xrfsh91xkw",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "known_popup",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "POST /login.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:known_popup.click_login",
+      "expect": null
+    },
+    {
+      "case_id": "known_popup.click_continue",
+      "run_id": "run_2026-10-02_3g3z5xsv86",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "known_popup",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "known_popup",
+          "route": "GET /main.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:known_popup.click_continue",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup.entry",
+      "run_id": "run_2026-10-02_phaws8w6rw",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "unknown_popup",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "GET /",
+          "nth": 2,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:unknown_popup.entry",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup.click_login",
+      "run_id": "run_2026-10-02_jj57vkf6kk",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "unknown_popup",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "POST /login.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:unknown_popup.click_login",
+      "expect": null
+    },
+    {
+      "case_id": "unknown_popup.click_continue",
+      "run_id": "run_2026-10-02_p14z71184g",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "unknown_popup",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "unknown_popup",
+          "route": "GET /main.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:unknown_popup.click_continue",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire.entry",
+      "run_id": "run_2026-10-02_1bqh7qe5dj",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "session_expire",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "GET /",
+          "nth": 2,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:session_expire.entry",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire.click_login",
+      "run_id": "run_2026-10-02_wzz1vz5q4p",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "session_expire",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "POST /login.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:session_expire.click_login",
+      "expect": null
+    },
+    {
+      "case_id": "session_expire.click_continue",
+      "run_id": "run_2026-10-02_8ghqk8q6vh",
+      "group": "matrix",
+      "class": "signed_in",
+      "profile": "session_expire",
+      "inputs": {},
+      "faults": [
+        {
+          "kind": "session_expire",
+          "route": "GET /main.do",
+          "nth": 1,
+          "repeat": "once"
+        }
+      ],
+      "seed": "batch_2026-10-02_pd3rggj8en:session_expire.click_continue",
+      "expect": null
+    },
+    {
+      "case_id": "stab_0.05_1",
+      "run_id": "run_2026-10-02_babcd5b438",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:1",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_1_twin",
+      "run_id": "run_2026-10-02_mxvc7accbf",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:1",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_2",
+      "run_id": "run_2026-10-02_qnrfxvmpyb",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:2",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_2_twin",
+      "run_id": "run_2026-10-02_644hf4hdx4",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:2",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_3",
+      "run_id": "run_2026-10-02_fbcgxbkfvs",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:3",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_3_twin",
+      "run_id": "run_2026-10-02_aktz3wke9f",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:3",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_4",
+      "run_id": "run_2026-10-02_1sstmpb2cc",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:4",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_4_twin",
+      "run_id": "run_2026-10-02_wd8xyfge0x",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:4",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_5",
+      "run_id": "run_2026-10-02_8h30evjwsd",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:5",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.05_5_twin",
+      "run_id": "run_2026-10-02_1dvyap1b1c",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.05:5",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_1",
+      "run_id": "run_2026-10-02_ry4h6175v3",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:1",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_1_twin",
+      "run_id": "run_2026-10-02_pqa8ft6r8p",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:1",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_2",
+      "run_id": "run_2026-10-02_cr7es7vkks",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:2",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_2_twin",
+      "run_id": "run_2026-10-02_g185zs0jec",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:2",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_3",
+      "run_id": "run_2026-10-02_vt1k4qfkwx",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:3",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_3_twin",
+      "run_id": "run_2026-10-02_40r9w7mk9z",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:3",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_4",
+      "run_id": "run_2026-10-02_f3778pk5ze",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:4",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_4_twin",
+      "run_id": "run_2026-10-02_df8kezzpd6",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:4",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_5",
+      "run_id": "run_2026-10-02_2d2dpxbzte",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:5",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.15_5_twin",
+      "run_id": "run_2026-10-02_cv5w4j1wqh",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.15:5",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_1",
+      "run_id": "run_2026-10-02_40ar16vs7s",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:1",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_1_twin",
+      "run_id": "run_2026-10-02_xmxx3fme2d",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:1",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_2",
+      "run_id": "run_2026-10-02_6qmesbrggm",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:2",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_2_twin",
+      "run_id": "run_2026-10-02_jds8czxj18",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:2",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_3",
+      "run_id": "run_2026-10-02_hdykn420rq",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:3",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_3_twin",
+      "run_id": "run_2026-10-02_5fnwvfjmz5",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:3",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_4",
+      "run_id": "run_2026-10-02_45p7xyyspz",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:4",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_4_twin",
+      "run_id": "run_2026-10-02_v16rv2bnzp",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:4",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_5",
+      "run_id": "run_2026-10-02_qkxtkp883m",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:5",
+      "expect": {
+        "status": "success"
+      }
+    },
+    {
+      "case_id": "stab_0.3_5_twin",
+      "run_id": "run_2026-10-02_q76p1g8dmb",
+      "group": "stability",
+      "class": "signed_in",
+      "profile": null,
+      "inputs": {},
+      "faults": [],
+      "seed": "batch_2026-10-02_pd3rggj8en:s0.3:5",
+      "expect": {
+        "status": "success"
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "intyy.fixture/1.0",
+  "id": "trouble_blank",
+  "app": "kvfcu",
+  "tenant": "keystone",
+  "app_version": "9.2",
+  "variant": "keystone",
+  "location": "/login.do",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "source": {
+    "run_id": "run_2026-10-02_cv5w4j1wqh",
+    "seq": 13
+  },
+  "kind": "trouble",
+  "missing": [
+    "a11y.yaml",
+    "dom.html"
+  ]
+}

@@ -1,0 +1,6 @@
+{"seq":1,"time":"2026-10-02T18:59:33.952+00:00","method":"GET","path":"/","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":626}
+{"seq":2,"time":"2026-10-02T18:59:34.594+00:00","method":"GET","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1919}
+{"seq":3,"time":"2026-10-02T18:59:37.461+00:00","method":"GET","path":"/","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":1872}
+{"seq":4,"time":"2026-10-02T18:59:39.342+00:00","method":"GET","path":"/login.do","route_count":2,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":2848}
+{"seq":5,"time":"2026-10-02T18:59:46.397+00:00","method":"POST","path":"/login.do","route_count":1,"decision":"pass","fault_kind":null,"block_point":"none","style":null,"named_id":null,"delay_ms":496}
+{"seq":6,"time":"2026-10-02T18:59:46.910+00:00","method":"GET","path":"/lastLogin.do","route_count":1,"decision":"entropy","fault_kind":"random","block_point":"after","style":"blank","named_id":null,"delay_ms":854}

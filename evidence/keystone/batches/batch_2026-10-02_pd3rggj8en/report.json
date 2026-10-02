@@ -1,0 +1,899 @@
+{
+  "schema": "intyy.batch_report/1.0",
+  "batch_id": "batch_2026-10-02_pd3rggj8en",
+  "tenant": "keystone",
+  "app": "kvfcu",
+  "capability": "kvfcu/sign_in@1",
+  "ended_at": "2026-10-02T19:04:18.160Z",
+  "kind": "full",
+  "key": {
+    "capability": "kvfcu/sign_in@1.0.0",
+    "tenant": "keystone",
+    "app_version": "9.2",
+    "patch_revision": null
+  },
+  "under": {
+    "engine": "0.2.0",
+    "handler_set": "sha256:b0211edd75d932e8a9d32bab2ae66cf064d4ab56facb68c41ad5ef4b93b6a061",
+    "jev": "jev",
+    "session": null,
+    "check": null
+  },
+  "cases": [
+    {
+      "case_id": "baseline",
+      "run_id": "run_2026-10-02_v4dcfv6mc2",
+      "group": "baseline",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "baseline_signed_in_2",
+      "run_id": "run_2026-10-02_x0r4ntgg0k",
+      "group": "baseline",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "the inputs differ from the baseline's, so its outputs are no reference"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "baseline_signed_in_3",
+      "run_id": "run_2026-10-02_r17vnkm8za",
+      "group": "baseline",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "the inputs differ from the baseline's, so its outputs are no reference"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "twin",
+      "run_id": "run_2026-10-02_d3h1nqxzdx",
+      "group": "twin",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "server_error.entry",
+      "run_id": "run_2026-10-02_jeyeqpsyed",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "server_error.click_login",
+      "run_id": "run_2026-10-02_1q90zmb12h",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "server_error.click_continue",
+      "run_id": "run_2026-10-02_tay2yemkfx",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "maintenance.entry",
+      "run_id": "run_2026-10-02_hgwv6b7g0j",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "failed",
+        "detail": "app_error"
+      },
+      "truth": {},
+      "verdict": "pass"
+    },
+    {
+      "case_id": "maintenance.click_login",
+      "run_id": "run_2026-10-02_txv67ptsz1",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "failed",
+        "detail": "app_error"
+      },
+      "truth": {},
+      "verdict": "pass"
+    },
+    {
+      "case_id": "maintenance.click_continue",
+      "run_id": "run_2026-10-02_47zf87ve6q",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "failed",
+        "detail": "app_error"
+      },
+      "truth": {},
+      "verdict": "pass"
+    },
+    {
+      "case_id": "known_popup.entry",
+      "run_id": "run_2026-10-02_cpsn2enddy",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "known_popup.click_login",
+      "run_id": "run_2026-10-02_xrfsh91xkw",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "known_popup.click_continue",
+      "run_id": "run_2026-10-02_3g3z5xsv86",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "unknown_popup.entry",
+      "run_id": "run_2026-10-02_phaws8w6rw",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/type_user_id"
+      },
+      "truth": {},
+      "verdict": "pass"
+    },
+    {
+      "case_id": "unknown_popup.click_login",
+      "run_id": "run_2026-10-02_jj57vkf6kk",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "unknown_popup.click_continue",
+      "run_id": "run_2026-10-02_p14z71184g",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "session_expire.entry",
+      "run_id": "run_2026-10-02_1bqh7qe5dj",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "session_expire.click_login",
+      "run_id": "run_2026-10-02_wzz1vz5q4p",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "session_expire.click_continue",
+      "run_id": "run_2026-10-02_8ghqk8q6vh",
+      "group": "matrix",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_1",
+      "run_id": "run_2026-10-02_babcd5b438",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_1_twin",
+      "run_id": "run_2026-10-02_mxvc7accbf",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_2",
+      "run_id": "run_2026-10-02_qnrfxvmpyb",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_2_twin",
+      "run_id": "run_2026-10-02_644hf4hdx4",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_3",
+      "run_id": "run_2026-10-02_fbcgxbkfvs",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/click_continue"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.05_3_twin",
+      "run_id": "run_2026-10-02_aktz3wke9f",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/click_continue"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.05_4",
+      "run_id": "run_2026-10-02_1sstmpb2cc",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_4_twin",
+      "run_id": "run_2026-10-02_wd8xyfge0x",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_5",
+      "run_id": "run_2026-10-02_8h30evjwsd",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.05_5_twin",
+      "run_id": "run_2026-10-02_1dvyap1b1c",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_1",
+      "run_id": "run_2026-10-02_ry4h6175v3",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_1_twin",
+      "run_id": "run_2026-10-02_pqa8ft6r8p",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_2",
+      "run_id": "run_2026-10-02_cr7es7vkks",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_2_twin",
+      "run_id": "run_2026-10-02_g185zs0jec",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_3",
+      "run_id": "run_2026-10-02_vt1k4qfkwx",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_3_twin",
+      "run_id": "run_2026-10-02_40r9w7mk9z",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_4",
+      "run_id": "run_2026-10-02_f3778pk5ze",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_4_twin",
+      "run_id": "run_2026-10-02_df8kezzpd6",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.15_5",
+      "run_id": "run_2026-10-02_2d2dpxbzte",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/click_login"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.15_5_twin",
+      "run_id": "run_2026-10-02_cv5w4j1wqh",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/click_login"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_1",
+      "run_id": "run_2026-10-02_40ar16vs7s",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/type_user_id"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_1_twin",
+      "run_id": "run_2026-10-02_xmxx3fme2d",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/type_user_id"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_2",
+      "run_id": "run_2026-10-02_6qmesbrggm",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/type_user_id"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_2_twin",
+      "run_id": "run_2026-10-02_jds8czxj18",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/type_user_id"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_3",
+      "run_id": "run_2026-10-02_hdykn420rq",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "failed",
+        "detail": "app_unreachable"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_3_twin",
+      "run_id": "run_2026-10-02_5fnwvfjmz5",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "failed",
+        "detail": "app_unreachable"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_4",
+      "run_id": "run_2026-10-02_45p7xyyspz",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.3_4_twin",
+      "run_id": "run_2026-10-02_v16rv2bnzp",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "success",
+        "detail": null
+      },
+      "truth": {
+        "output": {
+          "match": null,
+          "note": "no outputs to compare"
+        }
+      },
+      "verdict": "pass"
+    },
+    {
+      "case_id": "stab_0.3_5",
+      "run_id": "run_2026-10-02_qkxtkp883m",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/type_user_id"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    },
+    {
+      "case_id": "stab_0.3_5_twin",
+      "run_id": "run_2026-10-02_q76p1g8dmb",
+      "group": "stability",
+      "class": "signed_in",
+      "result": {
+        "status": "escalated",
+        "detail": "takeover/stuck/type_user_id"
+      },
+      "truth": {},
+      "verdict": "unexplained"
+    }
+  ],
+  "gate": {
+    "passed": true,
+    "rules": {
+      "complete": true,
+      "no_wrong": true,
+      "baseline": true,
+      "matrix": true,
+      "extra": true,
+      "no_void": true
+    }
+  },
+  "outcome_score": 1,
+  "verdicts": {
+    "pass": 37,
+    "explained": 0,
+    "assisted": 0,
+    "unexplained": 12,
+    "wrong": 0,
+    "void": 0
+  },
+  "margin": {
+    "lowest": 0.657227751395675,
+    "step": "click_login",
+    "targets": {
+      "continue_link": {
+        "step": "click_continue",
+        "lowest": 1,
+        "median": 1,
+        "score_low": 1
+      },
+      "login_button": {
+        "step": "click_login",
+        "lowest": 0.657227751395675,
+        "median": 0.657227751395675,
+        "score_low": 1
+      },
+      "password_box": {
+        "step": "type_password",
+        "lowest": 0.8607581919594681,
+        "median": 0.8607581919594681,
+        "score_low": 1
+      },
+      "user_id_box": {
+        "step": "type_user_id",
+        "lowest": 0.7512988823053082,
+        "median": 0.7512988823053082,
+        "score_low": 1
+      }
+    }
+  },
+  "fragile": [],
+  "coverage_gaps": [],
+  "jev": {
+    "version": "jev",
+    "calls": []
+  },
+  "timeouts": {
+    "ran_with": {},
+    "ran_with_from": null,
+    "proposed": {},
+    "not_proposed": {},
+    "scaled": true
+  },
+  "stability": [
+    {
+      "entropy": 0.05,
+      "runs": 10,
+      "pass": 0.8,
+      "explained": 0,
+      "assisted": 0,
+      "unexplained": 0.2,
+      "wrong": 0,
+      "faults": 0.6,
+      "rungs": {
+        "1": 2,
+        "2": 0,
+        "3": 0
+      },
+      "escalations": {
+        "stuck": 4
+      },
+      "twin_mismatch": 0
+    },
+    {
+      "entropy": 0.15,
+      "runs": 10,
+      "pass": 0.8,
+      "explained": 0,
+      "assisted": 0,
+      "unexplained": 0.2,
+      "wrong": 0,
+      "faults": 0.4,
+      "rungs": {
+        "1": 2,
+        "2": 0,
+        "3": 0
+      },
+      "escalations": {
+        "stuck": 4
+      },
+      "twin_mismatch": 0
+    },
+    {
+      "entropy": 0.3,
+      "runs": 10,
+      "pass": 0.2,
+      "explained": 0,
+      "assisted": 0,
+      "unexplained": 0.8,
+      "wrong": 0,
+      "faults": 1.2,
+      "rungs": {
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "escalations": {
+        "stuck": 12
+      },
+      "twin_mismatch": 0
+    }
+  ]
+}

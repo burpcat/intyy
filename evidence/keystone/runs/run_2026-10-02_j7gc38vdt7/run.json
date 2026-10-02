@@ -1,0 +1,199 @@
+{
+  "schema": "intyy.run/1.0",
+  "run_id": "run_2026-10-02_j7gc38vdt7",
+  "tenant": "keystone",
+  "kind": "replay",
+  "capability": "kvfcu/open_share_subaccount",
+  "parent_run_id": null,
+  "batch_id": "batch_2026-10-02_fwwkms1a6w",
+  "case_id": "case",
+  "request_id": "run_2026-10-02_j7gc38vdt7",
+  "status": "failed",
+  "result": {
+    "schema": "intyy.result/1.0",
+    "run_id": "run_2026-10-02_j7gc38vdt7",
+    "request_id": null,
+    "capability": {
+      "name": "kvfcu/open_share_subaccount",
+      "version": "1.0.3",
+      "patch_revision": null
+    },
+    "effect": {
+      "commit": "not_sent",
+      "performed_by": null,
+      "sent_at": null,
+      "attempts": []
+    },
+    "warnings": [],
+    "recoveries": [
+      {
+        "step": "click_search",
+        "rung": 1,
+        "via": "handler",
+        "ref": "session_expired",
+        "resumed_at": "type_member_no",
+        "at": "2026-10-02T04:00:54.713Z"
+      }
+    ],
+    "interventions": [],
+    "timing": {
+      "started_at": "2026-10-02T03:59:58.097Z",
+      "ended_at": "2026-10-02T04:01:15.855Z",
+      "duration_ms": 0,
+      "human_ms": 0
+    },
+    "evidence": "runs/run_2026-10-02_j7gc38vdt7",
+    "status": "failed",
+    "failure": {
+      "code": "permission_denied",
+      "message": "The app says the operator is not authorised to perform this transaction.",
+      "step": "click_open_sub_account",
+      "phase": "checkpoint",
+      "expected": {
+        "condition": "checkpoint",
+        "description": "The app says the operator is not authorised to perform this transaction."
+      },
+      "observed": {
+        "location": "http://127.0.0.1:8080/main.do",
+        "checks": []
+      },
+      "attempts": 0,
+      "ladder": {
+        "rung": 1,
+        "verdict": "hard_failure",
+        "ref": "permission_denied"
+      },
+      "transient": false,
+      "safe_to_retry": true,
+      "files": [
+        "screens/[digits#1]_click_search_ladder.png",
+        "a11y/[digits#1]_click_search_ladder.yaml",
+        "screens/[digits#2]_click_open_sub_account_ladder.png",
+        "a11y/[digits#2]_click_open_sub_account_ladder.yaml",
+        "screens/[digits#3]_click_open_sub_account_failed.png",
+        "dom/[digits#3]_click_open_sub_account_failed.html",
+        "a11y/[digits#3]_click_open_sub_account_failed.yaml"
+      ]
+    }
+  },
+  "frozen": {
+    "schema": "intyy.log/1.0",
+    "kind": "replay",
+    "parent_run_id": null,
+    "purpose": null,
+    "batch_id": "batch_2026-10-02_fwwkms1a6w",
+    "case_id": "case",
+    "pin": "kvfcu/open_share_subaccount@1.0.3",
+    "request_id": "run_2026-10-02_j7gc38vdt7",
+    "tenant": "keystone",
+    "agent_id": "certify",
+    "mode": "supervised",
+    "inputs": {
+      "member_id": "[pii]",
+      "deposit": "[financial]"
+    },
+    "authorization": {
+      "consent_ref": "certify:batch_2026-10-02_fwwkms1a6w",
+      "granted_by": "staff",
+      "staff_id": "op_017",
+      "granted_at": "2026-10-02T03:59:58.093Z",
+      "expires_at": "2026-10-02T04:29:58.093Z",
+      "capability": "kvfcu/open_share_subaccount@1"
+    },
+    "frozen": {
+      "artifact": {
+        "id": "kvfcu/open_share_subaccount@1.0.3",
+        "hash": "sha256:11778d7dedde65f8186a4b1ef94a75bd8727d1b73d6ec3daf16393d99bc55d86"
+      },
+      "patch": null,
+      "session": {
+        "id": "kvfcu/sign_in@1.0.0",
+        "hash": "sha256:83db39113e1f1e23c1225e5d8b4bb70513523d1dc8fff9d4ef4e4fffaed26dc3",
+        "patch": null
+      },
+      "app_version": "9.2",
+      "engine_version": "0.2.0",
+      "handler_set": "sha256:e22e6b56e513de5517cb08a273ce6e746095285845844d9bb68b6f6648a4edb4",
+      "handler_packs": {
+        "global": 1,
+        "app:kvfcu": 1
+      },
+      "policy": {
+        "layers": {
+          "global": 1,
+          "app:kvfcu": 4,
+          "tenant:keystone": 2
+        },
+        "hash": "sha256:c36a9e041c0012b39daaed1d35eb853d32db183802deccc97c41e793b4c9b431"
+      },
+      "settings": {
+        "revision": 1,
+        "hash": "sha256:3a7aa65741da5c87404035afc9f9c4ccb82df8c99746da40f8be5a98f5f2d7de"
+      },
+      "evidence_level": "standard",
+      "timeouts": {},
+      "timeouts_from": null,
+      "approval": {
+        "state": "draft",
+        "batch": null,
+        "record": null
+      },
+      "ladder": {
+        "jev": true,
+        "reviewer": true,
+        "handler_min": 0.8,
+        "outcome_min": 0.95,
+        "reconciliation_min": 0.9,
+        "reconciliation_autonomy": false
+      }
+    },
+    "fault_profile": null,
+    "outputs_revealed": true
+  },
+  "files": [
+    {
+      "path": "screens/00014_click_search_ladder.png",
+      "sha256": "sha256:2392c18de5ec47b8cda0593d9e3fb5886c8a3a7710e1f282e690f42e1d06c4be",
+      "bytes": 46615
+    },
+    {
+      "path": "a11y/00014_click_search_ladder.yaml",
+      "sha256": "sha256:39cd26211cf049ab231120b53c74b233b35303175f85bb5c0a48993aa92c939f",
+      "bytes": 6406
+    },
+    {
+      "path": "screens/00035_click_open_sub_account_ladder.png",
+      "sha256": "sha256:6c0d16968c5dc51e3211379dd16a22891fa02410e25919e5f293cec8425514b2",
+      "bytes": 44360
+    },
+    {
+      "path": "a11y/00035_click_open_sub_account_ladder.yaml",
+      "sha256": "sha256:360db7b735eedcc5fecdfbd188c4989bf69be256334a7b1fcfc2543cbee105ea",
+      "bytes": 6181
+    },
+    {
+      "path": "screens/00038_click_open_sub_account_failed.png",
+      "sha256": "sha256:f64fa66a73ea290f0e3ef7cde16b65459adecbbc254f925d1c0f9bcb4d600b5b",
+      "bytes": 44704
+    },
+    {
+      "path": "dom/00038_click_open_sub_account_failed.html",
+      "sha256": "sha256:313031c74a59b8bf29efbc96dd009b7aaa7c639bd1aa3eb2e8bda686f9bdf7ac",
+      "bytes": 4611
+    },
+    {
+      "path": "a11y/00038_click_open_sub_account_failed.yaml",
+      "sha256": "sha256:360db7b735eedcc5fecdfbd188c4989bf69be256334a7b1fcfc2543cbee105ea",
+      "bytes": 6181
+    },
+    {
+      "path": "events.jsonl",
+      "sha256": "sha256:a90aca18d35976682181ed950c43281f21c34330dc7494107961686642bb993a",
+      "bytes": 12581
+    }
+  ],
+  "retention": {
+    "debug_until": "2026-11-01",
+    "audit_until": "2027-10-02"
+  }
+}
