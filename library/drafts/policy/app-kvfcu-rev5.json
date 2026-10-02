@@ -1,0 +1,54 @@
+{
+  "schema": "intyy.policy/1.0",
+  "revision": 5,
+  "reason": "Adds the supervisor override page. On the open-sub-account review page kvfcu can ask for a supervisor's approval in a pop-up at /supervisorOverride.do; the guard blocked it, so a person taking over saw a blank window (M07 A11, run_2026-10-02_rpnh81pmwr). Irreversible: only a person approves an override.",
+  "scope": {
+    "level": "app",
+    "app": "kvfcu"
+  },
+  "paths": {
+    "allow": [
+      "/",
+      "/login.do",
+      "/lastLogin.do",
+      "/main.do",
+      "/banner.do",
+      "/menu.do",
+      "/memberSearch.do",
+      "/memberSearchResult.do",
+      "/memberDetail.do?memNo=*",
+      "/openAccount.do?memNo=*",
+      "/openAccountReview.do",
+      "/openAccountConfirm.do",
+      "/supervisorOverride.do",
+      "/supervisorOverride.do?appId=*"
+    ],
+    "deny": [
+      "/__test__/*"
+    ],
+    "irreversible": [
+      "/openAccountConfirm.do",
+      "/supervisorOverride.do",
+      "/supervisorOverride.do?appId=*"
+    ]
+  },
+  "risk": {
+    "safe_words": [
+      "continue"
+    ]
+  },
+  "secrets": {
+    "operator_username": {
+      "kind": "username",
+      "paths": [
+        "/login.do"
+      ]
+    },
+    "operator_password": {
+      "kind": "password",
+      "paths": [
+        "/login.do"
+      ]
+    }
+  }
+}
