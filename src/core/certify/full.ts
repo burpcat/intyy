@@ -351,7 +351,12 @@ export async function runCertifyFull(
 
   // Matrix: every single known fault, placed exactly (section 8 §7.2).
   const gaps: string[] = [];
-  const cellsList = matrixCells(chosenProfiles(input.profiles, input.matrixProfiles), [...p.routeMap.keys()], p.commitStepId);
+  // Why open-window steps only: section 8 §7.2 places the request-step faults on the steps whose
+  // helper window is open (idempotent), plus the commit step. A reversible step's window closes
+  // once it is sent, so a fault there must escalate, and "recovers" would judge that wrongly.
+  const riskOf = new Map(p.artifact.steps.map((s) => [s.id, s.risk]));
+  const matrixSteps = [...p.routeMap.keys()].filter((id) => id === p.commitStepId || riskOf.get(id) === "idempotent");
+  const cellsList = matrixCells(chosenProfiles(input.profiles, input.matrixProfiles), matrixSteps, p.commitStepId);
   for (const cell of cellsList) {
     const caseId = `${cell.profile.id}.${cell.step}`;
     const seed = `${input.batchId}:${caseId}`;
