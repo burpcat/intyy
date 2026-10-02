@@ -1442,7 +1442,7 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
         if (forward.kind === "found") return forward.index;
         // Why not dispatched: a human's work on the stuck step proves nothing here, and forward
         // search already looked for finished steps. The floor is the step after a sent commit.
-        const floor = commitWasSent && commitIndex !== null ? commitIndex + 1 : 0;
+        const floor = commitWasSent ? commitIndex + 1 : 0;
         const rule = resumeSearch(ladderSteps, stuckIndex, false, floor, screen, ctx);
         return rule.kind === "resume_at" ? rule.index : null;
       };
