@@ -69,6 +69,11 @@ describe("matrixCells", () => {
   test("no profiles, no cells", () => {
     expect(matrixCells([], ["a"], "a")).toEqual([]);
   });
+
+  test("no commit point (a session or read-only capability): @commit_point profiles make no cell", () => {
+    const cells = matrixCells([each, commit], ["type_user", "click_login"], null);
+    expect(cells.map((c) => `${c.profile.id}:${c.step}`)).toEqual(["each:type_user", "each:click_login"]);
+  });
 });
 
 describe("runCertifyFull: a clean batch", () => {

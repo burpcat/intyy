@@ -93,13 +93,16 @@ export type MatrixCell = { profile: FaultProfile; step: string; at: string | und
 export function matrixCells(
   profiles: readonly FaultProfile[],
   requestSteps: readonly string[],
-  commitStepId: string,
+  commitStepId: string | null,
 ): MatrixCell[] {
   const taskSteps = requestSteps.filter((s) => !s.startsWith("session:"));
   const out: MatrixCell[] = [];
   for (const profile of profiles) {
-    if (profile.at === "@commit_point") out.push({ profile, step: commitStepId, at: undefined });
-    else if (profile.at === "@each_request_step") {
+    // Why skip: a capability with no commit point (a read-only or session one) has no commit
+    // step to fault; its matrix is the request steps alone (section 8 §7.2).
+    if (profile.at === "@commit_point") {
+      if (commitStepId !== null) out.push({ profile, step: commitStepId, at: undefined });
+    } else if (profile.at === "@each_request_step") {
       for (const step of taskSteps) out.push({ profile, step, at: `@step:${step}` });
     } else out.push({ profile, step: profile.at.replace(/^@step:/, ""), at: undefined });
   }
@@ -300,7 +303,6 @@ export async function runCertifyFull(
   const prepared = await prepareBatch(base, deps);
   if (!prepared.ok) return prepared;
   const p = prepared.value;
-  if (p.commitStepId === null) return fail("no_commit_point");
   const matrixClass = p.cls;
 
   const cases: FaultCaseRun[] = [];
@@ -376,13 +378,14 @@ export async function runCertifyFull(
   }
 
   // Drills: the commit-step faults that need reconciliation, judged on truth only (section 8 §7.2).
-  const reconciling = input.profiles.filter((pr) => pr.expect_commit.startsWith("reconciles_"));
+  // Why none without a commit point: a drill faults the commit step (section 8 §14.2).
+  const reconciling = p.commitStepId === null ? [] : input.profiles.filter((pr) => pr.expect_commit.startsWith("reconciles_"));
   const jevCalls: JevCall[] = [];
   const drillCount = regression ? 0 : input.drills;
-  if (drillCount > 0 && reconciling.length === 0) gaps.push("drills: no fault profile ends in a reconciliation, so none could run");
+  if (drillCount > 0 && reconciling.length === 0 && p.commitStepId !== null) gaps.push("drills: no fault profile ends in a reconciliation, so none could run");
   for (let i = 0; reconciling.length > 0 && i < drillCount; i += 1) {
     const profile = reconciling[i % reconciling.length];
-    if (profile === undefined) break;
+    if (profile === undefined || p.commitStepId === null) break;
     const caseId = `drill_${String(i + 1)}`;
     const seed = `${input.batchId}:${caseId}`;
     const at = profile.at === "@commit_point" ? undefined : `@step:${p.commitStepId}`;
