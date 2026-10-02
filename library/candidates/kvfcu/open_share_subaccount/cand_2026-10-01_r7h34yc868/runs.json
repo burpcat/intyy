@@ -1,0 +1,17 @@
+{
+  "schema": "intyy.candidate_runs/1.0",
+  "positive": {
+    "run_id": "run_2026-10-01_x5zb8h8hme",
+    "tenant": "keystone"
+  },
+  "negatives": [
+    {
+      "run_id": "run_2026-10-01_qe3nzbscj1",
+      "tenant": "keystone"
+    },
+    {
+      "run_id": "run_2026-10-01_we3bdycmve",
+      "tenant": "keystone"
+    }
+  ]
+}

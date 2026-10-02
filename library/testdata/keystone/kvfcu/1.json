@@ -46,5 +46,9 @@
     "drop_labels": 0,
     "label_seed": "0"
   },
-  "business_date": "2026-01-15"
+  "business_date": "2026-01-15",
+  "approved": {
+    "by": "op_022",
+    "at": "2026-10-01T22:51:55.974Z"
+  }
 }

@@ -1,0 +1,1228 @@
+{
+  "schema": "intyy.artifact/1.0",
+  "identity": {
+    "app": "kvfcu",
+    "capability": "open_share_subaccount",
+    "version": null
+  },
+  "runs_on": {
+    "surface": "web",
+    "app_versions": [
+      "9.2"
+    ],
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "scale": 1
+    },
+    "entry": "/main.do",
+    "paths": [
+      "/main.do"
+    ],
+    "session": "kvfcu/sign_in@1"
+  },
+  "about": {
+    "title": "Open share subaccount",
+    "summary": "Open a share sub-account for member The member number of the account holder with an opening deposit of The opening deposit for the new sub-account. Return the new account number.",
+    "when_to_use": "Use to open a new share sub-account for an existing member with an opening deposit.",
+    "limits": "Needs a signed-in operator session. It opens one sub-account per run and cannot open joint accounts."
+  },
+  "contract": {
+    "inputs": [
+      {
+        "name": "member_id",
+        "type": "string",
+        "description": "The member number of the account holder",
+        "required": true,
+        "sensitivity": "pii",
+        "constraints": {
+          "length": {
+            "min": 6,
+            "max": 6
+          },
+          "format": "digits"
+        }
+      },
+      {
+        "name": "deposit",
+        "type": "money",
+        "description": "The opening deposit for the new sub-account",
+        "required": true,
+        "sensitivity": "financial",
+        "constraints": {
+          "range": {
+            "min": "0.01"
+          }
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name": "account_number",
+        "type": "string",
+        "description": "The account number of the new share sub-account",
+        "sensitivity": "pii"
+      }
+    ],
+    "outcomes": [
+      {
+        "code": "member_not_found",
+        "description": "No member has this member number.",
+        "condition": "member_not_found_shown"
+      },
+      {
+        "code": "limit_exceeded",
+        "description": "The member already has the most sub-accounts the credit union allows.",
+        "condition": "limit_exceeded_shown"
+      }
+    ],
+    "effect": "commits"
+  },
+  "targets": [
+    {
+      "id": "member_no_box",
+      "description": "The textbox \"Member No.\".",
+      "clues": {
+        "role": "textbox",
+        "name": "Member No.",
+        "label": "Member No. *",
+        "region": {
+          "x": 0.2966,
+          "y": 0.1888,
+          "w": 0.0711,
+          "h": 0.0244
+        },
+        "image": "crops/member_no_box.png",
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[1] > td[1] > input[0]"
+      }
+    },
+    {
+      "id": "search_button",
+      "description": "The button \"Search\".",
+      "clues": {
+        "role": "button",
+        "name": "Search",
+        "region": {
+          "x": 0.3249,
+          "y": 0.255,
+          "w": 0.0518,
+          "h": 0.0244
+        },
+        "image": "crops/search_button.png",
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[3] > td[0] > input[0]"
+      }
+    },
+    {
+      "id": "member_link",
+      "description": "The link \"{input.member_id}\".",
+      "clues": {
+        "role": "link",
+        "name": "{input.member_id}",
+        "text": "{input.member_id}",
+        "region": {
+          "x": 0.2152,
+          "y": 0.1888,
+          "w": 0.0328,
+          "h": 0.0169
+        },
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > table[0] > tbody[0] > tr[1] > td[1] > a[0]"
+      }
+    },
+    {
+      "id": "open_sub_account_link",
+      "description": "The link \"Open Sub-Account\".",
+      "clues": {
+        "role": "link",
+        "name": "Open Sub-Account",
+        "text": "Open Sub-Account",
+        "region": {
+          "x": 0.2503,
+          "y": 0.365,
+          "w": 0.0804,
+          "h": 0.0169
+        },
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[2] > td[0] > table[0] > tbody[0] > tr[0] > td[1] > a[0]"
+      }
+    },
+    {
+      "id": "type_of_a_c_list",
+      "description": "The combobox \"Type of A/c\".",
+      "clues": {
+        "role": "combobox",
+        "name": "Type of A/c",
+        "label": "Type of A/c *",
+        "region": {
+          "x": 0.3256,
+          "y": 0.2281,
+          "w": 0.0898,
+          "h": 0.0219
+        },
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[1] > td[1] > select[0]"
+      }
+    },
+    {
+      "id": "opening_deposit_box",
+      "description": "The textbox \"Opening Deposit ($)\".",
+      "clues": {
+        "role": "textbox",
+        "name": "Opening Deposit ($)",
+        "label": "Opening Deposit ($) *",
+        "region": {
+          "x": 0.3256,
+          "y": 0.26,
+          "w": 0.0711,
+          "h": 0.0244
+        },
+        "image": "crops/opening_deposit_box.png",
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[2] > td[1] > input[0]"
+      }
+    },
+    {
+      "id": "funding_source_list",
+      "description": "The combobox \"Funding Source\".",
+      "clues": {
+        "role": "combobox",
+        "name": "Funding Source",
+        "label": "Funding Source *",
+        "region": {
+          "x": 0.3256,
+          "y": 0.2944,
+          "w": 0.1477,
+          "h": 0.0219
+        },
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[3] > td[1] > select[0]"
+      }
+    },
+    {
+      "id": "submit_button",
+      "description": "The button \"Submit\".",
+      "clues": {
+        "role": "button",
+        "name": "Submit",
+        "region": {
+          "x": 0.3389,
+          "y": 0.4325,
+          "w": 0.0529,
+          "h": 0.0244
+        },
+        "image": "crops/submit_button.png",
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > form[0] > table[0] > tbody[0] > tr[2] > td[0] > input[0]"
+      }
+    },
+    {
+      "id": "confirm_button",
+      "description": "The button \"Confirm\".",
+      "clues": {
+        "role": "button",
+        "name": "Confirm",
+        "region": {
+          "x": 0.1555,
+          "y": 0.4256,
+          "w": 0.0569,
+          "h": 0.0244
+        },
+        "image": "crops/confirm_button.png",
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > table[1] > tbody[0] > tr[0] > td[0] > form[0] > input[1]"
+      }
+    },
+    {
+      "id": "ok_button",
+      "description": "The button \"OK\".",
+      "clues": {
+        "role": "button",
+        "name": "OK",
+        "path": "native:dialog > accept"
+      }
+    },
+    {
+      "id": "account_no_generic",
+      "description": "The generic \"Account No.\".",
+      "clues": {
+        "role": "generic",
+        "label": "Account No.",
+        "region": {
+          "x": 0.3239,
+          "y": 0.24,
+          "w": 0.0733,
+          "h": 0.0169
+        },
+        "path": "frame[2] > body > table[0] > tbody[0] > tr[1] > td[0] > table[0] > tbody[0] > tr[0] > td[0] > table[0] > tbody[0] > tr[3] > td[1] > b[0]"
+      }
+    }
+  ],
+  "conditions": [
+    {
+      "id": "type_member_no_precondition",
+      "description": "Before type member no.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "member_no_box"
+        }
+      ]
+    },
+    {
+      "id": "type_member_no_checkpoint",
+      "description": "After type member no.",
+      "check": "field_value",
+      "target": "member_no_box",
+      "value": "{input.member_id}",
+      "match": "exact"
+    },
+    {
+      "id": "click_search_precondition",
+      "description": "Before click search.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "search_button"
+        },
+        {
+          "ref": "type_member_no_checkpoint"
+        }
+      ]
+    },
+    {
+      "id": "click_search_checkpoint",
+      "description": "After click search.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "member_link"
+        },
+        {
+          "check": "text_visible",
+          "text": "Sl.",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "click_member_precondition",
+      "description": "Before click member.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "member_link"
+        }
+      ]
+    },
+    {
+      "id": "click_member_checkpoint",
+      "description": "After click member.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "open_sub_account_link"
+        },
+        {
+          "check": "text_visible",
+          "text": "Customer Information",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "click_open_sub_account_precondition",
+      "description": "Before click open sub account.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "open_sub_account_link"
+        }
+      ]
+    },
+    {
+      "id": "click_open_sub_account_checkpoint",
+      "description": "After click open sub account.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "type_of_a_c_list"
+        },
+        {
+          "check": "text_visible",
+          "text": "Sub-Account Opening Request",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "select_type_of_a_c_precondition",
+      "description": "Before select type of a c.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "type_of_a_c_list"
+        }
+      ]
+    },
+    {
+      "id": "select_type_of_a_c_checkpoint",
+      "description": "After select type of a c.",
+      "check": "field_value",
+      "target": "type_of_a_c_list",
+      "value": "Share Savings",
+      "match": "exact"
+    },
+    {
+      "id": "type_opening_deposit_precondition",
+      "description": "Before type opening deposit.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "opening_deposit_box"
+        }
+      ]
+    },
+    {
+      "id": "type_opening_deposit_checkpoint",
+      "description": "After type opening deposit.",
+      "check": "field_value",
+      "target": "opening_deposit_box",
+      "value": "{input.deposit}",
+      "match": "exact"
+    },
+    {
+      "id": "select_funding_source_precondition",
+      "description": "Before select funding source.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "funding_source_list"
+        }
+      ]
+    },
+    {
+      "id": "select_funding_source_checkpoint",
+      "description": "After select funding source.",
+      "check": "field_value",
+      "target": "funding_source_list",
+      "value": "Cash",
+      "match": "exact"
+    },
+    {
+      "id": "click_submit_precondition",
+      "description": "Before click submit.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "submit_button"
+        },
+        {
+          "ref": "select_type_of_a_c_checkpoint"
+        },
+        {
+          "ref": "type_opening_deposit_checkpoint"
+        },
+        {
+          "ref": "select_funding_source_checkpoint"
+        }
+      ]
+    },
+    {
+      "id": "click_submit_checkpoint",
+      "description": "After click submit.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "confirm_button"
+        },
+        {
+          "check": "text_visible",
+          "text": "Please verify the details below. Do not press Back or Refresh buttons.",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "click_confirm_precondition",
+      "description": "Before click confirm.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "confirm_button"
+        }
+      ]
+    },
+    {
+      "id": "click_confirm_checkpoint",
+      "description": "After click confirm.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "ok_button"
+        }
+      ]
+    },
+    {
+      "id": "click_ok_checkpoint",
+      "description": "After click ok.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "account_no_generic"
+        },
+        {
+          "check": "text_visible",
+          "text": "Keystone Valley Federal Credit Union",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "read_account_number_precondition",
+      "description": "Before read account number.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "location",
+          "pattern": "/main.do"
+        },
+        {
+          "check": "element_visible",
+          "target": "account_no_generic"
+        }
+      ]
+    },
+    {
+      "id": "member_not_found_shown",
+      "description": "No member has this member number.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "text_visible",
+          "text": "No records found.",
+          "match": "contains"
+        },
+        {
+          "check": "text_visible",
+          "text": "No records found.",
+          "match": "contains"
+        }
+      ]
+    },
+    {
+      "id": "limit_exceeded_shown",
+      "description": "The member already has the most sub-accounts the credit union allows.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "text_visible",
+          "text": "Member Not Eligible",
+          "match": "contains"
+        },
+        {
+          "check": "text_visible",
+          "text": "Member not eligible for a new sub-account. Please contact your branch manager.",
+          "match": "contains"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "type_member_no",
+      "intent": "Enter the member number to search for the member whose sub-account will be opened.",
+      "action": {
+        "type": "type",
+        "target": "member_no_box",
+        "value": "{input.member_id}"
+      },
+      "precondition": "type_member_no_precondition",
+      "checkpoint": "type_member_no_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    },
+    {
+      "id": "click_search",
+      "intent": "Search for the member using the entered member number to proceed with opening a sub-account.",
+      "action": {
+        "type": "click",
+        "target": "search_button"
+      },
+      "precondition": "click_search_precondition",
+      "checkpoint": "click_search_checkpoint",
+      "outcomes": [
+        "member_not_found"
+      ],
+      "risk": "idempotent",
+      "timeout_ms": 10000
+    },
+    {
+      "id": "click_member",
+      "intent": "Click the member number link to proceed to this member's account details for opening a sub-account.",
+      "action": {
+        "type": "click",
+        "target": "member_link"
+      },
+      "precondition": "click_member_precondition",
+      "checkpoint": "click_member_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 10000
+    },
+    {
+      "id": "click_open_sub_account",
+      "intent": "Click Open Sub-Account link to proceed with opening a new share sub-account for this member.",
+      "action": {
+        "type": "click",
+        "target": "open_sub_account_link"
+      },
+      "precondition": "click_open_sub_account_precondition",
+      "checkpoint": "click_open_sub_account_checkpoint",
+      "outcomes": [
+        "limit_exceeded"
+      ],
+      "risk": "idempotent",
+      "timeout_ms": 10000
+    },
+    {
+      "id": "select_type_of_a_c",
+      "intent": "Select the sub-[account#1] as Share Savings to open a share sub-account.",
+      "action": {
+        "type": "select",
+        "target": "type_of_a_c_list",
+        "value": "Share Savings"
+      },
+      "precondition": "select_type_of_a_c_precondition",
+      "checkpoint": "select_type_of_a_c_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    },
+    {
+      "id": "type_opening_deposit",
+      "intent": "Enter the opening deposit amount for the sub-account.",
+      "action": {
+        "type": "type",
+        "target": "opening_deposit_box",
+        "value": "{input.deposit}"
+      },
+      "precondition": "type_opening_deposit_precondition",
+      "checkpoint": "type_opening_deposit_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    },
+    {
+      "id": "select_funding_source",
+      "intent": "Funding Source is mandatory; selecting Cash as a reasonable default funding source.",
+      "action": {
+        "type": "select",
+        "target": "funding_source_list",
+        "value": "Cash"
+      },
+      "precondition": "select_funding_source_precondition",
+      "checkpoint": "select_funding_source_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    },
+    {
+      "id": "click_submit",
+      "intent": "Submit the sub-account opening request with all required fields filled in.",
+      "action": {
+        "type": "click",
+        "target": "submit_button"
+      },
+      "precondition": "click_submit_precondition",
+      "checkpoint": "click_submit_checkpoint",
+      "outcomes": [],
+      "risk": "reversible",
+      "timeout_ms": 10000
+    },
+    {
+      "id": "click_confirm",
+      "intent": "Confirm the details to finalize opening the share sub-account, which is the single data-changing action approved by the operator.",
+      "action": {
+        "type": "click",
+        "target": "confirm_button"
+      },
+      "precondition": "click_confirm_precondition",
+      "checkpoint": "click_confirm_checkpoint",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 10000
+    },
+    {
+      "id": "click_ok",
+      "intent": "Confirm the dialog to proceed with opening the sub-account.",
+      "action": {
+        "type": "click",
+        "target": "ok_button"
+      },
+      "precondition": "click_confirm_checkpoint",
+      "checkpoint": "click_ok_checkpoint",
+      "outcomes": [],
+      "risk": "irreversible",
+      "timeout_ms": 10000
+    },
+    {
+      "id": "read_account_number",
+      "intent": "Read the new account number from the confirmation screen.",
+      "action": {
+        "type": "read",
+        "target": "account_no_generic",
+        "source": "text",
+        "output": "account_number"
+      },
+      "precondition": "read_account_number_precondition",
+      "checkpoint": "read_account_number_precondition",
+      "outcomes": [],
+      "risk": "idempotent",
+      "timeout_ms": 5000
+    }
+  ],
+  "recovery": {
+    "commit_point": "click_ok",
+    "reconciliation": {
+      "waiver": {
+        "reason": "The kvfcu member page lists sub-accounts as rows with no count, and intyy reads one value per element, so no read-only check can decide. A person decides after a lost Confirm reply.",
+        "attempt_run": "run_2026-10-01_f5twjghrdf"
+      }
+    }
+  },
+  "provenance": {
+    "runs": [
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "kind": "discovery",
+        "goal": "Open a share sub-account for member {input.member_id} with an opening deposit of {input.deposit}. Return the new account number.",
+        "model": "claude-sonnet-5",
+        "recorder_version": "0.2.0"
+      },
+      {
+        "run_id": "run_2026-10-01_qe3nzbscj1",
+        "kind": "negative_discovery",
+        "goal": "Open a share sub-account for member {input.member_id} with an opening deposit of {input.deposit}. Return the new account number.",
+        "expected_outcome": "member_not_found",
+        "model": "claude-sonnet-5",
+        "recorder_version": "0.2.0"
+      },
+      {
+        "run_id": "run_2026-10-01_we3bdycmve",
+        "kind": "negative_discovery",
+        "goal": "Open a share sub-account for member {input.member_id} with an opening deposit of {input.deposit}. Return the new account number.",
+        "expected_outcome": "limit_exceeded",
+        "model": "claude-sonnet-5",
+        "recorder_version": "0.2.0"
+      }
+    ],
+    "derived_from": null,
+    "actions": [
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 17,
+        "llm_tag": "flow_step",
+        "human_tag": "exploration",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 21,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:type_member_no"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 25,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_search"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 29,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_member"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 33,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_open_sub_account"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 37,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:select_type_of_a_c"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 41,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:type_opening_deposit"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 45,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:select_funding_source"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 54,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_submit"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 63,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_confirm"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 73,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:click_ok"
+      },
+      {
+        "run_id": "run_2026-10-01_x5zb8h8hme",
+        "seq": 76,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "step:read_account_number"
+      },
+      {
+        "run_id": "run_2026-10-01_qe3nzbscj1",
+        "seq": 17,
+        "llm_tag": "flow_step",
+        "human_tag": "exploration",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_qe3nzbscj1",
+        "seq": 21,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_qe3nzbscj1",
+        "seq": 25,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_we3bdycmve",
+        "seq": 14,
+        "llm_tag": "flow_step",
+        "human_tag": "exploration",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_we3bdycmve",
+        "seq": 18,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_we3bdycmve",
+        "seq": 22,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_we3bdycmve",
+        "seq": 26,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "dropped"
+      },
+      {
+        "run_id": "run_2026-10-01_we3bdycmve",
+        "seq": 30,
+        "llm_tag": "flow_step",
+        "human_tag": "flow_step",
+        "decided_by": "op_017",
+        "became": "dropped"
+      }
+    ],
+    "decisions": [
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:01.252Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:17.378Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:21.180Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:22.556Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:23.327Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:23.790Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:24.135Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:24.440Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:24.688Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:24.894Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:25.062Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:25.214Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:25.412Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:25.640Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:26.385Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:30.299Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:30.901Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:31.198Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:07:31.463Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:08:28.488Z"
+      },
+      {
+        "what": "risk_second_look",
+        "subject": "click_submit",
+        "value": "reversible",
+        "by": "op_022",
+        "at": "2026-10-01T21:10:22.801Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_confirm",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:10:44.943Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_confirm",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:12:05.469Z"
+      },
+      {
+        "what": "risk_second_look",
+        "subject": "click_confirm",
+        "value": "idempotent",
+        "by": "op_022",
+        "at": "2026-10-01T21:12:18.834Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_open_sub_account",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:12:45.391Z"
+      },
+      {
+        "what": "risk",
+        "subject": "type_member_no",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:12:50.579Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_search",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:01.526Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_member",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:02.461Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_open_sub_account_link_main",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:07.111Z"
+      },
+      {
+        "what": "risk",
+        "subject": "select_type_of_a_c",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:08.738Z"
+      },
+      {
+        "what": "risk",
+        "subject": "type_opening_deposit",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:10.132Z"
+      },
+      {
+        "what": "risk",
+        "subject": "select_funding_source",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:11.289Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_ok",
+        "value": "irreversible",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:12.386Z"
+      },
+      {
+        "what": "risk",
+        "subject": "read_account_number",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:13.745Z"
+      },
+      {
+        "what": "edit",
+        "subject": "about.when_to_use",
+        "value": "Use to open a new share sub-account for an existing member with an opening deposit.",
+        "by": "op_017",
+        "at": "2026-10-01T21:13:38.249Z"
+      },
+      {
+        "what": "risk",
+        "subject": "click_confirm",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-01T21:34:00.386Z"
+      },
+      {
+        "what": "risk_second_look",
+        "subject": "click_confirm",
+        "value": "idempotent",
+        "by": "op_022",
+        "at": "2026-10-01T21:34:31.809Z"
+      },
+      {
+        "what": "waiver",
+        "subject": "recovery.reconciliation",
+        "value": "{\"reason\":\"The kvfcu member page lists sub-accounts as rows with no count, and intyy reads one value per element, so no read-only check can decide. A person decides after a lost Confirm reply.\",\"attempt_run\":\"run_2026-10-01_f5twjghrdf\"}",
+        "by": "op_017",
+        "at": "2026-10-01T21:36:41.022Z"
+      },
+      {
+        "what": "edit",
+        "subject": "about.limits",
+        "value": "Needs a signed-in operator session. It opens one sub-account per run and cannot open joint accounts.",
+        "by": "op_017",
+        "at": "2026-10-01T21:36:48.258Z"
+      }
+    ],
+    "sealed": null
+  }
+}

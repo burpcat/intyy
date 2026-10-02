@@ -1,0 +1,21 @@
+{
+  "schema": "intyy.policy/1.0",
+  "revision": 2,
+  "reason": "Keystone adds the count check that reconciles open_share_subaccount, and drops the unused lookup",
+  "scope": {
+    "level": "tenant",
+    "tenant": "keystone"
+  },
+  "capabilities": {
+    "allow": [
+      "kvfcu/sign_in@1",
+      "kvfcu/find_account_by_reference@1",
+      "kvfcu/open_share_subaccount@1",
+      "kvfcu/count_member_subaccounts@1"
+    ]
+  },
+  "approved": {
+    "by": "op_022",
+    "at": "2026-10-01T19:36:26.882Z"
+  }
+}

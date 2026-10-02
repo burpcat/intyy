@@ -1,0 +1,13 @@
+{
+  "schema": "intyy.thresholds/1.0",
+  "app": "kvfcu",
+  "jev_version": "jev-1.13.0",
+  "revision": 1,
+  "handler_min": 0.8,
+  "outcome_min": 0.95,
+  "reconciliation_min": 0.9,
+  "approved": {
+    "by": "op_031",
+    "at": "2026-10-02T16:55:56.439Z"
+  }
+}

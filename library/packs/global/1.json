@@ -1,0 +1,20 @@
+{
+  "schema": "intyy.pack/1.0",
+  "scope": {
+    "level": "global"
+  },
+  "revision": 1,
+  "reason": "First global pack, with no handlers yet. A global handler needs fire fixtures from two apps (section 5 §12.6), and only kvfcu has fixtures, so every M06 handler sits in the app:kvfcu pack, as in section 5 §15.2. The blank_page handler of section 5 §15.1 waits for a real blank-page fixture: on kvfcu the banner and menu frames keep showing text, so a no-text detector cannot be tested there.",
+  "targets": [],
+  "conditions": [],
+  "handlers": [],
+  "provenance": {
+    "runs": [],
+    "decisions": [],
+    "sealed": null
+  },
+  "approved": {
+    "by": "op_031",
+    "at": "2026-10-02T00:29:49.626Z"
+  }
+}

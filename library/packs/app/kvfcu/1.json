@@ -1,0 +1,259 @@
+{
+  "schema": "intyy.pack/1.0",
+  "scope": {
+    "level": "app",
+    "app": "kvfcu"
+  },
+  "revision": 1,
+  "reason": "First kvfcu pack. Five handlers drafted from the M06 trouble fixtures, one per fixture: the 500 error page, scheduled maintenance, the KYC pop-up, session expired, and permission denied (section 5 §14, §15.2). Detector text is copied from the fixtures' masked accessibility snapshots. The unknown Important Notice pop-up has no handler on purpose: its profile expects recovers_or_escalates. No back_at_login handler (owner decision, M06).",
+  "targets": [
+    {
+      "id": "kyc_remind_later",
+      "description": "The button \"Remind Later\" on the KYC Update pop-up.",
+      "clues": {
+        "role": "button",
+        "name": "Remind Later"
+      }
+    }
+  ],
+  "conditions": [
+    {
+      "id": "error_500_shown",
+      "description": "The app's 500 Internal Server Error page is showing.",
+      "check": "text_visible",
+      "text": "500 Internal Server Error",
+      "match": "contains"
+    },
+    {
+      "id": "maintenance_shown",
+      "description": "The app's Scheduled Maintenance page is showing.",
+      "check": "text_visible",
+      "text": "System under scheduled maintenance",
+      "match": "contains"
+    },
+    {
+      "id": "kyc_popup_shown",
+      "description": "The KYC Update pop-up is showing, with its Remind Later button.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "text_visible",
+          "text": "Please update member KYC details",
+          "match": "contains"
+        },
+        {
+          "check": "element_visible",
+          "target": "kyc_remind_later"
+        }
+      ]
+    },
+    {
+      "id": "session_expired_shown",
+      "description": "The app's Session Expired page is showing.",
+      "check": "text_visible",
+      "text": "Your session has expired",
+      "match": "contains"
+    },
+    {
+      "id": "not_authorised_shown",
+      "description": "The app's Permission Denied page is showing.",
+      "check": "text_visible",
+      "text": "You are not authorised to perform this transaction",
+      "match": "contains"
+    }
+  ],
+  "handlers": [
+    {
+      "id": "app_error_page",
+      "description": "The app shows its 500 Internal Server Error page.",
+      "detector": "error_500_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_server_error"
+        ],
+        "no_fire": [
+          "normal_main",
+          "normal_member_detail"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "navigate",
+          "location": "{system.last_good_path}",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 2,
+        "per_run": 3
+      },
+      "on_exhausted": {
+        "class": "hard_failure",
+        "failure": "app_error"
+      }
+    },
+    {
+      "id": "maintenance",
+      "description": "The app is under scheduled maintenance.",
+      "detector": "maintenance_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_maintenance"
+        ],
+        "no_fire": [
+          "normal_main"
+        ]
+      },
+      "class": "hard_failure",
+      "failure": "app_error"
+    },
+    {
+      "id": "kyc_reminder",
+      "description": "The app interrupts with a request to update member KYC details.",
+      "detector": "kyc_popup_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_kyc_popup"
+        ],
+        "no_fire": [
+          "normal_open_form",
+          "normal_member_detail"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "click",
+          "target": "kyc_remind_later",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 2,
+        "per_run": 3
+      },
+      "on_exhausted": {
+        "class": "needs_human",
+        "operator_note": "The KYC Update pop-up keeps returning. Clear it, then hand back."
+      }
+    },
+    {
+      "id": "session_expired",
+      "description": "The app says the session has expired.",
+      "detector": "session_expired_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_session_expired"
+        ],
+        "no_fire": [
+          "normal_login",
+          "normal_lastlogin"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "sign_in",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 1,
+        "per_run": 2
+      },
+      "on_exhausted": {
+        "class": "hard_failure",
+        "failure": "app_error"
+      }
+    },
+    {
+      "id": "permission_denied",
+      "description": "The app says the operator is not authorised to perform this transaction.",
+      "detector": "not_authorised_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_permission"
+        ],
+        "no_fire": [
+          "normal_open_form"
+        ]
+      },
+      "class": "hard_failure",
+      "failure": "permission_denied"
+    }
+  ],
+  "provenance": {
+    "runs": [
+      {
+        "run_id": "run_2026-10-01_6gvdnv11mp",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_5jt1tkgbqg",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_40mh2hdj7m",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_w0gccpdfzn",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_q2nh5m1dpr",
+        "kind": "replay"
+      }
+    ],
+    "decisions": [
+      {
+        "what": "risk",
+        "subject": "app_error_page.response[0]",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-02T00:28:28.092Z"
+      },
+      {
+        "what": "risk",
+        "subject": "kyc_reminder.response[0]",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-02T00:28:28.092Z"
+      },
+      {
+        "what": "risk",
+        "subject": "session_expired.response[0]",
+        "value": "idempotent",
+        "by": "op_017",
+        "at": "2026-10-02T00:28:28.092Z"
+      },
+      {
+        "what": "risk_second_look",
+        "subject": "app_error_page.response[0]",
+        "value": "idempotent",
+        "by": "op_022",
+        "at": "2026-10-02T00:28:49.927Z"
+      },
+      {
+        "what": "risk_second_look",
+        "subject": "kyc_reminder.response[0]",
+        "value": "idempotent",
+        "by": "op_022",
+        "at": "2026-10-02T00:29:12.463Z"
+      },
+      {
+        "what": "risk_second_look",
+        "subject": "session_expired.response[0]",
+        "value": "idempotent",
+        "by": "op_022",
+        "at": "2026-10-02T00:29:30.821Z"
+      }
+    ],
+    "sealed": null
+  },
+  "approved": {
+    "by": "op_031",
+    "at": "2026-10-02T00:29:53.718Z"
+  }
+}

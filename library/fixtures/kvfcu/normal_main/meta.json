@@ -1,0 +1,21 @@
+{
+  "schema": "intyy.fixture/1.0",
+  "id": "normal_main",
+  "app": "kvfcu",
+  "tenant": "keystone",
+  "app_version": "9.2",
+  "variant": "keystone",
+  "location": "/main.do",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "source": {
+    "run_id": "run_2026-10-01_x5zb8h8hme",
+    "seq": 18
+  },
+  "kind": "normal",
+  "missing": [
+    "dom.html"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "intyy.candidate_issues/1.0",
+  "issues": [
+    {
+      "level": "blocking",
+      "code": "null_version",
+      "subject": "identity.version",
+      "message": "no version is set yet"
+    },
+    {
+      "level": "blocking",
+      "code": "null_sealed",
+      "subject": "provenance.sealed",
+      "message": "not sealed yet"
+    }
+  ]
+}
