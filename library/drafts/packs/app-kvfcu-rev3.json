@@ -1,0 +1,297 @@
+{
+  "schema": "intyy.pack/1.0",
+  "scope": {
+    "level": "app",
+    "app": "kvfcu"
+  },
+  "revision": 3,
+  "reason": "Adds service_unavailable: kvfcu's 503 'Service temporarily unavailable' page. A sign_in full batch's stability run met it after Continue and stuck, since no handler matched (run_2026-10-02_fbcgxbkfvs). Recovers like app_error_page: back to the last good page.",
+  "targets": [
+    {
+      "id": "kyc_remind_later",
+      "description": "The button \"Remind Later\" on the KYC Update pop-up.",
+      "clues": {
+        "role": "button",
+        "name": "Remind Later"
+      }
+    },
+    {
+      "id": "supervisor_approval_button",
+      "description": "The button \"Supervisor Approval\" on the Open Sub-Account review page.",
+      "clues": {
+        "role": "button",
+        "name": "Supervisor Approval"
+      }
+    }
+  ],
+  "conditions": [
+    {
+      "id": "error_500_shown",
+      "description": "The app's 500 Internal Server Error page is showing.",
+      "check": "text_visible",
+      "text": "500 Internal Server Error",
+      "match": "contains"
+    },
+    {
+      "id": "maintenance_shown",
+      "description": "The app's Scheduled Maintenance page is showing.",
+      "check": "text_visible",
+      "text": "System under scheduled maintenance",
+      "match": "contains"
+    },
+    {
+      "id": "kyc_popup_shown",
+      "description": "The KYC Update pop-up is showing, with its Remind Later button.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "text_visible",
+          "text": "Please update member KYC details",
+          "match": "contains"
+        },
+        {
+          "check": "element_visible",
+          "target": "kyc_remind_later"
+        }
+      ]
+    },
+    {
+      "id": "session_expired_shown",
+      "description": "The app's Session Expired page is showing.",
+      "check": "text_visible",
+      "text": "Your session has expired",
+      "match": "contains"
+    },
+    {
+      "id": "not_authorised_shown",
+      "description": "The app's Permission Denied page is showing.",
+      "check": "text_visible",
+      "text": "You are not authorised to perform this transaction",
+      "match": "contains"
+    },
+    {
+      "id": "supervisor_required_shown",
+      "description": "The review page asks for a supervisor's approval, with its Supervisor Approval button.",
+      "check": "all_of",
+      "checks": [
+        {
+          "check": "text_visible",
+          "text": "Supervisor approval required",
+          "match": "contains"
+        },
+        {
+          "check": "element_visible",
+          "target": "supervisor_approval_button"
+        }
+      ]
+    },
+    {
+      "id": "service_unavailable_shown",
+      "description": "The app's 503 Service Unavailable page is showing.",
+      "check": "text_visible",
+      "text": "Service temporarily unavailable",
+      "match": "contains"
+    }
+  ],
+  "handlers": [
+    {
+      "id": "app_error_page",
+      "description": "The app shows its 500 Internal Server Error page.",
+      "detector": "error_500_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_server_error"
+        ],
+        "no_fire": [
+          "normal_main",
+          "normal_member_detail"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "navigate",
+          "location": "{system.last_good_path}",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 2,
+        "per_run": 3
+      },
+      "on_exhausted": {
+        "class": "hard_failure",
+        "failure": "app_error"
+      }
+    },
+    {
+      "id": "maintenance",
+      "description": "The app is under scheduled maintenance.",
+      "detector": "maintenance_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_maintenance"
+        ],
+        "no_fire": [
+          "normal_main"
+        ]
+      },
+      "class": "hard_failure",
+      "failure": "app_error"
+    },
+    {
+      "id": "kyc_reminder",
+      "description": "The app interrupts with a request to update member KYC details.",
+      "detector": "kyc_popup_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_kyc_popup"
+        ],
+        "no_fire": [
+          "normal_open_form",
+          "normal_member_detail"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "click",
+          "target": "kyc_remind_later",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 2,
+        "per_run": 3
+      },
+      "on_exhausted": {
+        "class": "needs_human",
+        "operator_note": "The KYC Update pop-up keeps returning. Clear it, then hand back."
+      }
+    },
+    {
+      "id": "session_expired",
+      "description": "The app says the session has expired.",
+      "detector": "session_expired_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_session_expired"
+        ],
+        "no_fire": [
+          "normal_login",
+          "normal_lastlogin"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "sign_in",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 1,
+        "per_run": 2
+      },
+      "on_exhausted": {
+        "class": "hard_failure",
+        "failure": "app_error"
+      }
+    },
+    {
+      "id": "permission_denied",
+      "description": "The app says the operator is not authorised to perform this transaction.",
+      "detector": "not_authorised_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_permission"
+        ],
+        "no_fire": [
+          "normal_open_form"
+        ]
+      },
+      "class": "hard_failure",
+      "failure": "permission_denied"
+    },
+    {
+      "id": "supervisor_approval",
+      "description": "The app needs a supervisor's approval before Confirm.",
+      "detector": "supervisor_required_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_supervisor"
+        ],
+        "no_fire": [
+          "normal_confirm",
+          "normal_open_form"
+        ]
+      },
+      "class": "needs_human",
+      "operator_note": "The bank needs a supervisor's approval before Confirm. Approve it as the supervisor in the browser, then hand back."
+    },
+    {
+      "id": "service_unavailable",
+      "description": "The app shows its 503 Service Unavailable page.",
+      "detector": "service_unavailable_shown",
+      "fixtures": {
+        "fire": [
+          "trouble_service_unavailable"
+        ],
+        "no_fire": [
+          "normal_main",
+          "normal_member_detail"
+        ]
+      },
+      "class": "recoverable",
+      "response": [
+        {
+          "type": "navigate",
+          "location": "{system.last_good_path}",
+          "risk": "idempotent"
+        }
+      ],
+      "limits": {
+        "per_step": 2,
+        "per_run": 3
+      },
+      "on_exhausted": {
+        "class": "hard_failure",
+        "failure": "app_error"
+      }
+    }
+  ],
+  "provenance": {
+    "runs": [
+      {
+        "run_id": "run_2026-10-01_6gvdnv11mp",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_5jt1tkgbqg",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_40mh2hdj7m",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_w0gccpdfzn",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-01_q2nh5m1dpr",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-02_f2tdhzpxyr",
+        "kind": "replay"
+      },
+      {
+        "run_id": "run_2026-10-02_fbcgxbkfvs",
+        "kind": "replay"
+      }
+    ],
+    "decisions": [],
+    "sealed": null
+  }
+}
