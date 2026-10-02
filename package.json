@@ -20,6 +20,8 @@
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint && npm test && npm run schemas:check && npm run docs:verify && npm run audit",
     "test": "vitest run --project unit --project types",
+    "test:coverage": "vitest run --project unit --coverage",
+    "coverage:compare": "tsx scripts/coverage-compare.ts",
     "test:live": "vitest run --project live",
     "test:safety": "tsx scripts/test-safety.ts",
     "docs:renames": "tsx scripts/docs-renames.ts",
@@ -33,6 +35,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.19.0",
+    "@vitest/coverage-v8": "5.0.2",
     "dependency-cruiser": "^18.4.0",
     "eslint": "^10.11.0",
     "prettier": "^3.9.9",

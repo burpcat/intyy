@@ -4,6 +4,13 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Why: `npm run test:coverage` feeds scripts/coverage-compare.ts, the proof a test refactor keeps coverage.
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts", "scripts/**/*.ts"],
+      reporter: ["json", "text-summary"],
+      reportsDirectory: "state/coverage",
+    },
     projects: [
       {
         test: {
