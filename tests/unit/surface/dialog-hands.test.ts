@@ -3,9 +3,9 @@
 // unknown. Runs on a fake Playwright page and box, in memory; no browser starts.
 // Design section 9 §5.2 (dispatched is a value); section 7 §7.2, §9.1; owner's real run, 2026-09-30.
 import type { Dialog, Page } from "playwright";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { PlaywrightHands } from "../../../src/adapters/playwright/hands.js";
-import { BrowserState } from "../../../src/adapters/playwright/state.js";
+import { BrowserState, STEP_TIMEOUT_MS } from "../../../src/adapters/playwright/state.js";
 import { EventHub } from "../../../src/core/events/hub.js";
 import type { SurfaceEvent } from "../../../src/ports/surface.js";
 
@@ -62,6 +62,19 @@ describe("answering a native box", () => {
     });
     expect(s.dialog).toBeNull();
     expect(await kinds(events, 2)).toEqual(["dialog_closed", "page_changed"]);
+  });
+
+  test("a stale box whose answer never returns: unknown after the step cap, and the box clears", async () => {
+    vi.useFakeTimers();
+    try {
+      const { s, click } = setup(() => new Promise<void>(() => undefined));
+      const answered = click("accept");
+      await vi.advanceTimersByTimeAsync(STEP_TIMEOUT_MS);
+      expect(await answered).toEqual({ ok: true, value: { dispatched: "unknown", transport: "navigation_timeout" } });
+      expect(s.dialog).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("answering twice: the old ref is stale, and the box is never in view again", async () => {

@@ -58,9 +58,21 @@ export class PlaywrightHands implements Hands {
         const d = this.s.dialog;
         if (a.type !== "click" || d === null || t.part === "box") return ok({ dispatched: false });
         // Why: section 9 §5.2, answering a native dialog is a click on Accept or Dismiss.
+        // Why the cap: a box held open while a person decides can go stale (the app's own timer
+        // moves the page on), and then Playwright's answer never returns. Whether it reached the
+        // app is unknown, so the commit path treats it as uncertain instead of hanging.
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          if (t.part === "accept") await d.accept();
-          else await d.dismiss();
+          const answer = t.part === "accept" ? d.accept() : d.dismiss();
+          const capped = new Promise<"timed_out">((res) => {
+            timer = setTimeout(() => {
+              res("timed_out");
+            }, STEP_TIMEOUT_MS);
+          });
+          if ((await Promise.race([answer, capped])) === "timed_out") {
+            answer.catch(() => undefined);
+            return ok({ dispatched: "unknown", transport: "navigation_timeout" });
+          }
         } catch (e) {
           // Why: Playwright marks the box handled before it tells the browser, and a page that
           // jumps away as the box closes can still make the call throw. The answer went out
@@ -69,6 +81,7 @@ export class PlaywrightHands implements Hands {
           const lost = transportOf(e);
           if (lost.transport === "connection_closed") return ok(lost);
         } finally {
+          clearTimeout(timer);
           // Why: Playwright has no "dialog closed" event, and a spent handle cannot be answered
           // again, so the eyes must stop reporting it however the call ended.
           this.s.dialog = null;
