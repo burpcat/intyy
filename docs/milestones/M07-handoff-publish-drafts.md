@@ -77,7 +77,7 @@ A human takes over the live browser session and hands it back, set A is publishe
 - [x] 8. Finish the crash sweep. Test each row of section 7 §17.
 - [x] 9. Add `--operator mailbox` to `certify case`.
 - [x] 10. Write `evidence publish | verify` and `npm run test:safety`.
-- [ ] 11. Stop. Ask the owner to run the live handoff (A11) with two terminals.
+- [x] 11. Stop. Ask the owner to run the live handoff (A11) with two terminals.
 - [ ] 12. Draft `README.md`, `REPORT.md`, and `evidence/README.md` from the outlines.
 - [ ] 13. Stop. Ask the owner to publish set A, run `evidence verify`, and tag `v0.1-thin-slice`.
 
@@ -101,12 +101,12 @@ A human takes over the live browser session and hands it back, set A is publishe
 
 ### Live (`npm run test:live`)
 
-- [ ] The handoff test on the bank app, with the scripted "human".
-- [ ] `certify case … --profile supervisor_needed` with the scripted operator ends with the expected escalation.
+- [x] The handoff test on the bank app, with the scripted "human".
+- [x] `certify case … --profile supervisor_needed` with the scripted operator ends with the expected escalation.
 
 ### Owner checks
 
-- [ ] A11 ran as above. The mailbox shows the claim, the release, and the captured human actions, masked.
+- [x] A11 ran as above. The mailbox shows the claim, the release, and the captured human actions, masked.
 - [ ] `intyy evidence verify` is clean on the published set A.
 - [ ] You ran every README command once, from the top.
 - [ ] `REPORT.md` has the brief's seven headings, in order.
