@@ -75,7 +75,7 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 
 ### Live (`npm run test:live`)
 
-- [ ] A `quick` batch on keystone, flag off, passes.
+- [x] A `quick` batch on keystone, flag off, passes. (2026-10-02, certify-quick.test.ts; a drill only through `--models off`)
 
 ### Owner checks
 
