@@ -105,16 +105,15 @@ Run `make reset` in `kvfcu-bank` first, for clean data.
 | 1 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json` | `success`, with the new account number |
 | 2 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/missing.json` | `business_outcome`, `member_not_found`, exit 2 |
 | 3 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/bad.json` | `rejected`, `invalid_input`, exit 4 |
-| 4 | `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile reply_lost` | `success`, commit `found_by_check` |
+| 4 | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile reply_lost` | `escalated`, `reconciliation_waived` at `click_ok`, verdict `pass` |
 
-Step 4 matters because the bank's reply to Confirm was lost. A read-only check found what really happened.
+Step 4 matters because the bank's reply to Confirm was lost. `1.0.3` carries a cited waiver (no screen could read the result), so intyy never guesses: it hands the decision to a person, with commit `uncertain`.
+Answer the start prompt within a few minutes. A long wait lets the bank's session-expiry box open, and the run fails at sign-in.
 `demo/` holds the input files. Its README lists them. All member numbers there are fake.
-
-> TODO(owner): `library/` ships only `kvfcu/sign_in@1.0.0` today. The short path needs `open_share_subaccount@1.0.0` sealed and committed first (M05 owner tasks), and the certify suite sealed (M06).
 
 ### Full path: run the agent on a goal
 
-The library ships `sign_in@1.0.0`. Discovery signs in first, by replay.
+The library ships `sign_in@1.0.0` and `open_share_subaccount@1.0.3`. Discovery signs in first, by replay.
 
 | # | Command | Expect |
 |---|---|---|
@@ -129,7 +128,7 @@ The library ships `sign_in@1.0.0`. Discovery signs in first, by replay.
 - Run every `intyy` command from inside this repository. Run `make reset` in the `kvfcu-bank` folder, then come back.
 
 - The candidate ID looks like `kvfcu/open_share_subaccount/cand_<date>_<id>`. Pass it whole.
-- `<next>` is a version that does not exist yet. `1.0.0` is sealed, so pick the next one. `intyy artifact list` shows what exists. `--version` is required today; the CLI does not propose a number.
+- `<next>` is a version that does not exist yet. `1.0.3` is sealed, so pick the next one. `intyy artifact list` shows what exists. `--version` is required today; the CLI does not propose a number.
 - To record the two negative runs, run `intyy discover kvfcu/open_share_subaccount.missing --candidate <candidate_id>`. The `.at_limit` spec works the same way.
 - Discovery pauses before each risky control and asks for approval. In a second terminal run `intyy operator list`, then `intyy operator show <run_id>`. Answer with `intyy operator decide <run_id> <decision>`. The request lists the allowed decisions.
 - Every request says "irreversible". Ignore that word. Answer by the `control:` line in `intyy operator show <run_id>` (design section 4 §7.7):
@@ -149,7 +148,7 @@ The library ships `sign_in@1.0.0`. Discovery signs in first, by replay.
 Use two terminals. Run `make reset` first.
 In the visible browser, the human works in the same session the bot used.
 
-1. Terminal 1: `intyy certify case kvfcu/open_share_subaccount@1.0.0 --class valid --profile supervisor_needed --operator mailbox`
+1. Terminal 1: `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile supervisor_needed --operator mailbox`
 2. Terminal 2: `intyy operator list`, then `intyy operator claim <run_id>`.
 3. In the browser, do the supervisor approval. Type the supervisor's credentials yourself. intyy never stores them.
 4. Terminal 2: `echo "Supervisor approved." | intyy operator release <run_id>`. The note comes from standard input.
@@ -157,12 +156,11 @@ In the visible browser, the human works in the same session the bot used.
 
 The mailbox is a folder in the run's evidence folder. It records the claim, the release, and the human's actions, masked.
 
-> TODO(owner): `supervisor_needed` is a suite extra case. It needs the certify suite sealed (M06) before this runs.
 
 ## Unattended path
 
 *Unattended* means an agent calls the capability and no human watches. intyy rejects it until the key is certified and a human approves it.
-A *key* is one exact version, like `kvfcu/open_share_subaccount@1.0.0`.
+A *key* is one exact version, like `kvfcu/open_share_subaccount@1.0.3`.
 `--pin` is for supervised runs only. It runs one exact key, and it never grants trust.
 Keys must be sealed first (see the full path). Use `INTYY_STAFF` or `--staff <id>` to pick who acts.
 
@@ -175,7 +173,7 @@ Keys must be sealed first (see the full path). Use `INTYY_STAFF` or `--staff <id
 4. Approve with that hash. Standard input is your note:
    `echo "Read the report." | intyy --staff op_022 trust approve kvfcu/sign_in@1.0.0 --expect-record sha256:<hash>`
    Add `--ack <step>` for each fragile step the review asks you to read.
-5. Do steps 2 to 4 for each linked key, then for `kvfcu/open_share_subaccount@1.0.0`. The commit key waits for the keys it links.
+5. Do steps 2 to 4 for each linked key, then for `kvfcu/open_share_subaccount@1.0.3`. The commit key waits for the keys it links.
 6. Repeat step 1. Expect `success`, exit 0.
 
 Once a key is approved, live runs score it. Three recipe failures in a row degrade it, and an unattended run is rejected again.
@@ -201,7 +199,7 @@ All commands below are built. The owner has not run them live. Reasons and notes
 | Operator | `operator dialog <run_id> accept\|dismiss` answers a native dialog during a takeover |
 
 Example, a drill that breaks the button names (the owner restarts the bank app with `KVFCU_STRIP_SEMANTICS=1` first):
-`intyy certify kvfcu/open_share_subaccount@1.0.0 --kind quick --instance strip_semantics=1`
+`intyy certify kvfcu/open_share_subaccount@1.0.3 --kind quick --instance strip_semantics=1`
 
 ## Running without live services
 
