@@ -38,15 +38,15 @@ The owner checks each row against the files. `intyy evidence verify` checks hash
 
 ## Set B: depth
 
-Published only if built and run. Remove a row for any item that was cut. Every row is `pending`.
+Published only if built and run. A cut item stays as a row marked `cut`.
 
 | ID | What it shows | Made by | Expected path | Status |
 |---|---|---|---|---|
 | B1 | Stripped-button `quick` batch, a drill. The stripped Search button is a bare 72 px image; rule 4 masks it, so the image clue cannot vote. The run escalates `unsafe_state` at `click_search` after the gate blocks the reviewer's click: it never clicks blind | `intyy certify kvfcu/open_share_subaccount@1.0.3 --kind quick --instance strip_semantics=1`, with the bank app restarted with `KVFCU_STRIP_SEMANTICS=1` | `keystone/batches/batch_2026-10-02_s0dmedha63/`, `keystone/runs/run_2026-10-02_jdepc13cmw/` | published |
 | B2 | Unknown pop-up handled by rungs 2 and 3, with their `llm/` records: jev sorts it `needs_review` (0.81), the reviewer clicks the notice's Close (idempotent, gate allowed), the run resumes and ends `success` | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile unknown_popup --at @step:click_search` | `keystone/batches/batch_2026-10-02_gf018jxvqw/`, `keystone/runs/run_2026-10-02_ncyxw2vp7x/` | published |
-| B3 | Full batch reports and trust snapshots for the three keys | `intyy certify <key>`, then `intyy evidence publish <batch> <key>` | `keystone/batches/<batch>/`, `trust/scores/keystone/<key>/` | pending |
-| B4 | Unattended replay: rejected before approval, `success` after | `intyy replay kvfcu/open_share_subaccount@1 --mode unattended --inputs demo/valid.json --authorization demo/auth.json`, before and after `trust approve` | `keystone/runs/<run>/` (two runs) | pending |
-| B5 | Lakeshore probe, a drill: the cross-tenant gap, measured | `intyy certify kvfcu/open_share_subaccount@1.0.3 --tenant lakeshore --kind quick --instance variant=lakeshore` | `lakeshore/batches/<batch>/` | pending |
+| B3 | Full batch reports and trust snapshots for the two keys. sign_in@1.0.0: 49 runs, gate passed, 0 wrong. open_share_subaccount@1.0.3: 62 runs, gate passed, 0 wrong, outcome score 1.00. Stability is measured, not gated: sign_in 80/80/20% pass at entropy 0.05/0.15/0.30; open_share 60/0/0%, mostly frame-level error, blank, 503, and logout pages | `intyy certify <key>`, then `intyy evidence publish <batch> <key>` | `keystone/batches/batch_2026-10-02_pd3rggj8en/`, `keystone/batches/batch_2026-10-02_kndb373d57/`, `trust/scores/keystone/kvfcu/` | published |
+| B4 | Unattended replay: `rejected`, `context_not_approved`, exit 4, before approval; `success` after both keys were approved by `op_022` | `intyy replay kvfcu/open_share_subaccount@1 --mode unattended --inputs demo/valid.json --authorization <fresh consent>`, before and after `trust approve` | `keystone/runs/run_2026-10-02_k6dqs5pdxn/`, `keystone/runs/run_2026-10-02_pn8dzz42xc/` | published |
+| B5 | Lakeshore probe, a drill: the cross-tenant gap, measured. Cut | — | — | cut |
 
 B1 and B5 are never approval-grade. B2 ran with real models: jev on rung 2, the Claude reviewer on rung 3.
 

@@ -63,9 +63,9 @@ A key earns trust from a full certify batch and a human approval, and only then 
 - [x] 4. Write the gate. Test each rule failing alone.
 - [x] 5. Write the approval family, the approval screen, and `--expect-record`.
 - [x] 6. Write the resolver and check 7, with linked capabilities.
-- [ ] 7. Draft the two new suites. Stop. Ask the owner to seal and approve them. (2026-10-02: only `sign_in@1`; no check capability is sealed, see docs/decisions.md)
+- [x] 7. Draft the two new suites. Stop. Ask the owner to seal and approve them. (2026-10-02: only `sign_in@1`, sealed op_017, approved op_031; no check capability is sealed, see docs/decisions.md)
 - [x] 8. Add a `quick` batch to the CI `live` job, with jev and the reviewer faked. (Not built, by decision: live tests stay local, docs/decisions.md 2026-10-01)
-- [ ] 9. Stop. Ask the owner to run the batches and approvals below. This is the minimum for B3 and B4.
+- [x] 9. Stop. Ask the owner to run the batches and approvals below. This is the minimum for B3 and B4. (2026-10-02: two keys, B3 and B4 published)
 - [x] 10. Write stability, twins, and the fault-aware judge.
 - [x] 11. Write tuned timeouts.
 - [x] 12. Write the guided walk for `trust approve`.
@@ -94,8 +94,8 @@ A key earns trust from a full certify batch and a human approval, and only then 
 
 ### Owner checks
 
-- [ ] Three `full` batches passed their gates. Three keys approved at keystone by `op_022`.
-- [ ] Unattended replay: rejected before, `success` after.
+- [x] Three `full` batches passed their gates. Three keys approved at keystone by `op_022`. (Two keys, by decision: batch_2026-10-02_pd3rggj8en and batch_2026-10-02_kndb373d57)
+- [x] Unattended replay: rejected before, `success` after. (run_2026-10-02_k6dqs5pdxn, run_2026-10-02_pn8dzz42xc)
 
 ## Evidence produced
 
