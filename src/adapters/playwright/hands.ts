@@ -23,6 +23,10 @@ function transportOf(e: unknown): ActResult {
 export class PlaywrightHands implements Hands {
   constructor(private readonly s: BrowserState) {}
 
+  async clearCookies(): Promise<void> {
+    await this.s.pages[0]?.context().clearCookies();
+  }
+
   async act(a: ResolvedAction): Promise<Outcome<ActResult, "stale_element">> {
     const page = this.s.active;
     if (page === null) return ok({ dispatched: false, transport: "connection_closed" });

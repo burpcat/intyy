@@ -38,6 +38,12 @@ export interface Hands {
     lease: LeaseToken,
     signal?: AbortSignal,
   ): Promise<Outcome<ActResult, "stale_element">>;
+  /**
+   * Drops the session's cookies, so the app sees a new visitor; the window stays open. For a
+   * sign-in during the task (owner decision, 2026-10-02): an app may keep serving its
+   * session-expired page to the old cookie. Optional: a fake with no cookies has nothing to drop.
+   */
+  clearCookies?(signal?: AbortSignal): Promise<void>;
 }
 
 /** The real shape behind a SurfaceFactory. Opening it yields eyes and hands. */

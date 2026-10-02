@@ -167,6 +167,9 @@ export interface Gate {
   observeHuman(input: HumanInput, step: string | null): GateResult;
   /** Marks the last action as settled: nothing is in flight (section 4 §7.9, `risk.in_flight`). */
   settled(): void;
+  /** Drops the browser's cookies before a sign-in during the task, so the app starts a new
+   * session (owner decision, 2026-10-02). Sends nothing to the app. */
+  freshSession(signal?: AbortSignal): Promise<void>;
   /**
    * The page and frame loads the network guard blocked since the last call, oldest first.
    * The caller acts per actor (section 4 §6.8): a discovery LLM is told, and the run goes on.
@@ -323,6 +326,10 @@ class ActionGate implements Gate {
 
   endPrelude(): void {
     this.#preludeActive = false;
+  }
+
+  async freshSession(signal?: AbortSignal): Promise<void> {
+    await this.hands.clearCookies?.(signal);
   }
 
   settled(): void {

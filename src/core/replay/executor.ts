@@ -957,6 +957,10 @@ export async function runReplay(input: ReplayInput, deps: ReplayDeps): Promise<R
     // during the task": "the engine repeats steps 1 to 4 in the same browser").
     const runPreludeAgain = async (signal?: AbortSignal): Promise<boolean> => {
       if (sessionArtifact === null) throw new Error("runLadder: a sign_in response with no session artifact");
+      // Why: an app may keep serving its session-expired page to the old cookie, even at the
+      // session's entry, so the sign-in starts as a new visitor (owner decision, 2026-10-02;
+      // replaces section 7 §10's "same browser" for the cookies only).
+      await gate.freshSession(signal);
       const preludeCtx = {
         eyes,
         gate,

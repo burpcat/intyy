@@ -636,8 +636,10 @@ async function applyHandler(
   return { kind: "recovered", index, recovery: { via: mark === undefined ? "handler" : "jev", ref: handler.id, resumedAt: resumeAtId }, log: data };
 }
 
-/** How long the resume search keeps looking after a handler's response. */
-const RESUME_WAIT_MS = 5000;
+/** How long the resume search keeps looking after a handler's response. Why 10 s: the same as
+ * the precondition wait (owner decision, 2026-10-02); a test app may hold one request 5 to 8 s
+ * (CONTRACT.md §6.1, "Delay"), and a frame behind it stays empty until then. */
+const RESUME_WAIT_MS = 10_000;
 /** How often it looks again. */
 const RESUME_POLL_MS = 250;
 
