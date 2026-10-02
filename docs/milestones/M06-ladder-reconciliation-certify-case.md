@@ -78,7 +78,7 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 - [x] 8. Write the route map, `certify case | rerun | report`, the scripted operator, truth checks, and verdicts.
 - [x] 9. Stop. Ask the owner to run `certify case` once per profile. With no packs, each fails at its fault and captures the screen. (2026-10-01, on 1.0.3 at @step:click_member: server_error run_2026-10-01_6gvdnv11mp, maintenance run_2026-10-01_5jt1tkgbqg, known_popup run_2026-10-01_40mh2hdj7m, unknown_popup run_2026-10-01_1a1406rmfs (pass, escalated), session_expire run_2026-10-01_w0gccpdfzn; reply_lost run_2026-10-01_c6z6sr5fmr passed with the cited-waiver ending at click_ok.)
 - [x] 10. Stop. Ask the owner to make fixtures from those captures, plus the restricted user's screen, with `fixture new`. (2026-10-01: trouble_server_error, trouble_maintenance, trouble_kyc_popup, trouble_session_expired, trouble_permission (restricted user, run_2026-10-01_q2nh5m1dpr), normal_confirm, normal_member_detail, normal_open_form; normal_main meta.json upgraded.)
-- [ ] 11. Draft the global and app packs from the fixtures. Stop. Ask the owner to seal and approve them.
+- [x] 11. Draft the global and app packs from the fixtures. Stop. Ask the owner to seal and approve them. (2026-10-01: five handlers in app:kvfcu, global empty by §12.6/§15; owner loaded the drafts with `pack edit`, op_022 second looks, sealed op_017, approved op_031.)
 - [x] 12. Write the live fault table test and the live demo step 6 test.
 
 ## Test gate
@@ -105,8 +105,8 @@ Replay handles the runtime errors of `CONTRACT.md` §6 on purpose, and `certify 
 
 ### Owner checks
 
-- [ ] Suite, test data, faults, and both packs are sealed and approved. (Suite, test data, faults done 2026-10-01; packs pending.)
-- [ ] Each handler has at least one `fire` and one `no_fire` fixture.
+- [x] Suite, test data, faults, and both packs are sealed and approved. (2026-10-01.)
+- [x] Each handler has at least one `fire` and one `no_fire` fixture.
 - [ ] You ran A8, A9, and A10 below, and each ended as expected.
 
 ## Evidence produced
