@@ -1,0 +1,84 @@
+{
+  "schema": "intyy.suite/1.0",
+  "capability": "kvfcu/open_share_subaccount@1",
+  "revision": 2,
+  "reason": "supervisor_needed expects the takeover at click_confirm, not click_submit: kvfcu shows the supervisor request on the review page Submit leads to, and disables Confirm there (M07 capture run_2026-10-02_f2tdhzpxyr).",
+  "classes": [
+    {
+      "id": "valid",
+      "inputs": {
+        "member_id": "@members.valid",
+        "deposit": "137.00"
+      },
+      "expect": {
+        "status": "success",
+        "commit": "confirmed"
+      }
+    },
+    {
+      "id": "missing",
+      "inputs": {
+        "member_id": "@members.missing",
+        "deposit": "137.00"
+      },
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "member_not_found",
+        "commit": "not_sent"
+      }
+    },
+    {
+      "id": "at_limit",
+      "inputs": {
+        "member_id": "@members.at_limit",
+        "deposit": "137.00"
+      },
+      "expect": {
+        "status": "business_outcome",
+        "outcome": "limit_exceeded",
+        "commit": "not_sent"
+      }
+    }
+  ],
+  "matrix": {
+    "class": "valid",
+    "profiles": "standard"
+  },
+  "stability": {
+    "class": "valid",
+    "levels": [
+      0.05,
+      0.15,
+      0.3
+    ],
+    "seeds": 5,
+    "twins": true
+  },
+  "drills": {
+    "count": 0
+  },
+  "extra": [
+    {
+      "id": "supervisor_needed",
+      "class": "valid",
+      "faults": [
+        {
+          "kind": "supervisor_required",
+          "at": "@step:click_submit"
+        }
+      ],
+      "expect": {
+        "status": "escalated",
+        "kind": "takeover",
+        "reason": "needs_human_handler",
+        "step": "click_confirm"
+      }
+    }
+  ],
+  "setup": [],
+  "provenance": {
+    "runs": [],
+    "decisions": [],
+    "sealed": null
+  }
+}
