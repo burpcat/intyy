@@ -29,9 +29,9 @@ Two repos, side by side. Exact commands:
 
 ```
 mkdir intyy-review && cd intyy-review
-git clone <intyy repo URL> intyy
-git clone <bank app repo URL> kvfcu-bank
-cd kvfcu-bank && git checkout <commit from intyy/bankapp.json>
+git clone https://github.com/burpcat/intyy.git intyy
+git clone https://github.com/burpcat/intyy-bank.git kvfcu-bank
+cd kvfcu-bank && git checkout 3652883e009cfeca8cabce7ac78cae1283aabb3f
 ```
 
 **The bank app's `.env`** (build plan §10.3):

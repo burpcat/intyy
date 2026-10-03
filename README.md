@@ -11,7 +11,7 @@ Read next: [REPORT.md](REPORT.md) (the decisions), [evidence/README.md](evidence
 ## What you need
 
 - Node.js 24, npm, and git.
-- The bank app `kvfcu`. Its own README lists what it needs. `bankapp.json` pins its repo and commit.
+- The bank app [`kvfcu`](https://github.com/burpcat/intyy-bank). Its own README lists what it needs. `bankapp.json` pins its repo and commit.
 - An Anthropic API key, only for a new discovery run. The short demo path needs no key.
 - A TypeSafe AI key (`TYPESAFE_API_KEY`), only for the jev rung (*jev* is the error sorter that reads a stuck screen on rung 2). Replay uses the pinned model `jev-1.13.0`. Without a key, trouble climbs to the reviewer or a human.
 
@@ -21,7 +21,7 @@ Put the two repos side by side.
 
 ```
 mkdir intyy-review && cd intyy-review
-git clone <intyy repo URL> intyy
+git clone https://github.com/burpcat/intyy.git intyy
 git clone https://github.com/burpcat/intyy-bank.git kvfcu-bank
 cd kvfcu-bank && git checkout 3652883e009cfeca8cabce7ac78cae1283aabb3f
 ```
