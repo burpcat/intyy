@@ -28,8 +28,7 @@ Real state of the repo: `library/artifacts/` holds sealed `kvfcu/sign_in@1.0.0` 
 - Owner steps done: suite, test data, faults, fixtures, and both packs are sealed. A8 to A10 are published.
 
 **M07 Handoff, publish, drafts** (`1a4824e`, `7a9977a`). Built: control lease, operator mailbox, handoff, crash sweep, `evidence publish` and `verify`, `test:safety`.
-- Owner steps done: A11 live handoff, tag `v0.1-thin-slice`.
-- Owner step open: the set A manifest and a clean `evidence verify` (the "Set A" row in `evidence/README.md`).
+- Owner steps done: A11 live handoff, tag `v0.1-thin-slice`, the set A manifest with a clean `evidence verify`.
 
 **M08 Visual clue** (`18b4829`, `408286b`). Built: region and image clues, voting, `certify --kind quick`, `--instance`.
 - Owner step done: the stripped-button drill (B1). It ends in a safe escalation, not a pass.
@@ -42,12 +41,13 @@ Real state of the repo: `library/artifacts/` holds sealed `kvfcu/sign_in@1.0.0` 
 - Not built: the `quick` batch in the CI `live` job. Decision 2026-09-26 keeps live tests local.
 
 **M11 Live trust and drift** (`38cc5e1`, `108c7f6`, `937c593`, `474b166`, `334e857`). Built: live scores, demotion rules, early warnings, drift reader, alerts, major records, pack impact and regression batches, reconciliation autonomy. One live degrade test passes (`6da7521`).
-- Owner step open: the optional major seal. `library/majors/` does not exist.
+- Not needed: the optional major seal. `library/majors/` does not exist.
 - Not built: the lakeshore probe (task 7), `clue_drift` (needs patch drafting), and the "one app version" pattern.
 - Built, not proven live: everything except the degrade test.
 
 **M12 Final write-up** (`1b29129`, `59dec9c`, `dcfebf3`, `b4d5803`). Built: README update, evidence index, repo audit script, this file, `REPORT.md`.
-- Owner steps open: the boxes left in the M12 spec (the fresh-clone test, defending each section, the public repo and its tag).
+- Owner step done: the fresh-clone test of the short demo path.
+- Owner steps open: the boxes left in the M12 spec (reading the REPORT aloud, defending each section, the public repo and tag `v1.0`).
 
 ## Cut line (build plan §12)
 
