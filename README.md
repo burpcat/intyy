@@ -122,12 +122,14 @@ The library ships `sign_in@1.0.0` and `open_share_subaccount@1.0.3`. Discovery s
 | 3 | `intyy candidate seal <candidate_id> --version <next>` | A sealed artifact |
 | 4 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json` | `success` |
 | 5 | `intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/missing.json` | `business_outcome`, exit 2 |
-| 6 | `intyy certify case kvfcu/open_share_subaccount@<next> --class valid --profile reply_lost` | `failed`, `outputs_unavailable`, commit `found_by_check` |
+| 6 | `intyy certify case kvfcu/open_share_subaccount@<next> --class valid --profile reply_lost` | `escalated`, `reconciliation_waived`, commit `uncertain`. A person decides (evidence A8) |
 
-- A task with a commit point links a read-only check. For kvfcu it is `kvfcu/count_member_subaccounts@1`, which must be sealed first and allowed by the tenant policy. Link it with `intyy candidate decide <candidate_id> recovery recovery.reconciliation '{"capability":"kvfcu/count_member_subaccounts@1","mode":"count_diff","inputs":{"member_id":"{input.member_id}"},"count_output":"subaccount_count"}'`. A waiver is accepted only when its JSON names `attempt_run`, the discovery run that found no screen to read the result.
+- A task with a commit point links a read-only check, or a waiver that cites a failed attempt. kvfcu has no usable check: its member page lists sub-accounts as rows with no count (`docs/decisions.md`, 2026-10-01 M05). So `1.0.3` carries a cited waiver. Link the same one with `intyy candidate decide <candidate_id> recovery recovery.reconciliation '{"waiver":{"reason":"<why no check can decide>","attempt_run":"run_2026-10-01_f5twjghrdf"}}'`. The seal refuses a waiver without `attempt_run`, the discovery run that found no screen to read the result.
+- For an app with a readable check, link the check instead. It must be sealed first and allowed by the tenant policy. The JSON shape: `'{"capability":"kvfcu/count_member_subaccounts@1","mode":"count_diff","inputs":{"member_id":"{input.member_id}"},"count_output":"subaccount_count"}'`. That kvfcu check is not sealed.
 - Run every `intyy` command from inside this repository. Run `make reset` in the `kvfcu-bank` folder, then come back.
 
 - The candidate ID looks like `kvfcu/open_share_subaccount/cand_<date>_<id>`. Pass it whole.
+- To record a finished run as a candidate again, run `intyy candidate new <run_id>`. It reads the run's masked log, with no model call (`docs/decisions.md`, 2026-09-29 M04).
 - `<next>` is a version that does not exist yet. `1.0.3` is sealed, so pick the next one. `intyy artifact list` shows what exists. `--version` is required today; the CLI does not propose a number.
 - To record the two negative runs, run `intyy discover kvfcu/open_share_subaccount.missing --candidate <candidate_id>`. The `.at_limit` spec works the same way.
 - Discovery pauses before each risky control and asks for approval. In a second terminal run `intyy operator list`, then `intyy operator show <run_id>`. Answer with `intyy operator decide <run_id> <decision>`. The request lists the allowed decisions.
