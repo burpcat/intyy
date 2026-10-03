@@ -19,5 +19,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Why: the surface contract tests drive a real headless Chromium on a local page (no bank app).
+      - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run check
