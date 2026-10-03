@@ -13,7 +13,7 @@ state/
 # Dev-only Playwright traces (design section 1 §11). Never evidence.
 traces/
 
-# bs
+# Logs and OS noise
 *.log
 .DS_Store
 
