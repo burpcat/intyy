@@ -66,7 +66,7 @@ Found during the fixes: N1. Total 26 rows.
 - **Rejected:** 2 (B4, C3).
 - **Blocked on the owner:** 1 (B12).
 
-Note: B3 and B5 edited `docs/milestones/` before the owner-tasks session asked that nobody edit it. Revert `01189bf` if the specs must stay as written.
+Note: B3 and B5 edited `docs/milestones/` before the owner-tasks session asked that nobody edit it. The owner-tasks session checked the annotations and kept `01189bf`.
 
 Final checks on branch `audit-2026`:
 - `npm run check` passes.
