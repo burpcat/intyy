@@ -66,7 +66,7 @@ A cold reader can clone, run, and understand the submission, and every claim in 
 ### Owner checks
 
 - [x] `REPORT.md` is under 3 pages, with the seven headings in order.
-- [ ] The fresh-clone test worked from the README alone, including the short demo path with no model key.
+- [x] The fresh-clone test worked from the README alone, including the short demo path with no model key. (2026-10-02: all four demo steps, no model key; the bank commit was pushed to GitHub first. A 5-minute approval hang it found is fixed in 0249581)
 - [ ] You can explain and defend every section of the REPORT (brief §9).
 - [ ] The repo is public. Tag `v1.0`.
 
