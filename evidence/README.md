@@ -1,6 +1,7 @@
 # Evidence index
 
 This folder holds published copies of real intyy runs and records. It follows build plan §11.
+All runs used [intyy-bank](https://github.com/burpcat/intyy-bank) at commit `3652883e009cfeca8cabce7ac78cae1283aabb3f` (pinned in `bankapp.json`), contract 1.1.0, in test mode.
 The owner checks each row against the files. `intyy evidence verify` checks hashes, links, forbidden files, and canaries.
 
 **Status values.** `pending` means the file does not exist yet. `published` means it exists and `evidence verify` is clean. A row stays `pending` until the owner publishes it.
@@ -32,7 +33,7 @@ The owner checks each row against the files. `intyy evidence verify` checks hash
 | A10 | Restricted user: `failed`, `permission_denied` | 3.3 | `(set -a; . ./.env.restricted; set +a; intyy replay kvfcu/open_share_subaccount@1 --mode supervised --inputs demo/valid.json)` | `keystone/runs/run_2026-10-02_qp8z5r8x4x/` | published |
 | A11 | Live handoff: supervisor approval in the same browser; `success`, commit `confirmed` by the bot, one intervention | 3.6 | `intyy certify case kvfcu/open_share_subaccount@1.0.3 --class valid --profile supervisor_needed --operator mailbox` | `keystone/batches/batch_2026-10-02_mr0a5z9d55/`, `keystone/runs/run_2026-10-02_fmd346vwqj/mailbox/` | published |
 | A12 | Safety and canary test report, as JSON | 3.4 | `npm run test:safety` | `tests/safety.json` | published |
-| Set A | The set as a whole: manifest and a clean verify | all | `intyy evidence publish ...`, then `intyy evidence verify` | `manifest.json` | pending |
+| Set A | The set as a whole: manifest and a clean verify | all | `intyy evidence publish ...`, then `intyy evidence verify` | `manifest.json` | published |
 
 **Minimum for the brief:** A1, A3, A4, A5, A6. Set A adds the rest.
 
