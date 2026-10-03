@@ -57,8 +57,8 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 | File | Agent | Owner |
 |---|---|---|
 | `library/specs/kvfcu/open_share_subaccount.json`, `.missing.json`, `.at_limit.json` | Skeletons with `spec new` | Fills in goals, inputs, outputs, effect, and example values |
-| `library/specs/kvfcu/find_account_by_reference.json`, `.not_found.json` | Same | Same |
-| `library/artifacts/kvfcu/find_account_by_reference/1.0.0/` | — | Reviews and seals |
+| `library/specs/kvfcu/find_account_by_reference.json`, `.not_found.json` | Dropped | Dropped |
+| `library/artifacts/kvfcu/find_account_by_reference/1.0.0/` | — | Dropped |
 | `library/artifacts/kvfcu/open_share_subaccount/1.0.0/` | — | Reviews, decides the recovery link, seals |
 | `demo/valid.json`, `missing.json`, `at_limit.json`, `bad.json`, `auth.json` | Writes them (build plan §9) | Reviews in git |
 
@@ -90,9 +90,9 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 **Discovery order for the owner.** The check needs an account with a known reference. The first run makes one.
 
 1. `discover …/open_share_subaccount.json`. A candidate with a recovery placeholder. Approve the Confirm click in the mailbox.
-2. `discover …/find_account_by_reference.json`. Its example reference is run 1's run ID.
-3. `discover …/find_account_by_reference.not_found.json --candidate <id from 2>`.
-4. Review and seal `find_account_by_reference@1.0.0`.
+2. `discover …/find_account_by_reference.json`. Its example reference is run 1's run ID. (dropped, see `docs/decisions.md` 2026-10-02 M10)
+3. `discover …/find_account_by_reference.not_found.json --candidate <id from 2>`. (dropped, see `docs/decisions.md` 2026-10-02 M10)
+4. Review and seal `find_account_by_reference@1.0.0`. (dropped, see `docs/decisions.md` 2026-10-02 M10)
 5. `discover …/open_share_subaccount.missing.json --candidate <id from 1>`, then `.at_limit.json` the same way.
 6. Decide the recovery link to `find_account_by_reference@1`. Confirm the at-limit refusal means "no change". Seal `open_share_subaccount@1.0.0`.
 
@@ -127,7 +127,7 @@ A sealed artifact replays with no model deciding: it signs in, does the task, an
 
 ## Evidence produced
 
-- **A2:** `find_account_by_reference` discovery, positive and `not_found`.
+- **A2:** `find_account_by_reference` discovery, positive and `not_found`. (dropped, see `docs/decisions.md` 2026-10-02 M10)
 - **A3:** `open_share_subaccount` discovery: positive with the approval in its mailbox, missing, and at limit.
 - **A4, rest:** the two new sealed artifacts.
 - **A5, A6, A7:** the three replays above.

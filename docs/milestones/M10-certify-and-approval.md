@@ -47,7 +47,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 | File | Agent | Owner |
 |---|---|---|
 | `library/suites/kvfcu/sign_in@1/1.json` | Drafts it | Seals as `op_017`, approves as `op_031` |
-| `library/suites/kvfcu/find_account_by_reference@1/1.json` | Drafts it, with a `setup` run that opens an account | Same |
+| `library/suites/kvfcu/find_account_by_reference@1/1.json` | Dropped | Dropped |
 
 ## Not in this milestone
 
@@ -74,7 +74,7 @@ A key earns trust from a full certify batch and a human approval, and only then 
 
 1. Before any approval: `intyy replay kvfcu/open_share_subaccount@1 --mode unattended --inputs demo/valid.json --authorization demo/auth.json`. Expect `rejected`, exit 4.
 2. As `op_017`: `intyy certify kvfcu/sign_in@1.0.0`. Then as `op_022`: `intyy trust review …`, then `intyy trust approve … --expect-record sha256:…`.
-3. The same for `kvfcu/find_account_by_reference@1.0.0`.
+3. The same for `kvfcu/find_account_by_reference@1.0.0`. (dropped, see `docs/decisions.md` 2026-10-02 M10)
 4. The same for `kvfcu/open_share_subaccount@1.0.0`.
 5. Repeat step 1. Expect `success`, exit 0.
 

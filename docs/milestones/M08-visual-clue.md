@@ -28,7 +28,7 @@ Replay finds a button with no name, text, or accessible name. It uses where the 
 - **`certify <key> --kind quick`:** baseline for the first class, then the matrix on the commit step only (section 8 §7.1). No score store yet.
 - **`--instance k=v,…`:** declared instance facts. Any difference from the test data set makes the batch a drill. The plan says so.
 - **The `region` clue:** 1 within 3% of the viewport, falling to 0 at 20%.
-- **The `image` clue:** picture likeness in plain code with `pngjs`. 1 at 0.90 or more, falling to 0 at 0.60.
+- **The `image` clue:** picture likeness in plain code, reading PNG with `node:zlib` (no image library, see `docs/decisions.md` 2026-10-01 M08). 1 at 0.90 or more, falling to 0 at 0.60.
 - Crops come from the sealed artifact's `crops/` folder. A crop with a mask box in it is dropped.
 - **An engine version bump.** Clue weights live in the engine. Every run logs the version.
 
